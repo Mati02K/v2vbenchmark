@@ -1,0 +1,14 @@
+Loading net-file from 'intersection.net.xml' ... done (1ms).
+Loading done.
+Simulation version 1.8.0 started with time: 0.00
+Simulation ended at time: 60.00
+Reason: The final simulation step has been reached.
+Performance: 
+ Duration: 0.00s
+ Real time factor: 15000
+ UPS: 521750.000000
+Vehicles: 
+ Inserted: 4
+ Running: 2
+ Waiting: 0
+
