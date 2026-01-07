@@ -31,6 +31,7 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
 OBJS = \
+    $O/tcp/HelloTcpApplication.o \
     $O/udp/HelloUdpApplication.o \
     $O/veins_inet/VeinsInetApplicationBase.o \
     $O/veins_inet/VeinsInetManager.o \
@@ -38,6 +39,7 @@ OBJS = \
     $O/veins_inet/VeinsInetManagerForker.o \
     $O/veins_inet/VeinsInetMobility.o \
     $O/veins_inet/VeinsInetSampleApplication.o \
+    $O/wave/HelloWaveApplication.o \
     $O/veins_inet/VeinsInetSampleMessage_m.o
 
 # Message files

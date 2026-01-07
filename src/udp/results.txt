@@ -889,7 +889,7 @@ Loading images from '/home/mathesh/omnetpp-5.6.2/images': *: 0  abstract/*: 90  
 7.769509567395 Vehicle 1 RECEIVED HELLO from 0
 7.769509567395 Vehicle 1 SENDING ACK to 0
 7.769509567531 Vehicle 2 RECEIVED HELLO from 0
-7.769509567531 Vehicle 2 SENDING ACK to 0
+7.769509567531 Vehicle 2 SENDING ACK to 0git fetch origin
 7.769729461329 Vehicle 0 RECEIVED ACK from 1 | acked {0,1,2} | pending ACK {3}
 7.769859461601 Vehicle 0 RECEIVED ACK from 2 | acked {0,1,2} | pending ACK {3}
 7.77453273517 Vehicle 3 SENDING HELLO #75 | acked {1,2,3} | pending ACK {0}

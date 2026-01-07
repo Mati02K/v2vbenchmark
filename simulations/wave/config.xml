@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <AnalogueModel type="SimplePathlossModel">
+        <parameter name="alpha" type="double" value="2.0"/>
+        <parameter name="carrierFrequency" type="double" value="5.890e9"/>
+    </AnalogueModel>
+    
+    <Decider type="Decider80211p">
+        <parameter name="centerFrequency" type="double" value="5.890e9"/>
+        <parameter name="bandwidth" type="double" value="10e6"/>
+        <parameter name="sensitivity" type="double" value="-89.0"/>
+    </Decider>
+    
+    <Antenna type="AntennaPosition">
+        <parameter name="offsetX" type="double" value="0.0"/>
+        <parameter name="offsetY" type="double" value="0.0"/>
+        <parameter name="offsetZ" type="double" value="1.895"/>
+    </Antenna>
+</root>

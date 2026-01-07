@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<routes>
+    <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="4.5" minGap="2.5" maxSpeed="14" color="1,1,0"/>
+
+    <!-- straight through intersection -->
+    <route id="rN" edges="N2C C2S"/>
+    <route id="rS" edges="S2C C2N"/>
+    <route id="rE" edges="E2C C2W"/>
+    <route id="rW" edges="W2C C2E"/>
+
+    <!-- 4 vehicles, spawn at t=0 -->
+    <vehicle id="vehN" type="car" route="rN" depart="0" departSpeed="max"/>
+    <vehicle id="vehS" type="car" route="rS" depart="0" departSpeed="max"/>
+    <vehicle id="vehE" type="car" route="rE" depart="0" departSpeed="max"/>
+    <vehicle id="vehW" type="car" route="rW" depart="0" departSpeed="max"/>
+</routes>
