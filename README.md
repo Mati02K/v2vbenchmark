@@ -155,6 +155,20 @@ run directly from the **OMNeT++ IDE** in simulations folder:
 
 ---
 
+## Jan 14 - Added RAFT benchmarking
+
+To run simply do this
+```bash
+./benchmark.sh 4 my_4_vehicles
+./benchmark.sh 8 my_8_vehicles
+./benchmark.sh 16 my_16_vehicles
+./benchmark.sh 32 my_32_vehicles
+```
+
+Basic configurations can be done from simulations/raft/*.json files. I need to add more, but structure is more or less finalised.
+
+---
+
 ## Info
 
 I am maintaining this link to add more info about the project and progress :- 
