@@ -1,1 +1,37 @@
 MSGC:=$(MSGC) --msg6
+
+# RAFT library C source files
+RAFT_DIR = ../third_party/raft
+RAFT_OBJS = \
+    $O/raft_c/raft_server.o \
+    $O/raft_c/raft_server_properties.o \
+    $O/raft_c/raft_node.o \
+    $O/raft_c/raft_log.o
+
+# Add RAFT objects to the link
+EXTRA_OBJS += $(RAFT_OBJS)
+
+# Force RAFT files to be built before any .cc files are compiled
+# This ensures they exist when $(wildcard) is evaluated during linking
+$(OBJS): | $(RAFT_OBJS)
+
+# Explicit rules to compile each RAFT C file
+$O/raft_c/raft_server.o: $(RAFT_DIR)/raft_server.c
+	@mkdir -p $O/raft_c
+	@echo "Compiling RAFT: $<"
+	$(Q)$(CC) -c -std=c99 -I$(RAFT_DIR) -O2 -o $@ $<
+
+$O/raft_c/raft_server_properties.o: $(RAFT_DIR)/raft_server_properties.c
+	@mkdir -p $O/raft_c
+	@echo "Compiling RAFT: $<"
+	$(Q)$(CC) -c -std=c99 -I$(RAFT_DIR) -O2 -o $@ $<
+
+$O/raft_c/raft_node.o: $(RAFT_DIR)/raft_node.c
+	@mkdir -p $O/raft_c
+	@echo "Compiling RAFT: $<"
+	$(Q)$(CC) -c -std=c99 -I$(RAFT_DIR) -O2 -o $@ $<
+
+$O/raft_c/raft_log.o: $(RAFT_DIR)/raft_log.c
+	@mkdir -p $O/raft_c
+	@echo "Compiling RAFT: $<"
+	$(Q)$(CC) -c -std=c99 -I$(RAFT_DIR) -O2 -o $@ $<

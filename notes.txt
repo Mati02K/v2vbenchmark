@@ -1,0 +1,7 @@
+benchmark for intersection
+
+json
+
+lets say there are 4 cars starting x speed, y distance, z way intersection, zx way lanes, zy way cars per lane, x cars coming in. 
+
+time, throughput and response time, consensus rounds
