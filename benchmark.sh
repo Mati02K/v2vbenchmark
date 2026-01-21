@@ -2,9 +2,16 @@
 #
 # RAFT Intersection Benchmark Runner
 # 
-# Usage: ./benchmark.sh <vehicle_count> <result_name>
-# Example: ./benchmark.sh 4 four_vehicles
-#          ./benchmark.sh 8 eight_vehicles
+# Usage: ./benchmark.sh <vehicle_count> <result_name> [algorithm]
+# 
+# Arguments:
+#   vehicle_count: 3, 4, 8, 16, or 32
+#   result_name:   folder name for results
+#   algorithm:     "raft" (default) or "greedy"
+#
+# Examples:
+#   ./benchmark.sh 4 test_4veh           # Standard RAFT
+#   ./benchmark.sh 8 test_8veh_greedy greedy  # Greedy RAFT
 #
 # Results will be saved in: benchmark/results/<result_name>/
 #
@@ -15,6 +22,7 @@ set -e
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Paths
@@ -28,19 +36,35 @@ NED_PATH="..:..:../../src:../../../inet/src:../../../inet/examples:../../../inet
 
 # Check arguments
 if [ $# -lt 2 ]; then
-    echo -e "${RED}Usage: $0 <vehicle_count> <result_name>${NC}"
+    echo -e "${RED}Usage: $0 <vehicle_count> <result_name> [algorithm]${NC}"
+    echo ""
+    echo "Arguments:"
+    echo "  vehicle_count: 3, 4, 8, 16, or 32"
+    echo "  result_name:   folder name for results"
+    echo "  algorithm:     'raft' (default) or 'greedy'"
     echo ""
     echo "Examples:"
-    echo "  $0 4 test_4veh"
+    echo "  $0 4 test_4veh              # Standard RAFT (fair selection)"
     echo "  $0 8 test_8veh"
-    echo "  $0 16 large_test"
+    echo "  $0 8 test_8veh_greedy greedy  # Greedy RAFT (lane priority)"
     echo ""
     echo "Supported vehicle counts: 3, 4, 8, 16, 32"
+    echo ""
+    echo "Algorithm comparison:"
+    echo "  raft   - Leader selects randomly from vehicles with wayOfSight=true"
+    echo "  greedy - Leader prioritizes their own lane before other lanes"
     exit 1
 fi
 
 VEHICLE_COUNT=$1
 RESULT_NAME=$2
+ALGORITHM=${3:-raft}  # Default to 'raft'
+
+# Validate algorithm
+if [[ ! "$ALGORITHM" =~ ^(raft|greedy)$ ]]; then
+    echo -e "${RED}Error: Algorithm must be 'raft' or 'greedy'${NC}"
+    exit 1
+fi
 
 # Validate vehicle count
 if [[ ! "$VEHICLE_COUNT" =~ ^(3|4|8|16|32)$ ]]; then
@@ -48,11 +72,21 @@ if [[ ! "$VEHICLE_COUNT" =~ ^(3|4|8|16|32)$ ]]; then
     exit 1
 fi
 
+# Set application type based on algorithm
+if [ "$ALGORITHM" == "greedy" ]; then
+    APP_TYPE="GreedyRaftApplication"
+    ALGO_DISPLAY="Greedy RAFT (Lane Priority)"
+else
+    APP_TYPE="WillemtRaftApplication"
+    ALGO_DISPLAY="Standard RAFT (Fair Selection)"
+fi
+
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  RAFT Intersection Benchmark${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 echo -e "Vehicles:    ${YELLOW}$VEHICLE_COUNT${NC}"
+echo -e "Algorithm:   ${BLUE}$ALGO_DISPLAY${NC}"
 echo -e "Result Name: ${YELLOW}$RESULT_NAME${NC}"
 echo ""
 
@@ -81,7 +115,7 @@ RESULTS_JSON="$RESULT_DIR/raft_results.json"
 cat > "$TEMP_INI" << EOF
 [General]
 network = IntersectionScenario
-sim-time-limit = 120s
+sim-time-limit = 60s
 **.cmdenv-log-level = warn
 
 # Manager
@@ -97,9 +131,9 @@ sim-time-limit = 120s
 # Scenario
 *.node[*].mobility.typename = "VeinsInetMobility"
 
-# Application
+# Application - $ALGO_DISPLAY
 *.node[*].numApps = 1
-*.node[*].app[0].typename = "WillemtRaftApplication"
+*.node[*].app[0].typename = "$APP_TYPE"
 *.node[*].app[0].totalVehicles = $VEHICLE_COUNT
 *.node[*].app[0].resultsFile = "$RESULTS_JSON"
 *.node[*].app[0].interface = "wlan0"
@@ -107,11 +141,12 @@ sim-time-limit = 120s
 *.node[*].app[0].localPort = 9001
 *.node[*].app[0].destAddress = "255.255.255.255"
 
-# Timing - scale with vehicle count
-*.node[*].app[0].electionTimeoutBaseMs = 150
-*.node[*].app[0].electionTimeoutJitterMs = $((50 / (VEHICLE_COUNT / 4 + 1)))
+# Timing - scale with vehicle count and algorithm
+# Greedy: faster fallback to keep total time reasonable
+*.node[*].app[0].electionTimeoutBaseMs = 100
+*.node[*].app[0].electionTimeoutJitterMs = $([ "$ALGORITHM" == "greedy" ] && echo 150 || echo $((50 / (VEHICLE_COUNT / 4 + 1))))
 *.node[*].app[0].requestTimeoutMs = 50
-*.node[*].app[0].maxFailedElections = $((VEHICLE_COUNT / 2 + 4))
+*.node[*].app[0].maxFailedElections = $([ "$ALGORITHM" == "greedy" ] && echo 8 || echo $((VEHICLE_COUNT / 2 + 4)))
 *.node[*].app[0].fallbackWaitMinMs = 100
 *.node[*].app[0].fallbackWaitMaxMs = 300
 *.node[*].app[0].passConfirmationMs = 300
@@ -134,8 +169,13 @@ echo ""
 cd "$SIM_DIR"
 LOG_FILE="$RESULT_DIR/console.log"
 
-# Run and capture output
-"$SRC_DIR/benchmark_dbg" -u Cmdenv -n "$NED_PATH" "$TEMP_INI" 2>&1 | tee "$LOG_FILE"
+# Run and capture output (use release build to avoid library conflicts)
+# If release doesn't exist, fall back to debug
+if [ -x "$SRC_DIR/benchmark" ]; then
+    "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" "$TEMP_INI" 2>&1 | tee "$LOG_FILE"
+else
+    "$SRC_DIR/benchmark_dbg" -u Cmdenv -n "$NED_PATH" "$TEMP_INI" 2>&1 | tee "$LOG_FILE"
+fi
 
 # Check if results were generated
 if [ ! -f "$RESULTS_JSON" ]; then
@@ -147,6 +187,15 @@ fi
 echo ""
 echo -e "${GREEN}Simulation complete!${NC}"
 echo ""
+
+# Ensure JSON file is properly closed (simulation may timeout before all vehicles complete)
+if [ -f "$RESULTS_JSON" ]; then
+    # Check if JSON ends with proper closing bracket - look for ] at end of file
+    if ! grep -q '^\]$' "$RESULTS_JSON" && ! tail -c 5 "$RESULTS_JSON" | grep -q ']'; then
+        echo -e "${YELLOW}Fixing incomplete JSON file...${NC}"
+        echo -e "\n]" >> "$RESULTS_JSON"
+    fi
+fi
 
 # Generate plots
 echo -e "${YELLOW}Generating plots...${NC}"
@@ -163,7 +212,8 @@ def load_results(filename):
         return json.load(f)
 
 def calculate_summary(results):
-    raft_vehicles = [v for v in results if v['coordination_method'] == 'raft']
+    # Handle both standard raft and greedy_raft
+    raft_vehicles = [v for v in results if v['coordination_method'] in ['raft', 'greedy_raft']]
     fallback_vehicles = [v for v in results if v['coordination_method'] == 'fallback']
     
     total_count = len(results)
@@ -197,7 +247,11 @@ def calculate_summary(results):
 def plot_timeline(results, output_dir):
     fig, ax = plt.subplots(figsize=(14, max(6, len(results) * 0.4)))
     
-    colors = {'raft': '#2ecc71', 'fallback': '#e74c3c'}
+    # Detect algorithm from results
+    algo = results[0].get('algorithm', 'raft') if results else 'raft'
+    algo_name = 'Greedy RAFT' if algo == 'greedy_raft' else 'Standard RAFT'
+    
+    colors = {'raft': '#2ecc71', 'greedy_raft': '#3498db', 'fallback': '#e74c3c'}
     
     for v in results:
         vid = v['vehicle_id']
@@ -215,8 +269,9 @@ def plot_timeline(results, output_dir):
     
     # Legend
     from matplotlib.patches import Patch
+    algo_color = '#3498db' if algo == 'greedy_raft' else '#2ecc71'
     legend_elements = [
-        Patch(facecolor='#2ecc71', alpha=0.7, label='RAFT'),
+        Patch(facecolor=algo_color, alpha=0.7, label=algo_name),
         Patch(facecolor='#e74c3c', alpha=0.7, label='Fallback'),
         plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='blue', markersize=10, label='Elected Leader')
     ]
@@ -224,7 +279,7 @@ def plot_timeline(results, output_dir):
     
     ax.set_xlabel('Time (ms)', fontsize=12)
     ax.set_ylabel('Vehicle ID', fontsize=12)
-    ax.set_title(f'RAFT Intersection Timeline ({len(results)} vehicles)', fontsize=14)
+    ax.set_title(f'{algo_name} Intersection Timeline ({len(results)} vehicles)', fontsize=14)
     ax.set_yticks(range(len(results)))
     ax.grid(True, alpha=0.3, axis='x')
     
@@ -235,13 +290,18 @@ def plot_timeline(results, output_dir):
 def plot_metrics(results, output_dir):
     fig, axes = plt.subplots(2, 2, figsize=(12, 10))
     
+    # Detect algorithm
+    algo = results[0].get('algorithm', 'raft') if results else 'raft'
+    algo_name = 'Greedy RAFT' if algo == 'greedy_raft' else 'Standard RAFT'
+    algo_color = '#3498db' if algo == 'greedy_raft' else '#2ecc71'
+    
     vehicle_ids = [v['vehicle_id'] for v in results]
     wait_times = [v['durations_ms']['total_wait_time'] for v in results]
     methods = [v['coordination_method'] for v in results]
     msgs_sent = [v['messages']['sent'] for v in results]
     msgs_recv = [v['messages']['received'] for v in results]
     
-    colors = ['#2ecc71' if m == 'raft' else '#e74c3c' for m in methods]
+    colors = [algo_color if m in ['raft', 'greedy_raft'] else '#e74c3c' for m in methods]
     
     # 1. Wait Time
     ax1 = axes[0, 0]
@@ -265,10 +325,10 @@ def plot_metrics(results, output_dir):
     
     # 3. Coordination breakdown
     ax3 = axes[1, 0]
-    raft_count = sum(1 for m in methods if m == 'raft')
+    raft_count = sum(1 for m in methods if m in ['raft', 'greedy_raft'])
     fallback_count = len(methods) - raft_count
-    ax3.pie([raft_count, fallback_count], labels=['RAFT', 'Fallback'], 
-            colors=['#2ecc71', '#e74c3c'], autopct='%1.0f%%', startangle=90)
+    ax3.pie([raft_count, fallback_count], labels=[algo_name, 'Fallback'], 
+            colors=[algo_color, '#e74c3c'], autopct='%1.0f%%', startangle=90)
     ax3.set_title('Coordination Method Distribution')
     
     # 4. Summary
@@ -306,16 +366,21 @@ def plot_metrics(results, output_dir):
 def write_summary(results, output_dir):
     summary = calculate_summary(results)
     
+    # Detect algorithm
+    algo = results[0].get('algorithm', 'raft') if results else 'raft'
+    algo_name = 'Greedy RAFT' if algo == 'greedy_raft' else 'Standard RAFT'
+    
     with open(os.path.join(output_dir, 'summary.txt'), 'w') as f:
-        f.write("RAFT INTERSECTION BENCHMARK RESULTS\n")
+        f.write(f"{algo_name.upper()} INTERSECTION BENCHMARK RESULTS\n")
         f.write("="*50 + "\n\n")
+        f.write(f"Algorithm:          {algo_name}\n")
         f.write(f"Total Vehicles:     {summary['total_vehicles']}\n")
-        f.write(f"RAFT Elected:       {summary['raft_count']}\n")
+        f.write(f"Coordinated:        {summary['raft_count']}\n")
         f.write(f"Fallback:           {summary['fallback_count']}\n\n")
-        f.write("--- RAFT-Only Metrics ---\n")
+        f.write(f"--- {algo_name} Metrics ---\n")
         f.write(f"Avg Election Time:  {summary['raft_avg_election_ms']:.1f} ms\n")
         f.write(f"Avg Wait Time:      {summary['raft_avg_wait_ms']:.1f} ms\n")
-        f.write(f"Total RAFT Time:    {summary['total_raft_time_ms']:.1f} ms\n\n")
+        f.write(f"Total Coord Time:   {summary['total_raft_time_ms']:.1f} ms\n\n")
         f.write("--- Overall ---\n")
         f.write(f"Total Time:         {summary['total_time_ms']:.1f} ms\n")
         f.write("="*50 + "\n")

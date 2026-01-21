@@ -159,10 +159,23 @@ run directly from the **OMNeT++ IDE** in simulations folder:
 
 To run simply do this
 ```bash
-./benchmark.sh 4 my_4_vehicles
-./benchmark.sh 8 my_8_vehicles
-./benchmark.sh 16 my_16_vehicles
-./benchmark.sh 32 my_32_vehicles
+cd /home/mathesh/omnetpp-workspace/benchmark
+
+# Standard RAFT
+./benchmark.sh 4 raft_4veh raft
+./benchmark.sh 8 raft_8veh raft
+./benchmark.sh 16 raft_16veh raft
+./benchmark.sh 32 raft_32veh raft
+
+# Greedy RAFT
+./benchmark.sh 4 greedy_4veh greedy
+./benchmark.sh 8 greedy_8veh greedy
+./benchmark.sh 16 greedy_16veh greedy
+./benchmark.sh 32 greedy_32veh greedy
+
+# For plots
+cd /home/mathesh/omnetpp-workspace/benchmark/results
+python3 compare_results.py
 ```
 
 Basic configurations can be done from simulations/raft/*.json files. I need to add more, but structure is more or less finalised.
