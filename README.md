@@ -159,19 +159,20 @@ run directly from the **OMNeT++ IDE** in simulations folder:
 
 To run simply do this
 ```bash
+cd omnetpp-5.6.2/
+source setenv
+cd ~/omnetpp-workspace/benchmark/src
+make MODE=debug clean
+make MODE=debug all
+
+
+#  RAFT
 cd /home/mathesh/omnetpp-workspace/benchmark
-
-# Standard RAFT
-./benchmark.sh 4 raft_4veh raft
-./benchmark.sh 8 raft_8veh raft
-./benchmark.sh 16 raft_16veh raft
-./benchmark.sh 32 raft_32veh raft
-
-# Greedy RAFT
-./benchmark.sh 4 greedy_4veh greedy
-./benchmark.sh 8 greedy_8veh greedy
-./benchmark.sh 16 greedy_16veh greedy
-./benchmark.sh 32 greedy_32veh greedy
+./benchmark.sh <NO_OF_VEHICLES> <SCENARIO> <RUNS>
+./benchmark.sh 4 raft_4veh 10
+./benchmark.sh 8 raft_8veh 10
+./benchmark.sh 16 raft_16veh 10
+./benchmark.sh 32 raft_32veh 10
 
 # For plots
 cd /home/mathesh/omnetpp-workspace/benchmark/results

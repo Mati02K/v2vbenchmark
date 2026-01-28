@@ -15,12 +15,12 @@ extern "C" {
 /**
  * RAFT-based intersection coordination using willemt/raft library
  * 
- * NEW ALGORITHM:
- * - Leader doesn't automatically pass - acts as coordinator
- * - wayOfSight: true if no vehicle in front on same lane
+ * ALGORITHM WITH QUORUM CONSENSUS:
  * - Leader collects wayOfSight from all vehicles
  * - Leader picks one vehicle with wayOfSight=true to pass
- * - Leader stays leader until it passes or heartbeat timeout
+ * - Leader PROPOSES this decision to Raft as a log entry
+ * - Only when entry is COMMITTED (replicated to quorum), vehicle passes
+ * - If leader fails before commit, new leader won't execute uncommitted entries
  */
 class WillemtRaftApplication : public veins::VeinsInetApplicationBase
 {
@@ -40,8 +40,8 @@ private:
     // Vehicle info
     int myId_;
     int myRaftNodeId_;
-    std::string myRoute_;  // Which route I'm on (rN, rS, rE, rW)
-    std::string myLane_;   // Which incoming edge (N2C, S2C, etc.)
+    std::string myRoute_;
+    std::string myLane_;
     
     // Mobility
     veins::VeinsInetMobility* mobility_;
@@ -54,32 +54,60 @@ private:
     bool hasPassedIntersection_;
     std::string intersectionEdge_;
     
-    // wayOfSight: true if no vehicle in front on same lane
     bool wayOfSight_;
-    
-    // Track which vehicles are still at intersection (not passed)
     std::set<int> activeVehicles_;
-    
-    // Track received wayOfSight statuses (leader only)
     std::map<int, bool> collectedWayOfSight_;
     bool waitingForStatus_;
     int statusResponseCount_;
+    int vehicleInFrontOfMe_;
     
-    // Track who is in front of me on my lane
-    int vehicleInFrontOfMe_;  // -1 if none
-    
-    // Intersection edges
     static const std::set<std::string> INTERSECTION_EDGES;
-    
-    // Route to lane mapping
     static const std::map<std::string, std::string> ROUTE_TO_LANE;
     
+    // ============ RAFT LOG ENTRY TYPES ============
+    enum LogEntryType : uint8_t {
+        PASS_COMMAND = 1,      // OLD - will be removed
+        STATUS_REPORT = 2,     // NEW - vehicle status consensus
+        PASS_ORDER = 3         // NEW - complete pass order
+    };
+
+    struct PassCommandEntry {
+        int vehicleId;
+        simtime_t proposedTime;
+    };
+    
+    struct VehicleStatus {
+        int vehicleId;
+        bool wayOfSight;
+        char lane[8];
+        int positionInLane;
+    };
+    
+    struct StatusReportEntry {
+        int numVehicles;
+        VehicleStatus statuses[32];  // Max 32 vehicles
+    };
+    
+    struct PassOrderEntry {
+        int numVehicles;
+        int order[32];  // Vehicle IDs in pass order
+    };
+
+    std::map<raft_index_t, PassCommandEntry> pendingProposals_;
+    raft_index_t lastAppliedIndex_;
+    
+    // NEW: Store committed status and pass order
+    std::map<int, VehicleStatus> committedStatuses_;
+    PassOrderEntry committedPassOrder_;
+    int waitingForVehicle_;  // Vehicle ID I'm waiting for to leave
+    bool hasCommittedOrder_;  // Whether pass order has been committed
+
     // ============ FALLBACK STATE ============
     bool isFallbackMode_;
     int failedElectionCount_;
     raft_term_t lastCheckedTerm_;
     
-    // ============ CONFIGURABLE PARAMETERS (from NED) ============
+    // ============ CONFIGURABLE PARAMETERS ============
     int totalVehicles_;
     int electionTimeoutBaseMs_;
     int electionTimeoutJitterMs_;
@@ -91,14 +119,14 @@ private:
     int statusCollectionTimeoutMs_;
     std::string resultsFileName_;
     
-    // Fixed intervals
-    static constexpr double CHECK_INTERVAL = 0.05;          // 50ms position check
-    static constexpr double RAFT_PERIODIC_INTERVAL = 0.02;  // 20ms RAFT periodic
+    static constexpr double CHECK_INTERVAL = 0.05;
+    static constexpr double RAFT_PERIODIC_INTERVAL = 0.02;
     
     // ============ METRICS TRACKING ============
     simtime_t timeArrived_;
     simtime_t timeStopped_;
     simtime_t timeElected_;
+    simtime_t timeOrderCommitted_;  // When PASS_ORDER is committed to quorum
     simtime_t timeStartedMoving_;
     simtime_t timePassed_;
     int messagesSent_;
@@ -106,8 +134,10 @@ private:
     int electionRounds_;
     bool wasElectedLeader_;
     std::string coordinationMethod_;
+    int logEntriesProposed_;
+    int logEntriesCommitted_;
+    bool metricsWritten_;
     
-    // Static results management
     static std::ofstream resultsFile_;
     static bool resultsFileOpened_;
     static int vehiclesCompleted_;
@@ -129,6 +159,8 @@ private:
     
     int doSendRequestVote(raft_node_t* node, msg_requestvote_t* msg);
     int doSendAppendEntries(raft_node_t* node, msg_appendentries_t* msg);
+    int doLogOffer(raft_entry_t* entry, raft_index_t entry_idx);
+    int doApplyLog(raft_entry_t* entry, raft_index_t entry_idx);
     
     // ============ RAFT MESSAGE HANDLING ============
     void handleRequestVote(const std::vector<uint8_t>& data, const std::string& packetName);
@@ -136,11 +168,9 @@ private:
     void handleAppendEntries(const std::vector<uint8_t>& data, const std::string& packetName);
     void handleAppendEntriesResponse(const std::vector<uint8_t>& data, const std::string& packetName);
     
-    // Packet parsing
     int extractTargetFromPacketName(const std::string& packetName);
     int extractSenderFromPacketName(const std::string& packetName);
     
-    // Serialization
     std::vector<uint8_t> serializeRequestVote(msg_requestvote_t* msg);
     std::vector<uint8_t> serializeRequestVoteResponse(msg_requestvote_response_t* msg);
     std::vector<uint8_t> serializeAppendEntries(msg_appendentries_t* msg);
@@ -151,30 +181,35 @@ private:
     void deserializeAppendEntries(const std::vector<uint8_t>& data, msg_appendentries_t* msg);
     void deserializeAppendEntriesResponse(const std::vector<uint8_t>& data, msg_appendentries_response_t* msg);
     
-    // ============ NEW COORDINATION PROTOCOL ============
-    
-    // Custom message types for intersection coordination
-    // STATUS_REQUEST: Leader asks all vehicles for their wayOfSight status
-    // STATUS_RESPONSE: Vehicle responds with its wayOfSight
-    // PASS_COMMAND: Leader tells a specific vehicle to pass
-    // VEHICLE_PASSED: Vehicle announces it has passed
-    
+    // ============ COORDINATION PROTOCOL WITH QUORUM ============
     void sendStatusRequest();
     void handleStatusRequest(int fromLeader);
     void sendStatusResponse(int toLeader, bool wayOfSight);
     void handleStatusResponse(int fromVehicle, bool wayOfSight);
-    void sendPassCommand(int toVehicle);
-    void handlePassCommand(int fromLeader);
     void sendVehiclePassed();
     void handleVehiclePassed(int vehicleId);
     
-    // Leader decision making
+    // NEW: Two-phase consensus functions
     void collectStatusAndDecide();
-    int selectVehicleToPass();
+    void proposeStatusReport();
+    void proposePassOrder();
+    std::vector<int> createDeterministicOrder();
+    void executePassOrder();
+    void checkIfPreviousVehicleLeft(int previousVehicleId);
+    int findMyPositionInOrder();
+    int getLaneIndex(const std::string& lane);
     
-    // wayOfSight calculation
+    // OLD: Will be removed
+    int selectVehicleToPass();
+    void proposePassCommand(int vehicleId);
+    void executePassCommand(int vehicleId);
+    
+    // NEW: Vehicle-left broadcast handling
+    void sendVehicleLeft();
+    void handleVehicleLeft(int vehicleId);
+    void rebroadcastVehicleLeft(int vehicleId);
+    
     void calculateWayOfSight();
-    void updateWayOfSightAfterPass(int passedVehicleId);
     
     // ============ INTERSECTION COORDINATION ============
     void checkAndStopAtIntersection();
@@ -183,19 +218,15 @@ private:
     void onBecameLeader();
     void onLostLeadership();
     void resumeMovement();
+    void checkIfLeftIntersection();
     void stopVehicle();
     void handleFallback();
-    
-    // RAFT periodic
     void processRaftPeriodic();
     
-    // Metrics output
     void outputMetricsJSON();
     static void openResultsFile(const std::string& filename);
     static void closeResultsFile();
     
-    // Utility
     raft_node_id_t getNodeIdFromVehicleId(int vehicleId) const;
     int getVehicleIdFromNodeId(raft_node_id_t nodeId) const;
-    void sendCustomMessage(const std::string& type, const std::string& data);
 };
