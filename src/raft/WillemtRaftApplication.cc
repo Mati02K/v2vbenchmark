@@ -212,7 +212,8 @@ bool WillemtRaftApplication::startApplication()
     raft_set_callbacks(raftServer_, &callbacks, this);
     
     // Set timeouts
-    int electionTimeout = electionTimeoutBaseMs_ + (myId_ * electionTimeoutJitterMs_);
+    // Task 1: Random Jitter to prevent split-vote deadlocks in UDP
+    int electionTimeout = electionTimeoutBaseMs_ + intuniform(0, electionTimeoutJitterMs_);
     raft_set_election_timeout(raftServer_, electionTimeout);
     raft_set_request_timeout(raftServer_, requestTimeoutMs_);
     
@@ -317,7 +318,8 @@ void WillemtRaftApplication::processRaftPeriodic()
         // TIMEOUT-BASED FALLBACK: If we've been waiting too long without PASS_ORDER
         if (hasStoppedAtIntersection_ && !hasCommittedOrder_ && !isFallbackMode_) {
             simtime_t waitTime = now - timeStopped_;
-            if (waitTime.dbl() > 2.0) {  // 2 seconds timeout
+            double timeoutThreshold = (double)totalVehiclesStatic_;
+            if (waitTime.dbl() > timeoutThreshold) {  // Dynamic timeout based on scale
                 std::cout << std::fixed << std::setprecision(1)
                           << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
                           << " TIMEOUT: No PASS_ORDER after " << (waitTime.dbl() * 1000.0) 
@@ -1236,10 +1238,21 @@ void WillemtRaftApplication::executePassOrder()
                   << " is FIRST in order, starting immediately" << std::endl;
         resumeMovement();
     } else {
-        // Calculate delay based on position in order
-        // Each vehicle waits for previous vehicles to pass (position × 150ms)
-        int previousVehicle = committedPassOrder_.order[myPosition - 1];
-        int delayMs = myPosition * 150;  // 150ms per vehicle (100ms transit + 50ms gap)
+        // Task 2: Parallel Phase Strategy
+        int totalDelayMs = 0;
+        auto hasConflict = [this](int otherVid) {
+            int vPS = totalVehicles_ / 4;
+            if (vPS == 0) vPS = 1;
+            int otherSide = otherVid / vPS;
+            int mySide = myId_ / vPS;
+            if ((mySide == 0 || mySide == 1) && (otherSide == 0 || otherSide == 1)) return false;
+            if ((mySide == 2 || mySide == 3) && (otherSide == 2 || otherSide == 3)) return false;
+            return true;
+        };
+        for (int i = 0; i < myPosition; i++) {
+            if (hasConflict(committedPassOrder_.order[i])) totalDelayMs += 150;
+        }
+        int delayMs = totalDelayMs;
         
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
@@ -1709,7 +1722,16 @@ void WillemtRaftApplication::resumeMovement()
     if (!traciVehicle_ || hasPassedIntersection_) return;
 
     try {
-        traciVehicle_->setSpeed(-1);  // Resume normal speed
+        // Task 3: God Mode (Safety Overrides)
+        // Match WAVE implementation and disable SUMO's defensive driving
+        traciVehicle_->setSpeedMode(0); // Ignore SUMO collisions/safety
+        traciVehicle_->setSpeed(-1);   // Resume speed
+        
+        // Ignore priority junction rules
+        traciVehicle_->setParameter("jmIgnoreFoeProb", "1.0");
+        traciVehicle_->setParameter("jmIgnoreFoeSpeed", "100.0");
+        traciVehicle_->setParameter("jmTimegapMinor", "0.0");
+        
         timeStartedMoving_ = simTime();
 
         std::cout << std::fixed << std::setprecision(1)
@@ -1733,10 +1755,13 @@ void WillemtRaftApplication::checkIfLeftIntersection()
     try {
         std::string currentRoad = traciVehicle_->getRoadId();
         
-        // Check if we've left the intersection
-        // Intersection edges start with ':'
-        if (!currentRoad.empty() && currentRoad[0] != ':') {
-            // We've left the intersection!
+        // STRICT HONEST MODE: Explicitly check for Exit Edges only.
+        // Logic copied from WAVE implementation.
+        bool isExit = (currentRoad == "C2S" || currentRoad == "C2N" || 
+                       currentRoad == "C2E" || currentRoad == "C2W");
+        
+        if (isExit) {
+            // We've truly left the intersection!
             timePassed_ = simTime();
             double totalTimeMs = (timePassed_ - timeStopped_).dbl() * 1000.0;
             

@@ -1,17 +1,17 @@
 #!/bin/bash
 #
-# RAFT Intersection Benchmark Runner
+# RAFT over WAVE Intersection Benchmark Runner
 # 
-# Usage: ./benchmark.sh <vehicle_count> <result_name> [algorithm]
+# Usage: ./benchmark_wave.sh <vehicle_count> <result_name> [num_iterations]
 # 
 # Arguments:
-#   vehicle_count: 3, 4, 8, 16, or 32
-#   result_name:   folder name for results
-#   algorithm:     "raft" (default) or "greedy"
+#   vehicle_count: 4, 8, 16, or 32
+#   result_name:   folder name for results (e.g., raftwave_4veh)
+#   num_iterations: number of runs (default: 10)
 #
 # Examples:
-#   ./benchmark.sh 4 test_4veh           # Standard RAFT
-#   ./benchmark.sh 8 test_8veh_greedy greedy  # Greedy RAFT
+#   ./benchmark_wave.sh 4 raftwave_4veh 10
+#   ./benchmark_wave.sh 8 raftwave_8veh 5
 #
 # Results will be saved in: benchmark/results/<result_name>/
 #
@@ -27,11 +27,11 @@ NC='\033[0m' # No Color
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SIM_DIR="$SCRIPT_DIR/simulations/raft"
+SIM_DIR="$SCRIPT_DIR/simulations/raftwave"
 SRC_DIR="$SCRIPT_DIR/src"
 RESULTS_BASE="$SCRIPT_DIR/results"
 
-# NED path for OMNeT++
+# NED path for OMNeT++ (includes INET and Veins paths)
 NED_PATH="..:..:../../src:../../../inet/src:../../../inet/examples:../../../inet/tutorials:../../../inet/showcases:../../../../veins/examples/veins:../../../../veins/src/veins"
 
 # Check arguments
@@ -44,14 +44,13 @@ if [ $# -lt 2 ]; then
     echo "  num_iterations:  number of runs (default: 10)"
     echo ""
     echo "Example:"
-    echo "  $0 4 raft_4veh 10"
+    echo "  $0 4 raftwave_4veh 10"
     exit 1
 fi
 
 VEHICLE_COUNT=$1
 RESULT_NAME=$2
 NUM_ITERATIONS=${3:-10}  # Default to 10 iterations
-ALGORITHM="raft"  # RAFT only
 
 # Validate vehicle count
 if [[ ! "$VEHICLE_COUNT" =~ ^(4|8|16|32)$ ]]; then
@@ -59,12 +58,13 @@ if [[ ! "$VEHICLE_COUNT" =~ ^(4|8|16|32)$ ]]; then
     exit 1
 fi
 
-APP_TYPE="WillemtRaftApplication"
+APP_TYPE="WillemtRaftWaveApplication"
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}  RAFT Multi-Run Benchmark${NC}"
+echo -e "${GREEN}  RAFT over WAVE Multi-Run Benchmark${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
+echo -e "Transport:   ${YELLOW}WAVE/802.11p${NC}"
 echo -e "Vehicles:    ${YELLOW}$VEHICLE_COUNT${NC}"
 echo -e "Iterations:  ${YELLOW}$NUM_ITERATIONS${NC}"
 echo -e "Result Name: ${YELLOW}$RESULT_NAME${NC}"
@@ -103,6 +103,12 @@ cp "$ROUTE_FILE" "$SIM_DIR/intersection.rou.xml"
 TEMP_INI="$SIM_DIR/temp_benchmark.ini"
 RESULTS_JSON="$ITER_DIR/raft_results.json"
 
+# RAFT Timing - Linear Scale to ensure 4 < 8 < 16 < 32
+# Formula: Base + (Count * Factor)
+ELECTION_TIMEOUT_BASE=$((200 + VEHICLE_COUNT * 25))
+STATUS_COLLECTION_TIMEOUT=$((300 + VEHICLE_COUNT * 20))
+REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
+
 cat > "$TEMP_INI" << EOF
 [General]
 network = IntersectionScenario
@@ -112,59 +118,81 @@ sim-time-limit = 300s
 # Random seed - unique for each iteration
 seed-set = $iteration
 
-# Manager
-*.manager.moduleType = "benchmark.veins_inet.VeinsInetCar"
-*.manager.moduleName = "node"
-*.manager.moduleDisplayString = ""
-*.manager.launchConfig = xmldoc("intersection.launchd.xml")
-*.manager.autoShutdown = true
+# World/Playground settings
+*.playgroundSizeX = 2500m
+*.playgroundSizeY = 2500m
+*.playgroundSizeZ = 50m
+
+# Connection Manager
+*.connectionManager.sendDirect = true
+*.connectionManager.maxInterfDist = 2600m
+*.connectionManager.drawMaxIntfDist = false
+
+# World Utility
+*.world.useTorus = false
+*.world.use2D = true
+
+# Veins Manager
 *.manager.updateInterval = 0.1s
 *.manager.host = "localhost"
 *.manager.port = 9999
+*.manager.autoShutdown = true
+*.manager.launchConfig = xmldoc("intersection.launchd.xml")
+*.manager.moduleType = "org.car2x.veins.nodes.Car"
+*.manager.moduleName = "node"
 
-# Scenario
-*.node[*].mobility.typename = "VeinsInetMobility"
+# Application Layer - RAFT over WAVE
+*.node[*].applType = "benchmark.raft.$APP_TYPE"
+*.node[*].appl.headerLength = 80 bit
+*.node[*].appl.sendBeacons = false
+*.node[*].appl.totalVehicles = $VEHICLE_COUNT
+*.node[*].appl.resultsFile = "$RESULTS_JSON"
 
-# Application - RAFT
-*.node[*].numApps = 1
-*.node[*].app[0].typename = "$APP_TYPE"
-*.node[*].app[0].totalVehicles = $VEHICLE_COUNT
-*.node[*].app[0].resultsFile = "$RESULTS_JSON"
-*.node[*].app[0].interface = "wlan0"
-*.node[*].app[0].destPort = 9001
-*.node[*].app[0].localPort = 9001
-*.node[*].app[0].destAddress = "255.255.255.255"
+# RAFT Timing - scale with vehicle count
+*.node[*].appl.electionTimeoutBaseMs = $ELECTION_TIMEOUT_BASE
+*.node[*].appl.electionTimeoutJitterMs = $((100 + VEHICLE_COUNT * 50))
+*.node[*].appl.requestTimeoutMs = $REQUEST_TIMEOUT
+*.node[*].appl.maxFailedElections = 100
+*.node[*].appl.fallbackWaitMinMs = 100
+*.node[*].appl.fallbackWaitMaxMs = 300
+*.node[*].appl.passConfirmationMs = 50
+*.node[*].appl.statusCollectionTimeoutMs = $STATUS_COLLECTION_TIMEOUT
 
-# Timing - scale with vehicle count and algorithm
-# Greedy: faster fallback to keep total time reasonable
-*.node[*].app[0].electionTimeoutBaseMs = $((500 + VEHICLE_COUNT * 25))
-*.node[*].app[0].electionTimeoutJitterMs = $((100 + VEHICLE_COUNT * 50))
-*.node[*].app[0].requestTimeoutMs = $((100 + VEHICLE_COUNT * 5))
-*.node[*].app[0].maxFailedElections = 100
-*.node[*].app[0].fallbackWaitMinMs = 100
-*.node[*].app[0].fallbackWaitMaxMs = 300
-*.node[*].app[0].passConfirmationMs = 50
-*.node[*].app[0].statusCollectionTimeoutMs = $((300 + VEHICLE_COUNT * 20))
+# NIC (Network Interface Card) - 802.11p settings
+*.node[*].nicType = "Nic80211p"
 
-# Radio
-*.node[*].wlan[0].radio.transmitter.power = 20mW
-*.node[*].wlan[0].typename = "Ieee80211Interface"
-*.node[*].wlan[0].radio.typename = "Ieee80211ScalarRadio"
-*.node[*].wlan[0].mac.dcf.channelAccess.cwMin = 7
-*.node[*].wlan[0].radio.transmitter.communicationRange = 500m
-*.node[*].wlan[*].radio.receiver.sensitivity = -89dBm
-*.node[*].wlan[*].radio.receiver.snirThreshold = 4dB
+# MAC Layer
+*.node[*].nic.mac1609_4.useServiceChannel = false
+*.node[*].nic.mac1609_4.txPower = 2000mW
+*.node[*].nic.mac1609_4.bitrate = 6Mbps
+
+# PHY Layer
+*.node[*].nic.phy80211p.sensitivity = -120dBm
+*.node[*].nic.phy80211p.maxTXPower = 2000mW
+*.node[*].nic.phy80211p.useThermalNoise = true
+*.node[*].nic.phy80211p.thermalNoise = -130dBm
+*.node[*].nic.phy80211p.useNoiseFloor = true
+*.node[*].nic.phy80211p.noiseFloor = -120dBm
+*.node[*].nic.phy80211p.decider = xmldoc("config.xml")
+*.node[*].nic.phy80211p.analogueModels = xmldoc("config.xml", "//AnalogueModel")
+*.node[*].nic.phy80211p.usePropagationDelay = true
+*.node[*].nic.phy80211p.minPowerLevel = -110dBm
+
+# Mobility
+*.node[*].veinsmobility.x = 0
+*.node[*].veinsmobility.y = 0
+*.node[*].veinsmobility.z = 1.895
+*.node[*].veinsmobility.setHostSpeed = false
 EOF
 
 # Run simulation
-echo -e "${GREEN}Running simulation (iteration $iteration)...${NC}"
+echo -e "${GREEN}Running WAVE simulation (iteration $iteration)...${NC}"
 echo ""
 
 cd "$SIM_DIR"
 LOG_FILE="$ITER_DIR/console.log"
 
-# Run and capture output (use release build to avoid library conflicts)
-# If release doesn't exist, fall back to debug
+# Run and capture output
 if [ -x "$SRC_DIR/benchmark" ]; then
     "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" "$TEMP_INI" 2>&1 | tee "$LOG_FILE" > /dev/null
 else
@@ -208,14 +236,15 @@ for v in results:
     stopped = ts['stopped']
     passed = ts['passed']
     
-    ax.barh(vid, passed - stopped, left=stopped, color='#2ecc71', alpha=0.7, height=0.6)
+    # Use different color for WAVE
+    ax.barh(vid, passed - stopped, left=stopped, color='#9b59b6', alpha=0.7, height=0.6)
     
     if v.get('was_leader', False) and ts.get('elected', 0) > 0:
         ax.scatter([ts['elected']], [vid], color='blue', s=100, zorder=5, marker='*')
 
 from matplotlib.patches import Patch
 legend_elements = [
-    Patch(facecolor='#2ecc71', alpha=0.7, label='Standard RAFT'),
+    Patch(facecolor='#9b59b6', alpha=0.7, label='RAFT over WAVE'),
     Patch(facecolor='#e74c3c', alpha=0.7, label='Fallback'),
     plt.Line2D([0], [0], marker='*', color='w', markerfacecolor='blue', markersize=10, label='Elected Leader')
 ]
@@ -223,7 +252,7 @@ ax.legend(handles=legend_elements, loc='upper right')
 
 ax.set_xlabel('Time (ms)', fontsize=12)
 ax.set_ylabel('Vehicle ID', fontsize=12)
-ax.set_title(f'Standard RAFT Intersection Timeline ({len(results)} vehicles)', fontsize=14)
+ax.set_title(f'RAFT over WAVE Intersection Timeline ({len(results)} vehicles)', fontsize=14)
 ax.set_yticks(range(len(results)))
 ax.set_yticklabels([v['vehicle_id'] for v in results])
 ax.grid(True, alpha=0.3, axis='x')
@@ -239,8 +268,8 @@ echo ""
 
 done  # End of iteration loop
 
-# Cleanup temp files
-rm -f "$SIM_DIR"/*.ini
+# Cleanup temp files (leave omnetpp.ini in place)
+rm -f "$SIM_DIR"/temp_benchmark.ini
 
 echo ""
 echo -e "${GREEN}========================================${NC}"
@@ -287,8 +316,8 @@ if not all_runs_data:
 # Calculate aggregate metrics
 num_vehicles = len(all_runs_data[0])
 metrics = {
-    'raft_decision_time': [],  # Scenario-level: earliest order commit
-    'total_intersection_time': [],  # Scenario-level: first stopped to last passed
+    'raft_decision_time': [],
+    'total_intersection_time': [],
     'throughput': [],
     'total_wait_time': [],
     'transit_time': [],
@@ -309,6 +338,8 @@ for run_data in all_runs_data:
         first_stopped = min(stopped_times)
         raft_decision = latest_commit - first_stopped
     else:
+        # If all vehicles used fallback or no commits, exclude this run from RAFT stats?
+        # Or report 0. User wants "vehicles which passed based on RAFT decision alone"
         raft_decision = 0 
     
     # Store RAFT decision only if valid > 0
@@ -367,8 +398,6 @@ run_idx = 0
 for run_data in all_runs_data:
     for key in metrics.keys():
         if key == 'raft_decision_time' or key == 'total_intersection_time':
-            # These are already scenario-level (one value per run)
-            # Just use the value we already calculated
             run_averages[key].append(metrics[key][run_idx])
         elif key == 'throughput':
             values = [v.get('throughput_veh_per_sec', 0) for v in run_data]
@@ -392,7 +421,7 @@ for run_data in all_runs_data:
 
 # Generate aggregate plots
 fig, axes = plt.subplots(2, 4, figsize=(20, 10))
-fig.suptitle(f'Aggregate Analysis: {num_runs} Runs × {num_vehicles} Vehicles', fontsize=16, fontweight='bold')
+fig.suptitle(f'WAVE Aggregate Analysis: {num_runs} Runs × {num_vehicles} Vehicles', fontsize=16, fontweight='bold')
 
 plot_configs = [
     ('raft_decision_time', 'Time (ms)', 'RAFT Decision Time'),
@@ -410,14 +439,12 @@ iterations = list(range(1, num_runs + 1))
 for idx, (key, ylabel, title) in enumerate(plot_configs):
     ax = axes[idx // 4, idx % 4]
     
-    # Bar plot
-    bars = ax.bar(iterations, run_averages[key], color='#3498db', alpha=0.8, edgecolor='black', linewidth=0.5)
+    # Bar plot with purple color for WAVE
+    bars = ax.bar(iterations, run_averages[key], color='#9b59b6', alpha=0.8, edgecolor='black', linewidth=0.5)
     
-    # Add value labels on top of bars
     for i, (iter_num, value) in enumerate(zip(iterations, run_averages[key])):
         ax.text(iter_num, value, f'{value:.1f}', ha='center', va='bottom', fontsize=9, fontweight='bold')
     
-    # Mean line
     ax.axhline(stats[key]['mean'], color='red', linestyle='--', linewidth=2, alpha=0.7, label=f"Mean: {stats[key]['mean']:.2f}")
     
     ax.set_xlabel('Iteration', fontsize=11, fontweight='bold')

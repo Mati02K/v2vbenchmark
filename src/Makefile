@@ -2,7 +2,7 @@
 # OMNeT++/OMNEST Makefile for benchmark
 #
 # This file was generated with the command:
-#  opp_makemake -f --deep -KINET_PROJ=../../inet -KVEINS_PROJ=/home/mathesh/veins -DINET_IMPORT -DVEINS_IMPORT -I$$\(INET_PROJ\)/src -I$$\(VEINS_PROJ\)/src -I. -L$$\(INET_PROJ\)/src -L$$\(VEINS_PROJ\)/src -lINET$$\(D\) -lveins$$\(D\)
+#  opp_makemake -f --deep -O out -KVEINS_PROJ=/home/mathesh/veins -KINET_PROJ=../../inet -DINET_IMPORT -DVEINS_IMPORT -I../third_party/raft -I/home/mathesh/veins/src -I. -I../../inet/src -L/home/mathesh/veins/src -L../../inet/src -lveins -lINET
 #
 
 # Name of target to be created (-o option)
@@ -16,13 +16,13 @@ USERIF_LIBS = $(ALL_ENV_LIBS) # that is, $(TKENV_LIBS) $(QTENV_LIBS) $(CMDENV_LI
 #USERIF_LIBS = $(QTENV_LIBS)
 
 # C++ include paths (with -I)
-INCLUDE_PATH = -I$(INET_PROJ)/src -I$(VEINS_PROJ)/src -I.
+INCLUDE_PATH = -I../third_party/raft -I/home/mathesh/veins/src -I. -I../../inet/src
 
 # Additional object and library files to link with
 EXTRA_OBJS =
 
 # Additional libraries (-L, -l options)
-LIBS = $(LDFLAG_LIBPATH)$(INET_PROJ)/src $(LDFLAG_LIBPATH)$(VEINS_PROJ)/src  -lINET$(D) -lveins$(D)
+LIBS = $(LDFLAG_LIBPATH)/home/mathesh/veins/src $(LDFLAG_LIBPATH)../../inet/src  -lveins -lINET
 
 # Output directory
 PROJECT_OUTPUT_DIR = ../out
@@ -31,29 +31,28 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
 OBJS = \
-    $O/raft/GreedyRaftApplication.o \
     $O/raft/WillemtRaftApplication.o \
-    $O/tcp/HelloTcpApplication.o \
-    $O/udp/HelloUdpApplication.o \
+    $O/raft/WillemtRaftWaveApplication.o \
     $O/veins_inet/VeinsInetApplicationBase.o \
     $O/veins_inet/VeinsInetManager.o \
     $O/veins_inet/VeinsInetManagerBase.o \
     $O/veins_inet/VeinsInetManagerForker.o \
     $O/veins_inet/VeinsInetMobility.o \
     $O/veins_inet/VeinsInetSampleApplication.o \
-    $O/wave/HelloWaveApplication.o \
+    $O/raft/RaftWaveMessage_m.o \
     $O/veins_inet/VeinsInetSampleMessage_m.o
 
 # Message files
 MSGFILES = \
+    raft/RaftWaveMessage.msg \
     veins_inet/VeinsInetSampleMessage.msg
 
 # SM files
 SMFILES =
 
 # Other makefile variables (-K)
-INET_PROJ=../../inet
 VEINS_PROJ=/home/mathesh/veins
+INET_PROJ=../../inet
 
 #------------------------------------------------------------------------------
 
@@ -78,7 +77,7 @@ include $(CONFIGFILE)
 # Simulation kernel and user interface libraries
 OMNETPP_LIBS = $(OPPMAIN_LIB) $(USERIF_LIBS) $(KERNEL_LIBS) $(SYS_LIBS)
 ifneq ($(TOOLCHAIN_NAME),clangc2)
-LIBS += -Wl,-rpath,$(abspath $(INET_PROJ)/src) -Wl,-rpath,$(abspath $(VEINS_PROJ)/src)
+LIBS += -Wl,-rpath,$(abspath /home/mathesh/veins/src) -Wl,-rpath,$(abspath ../../inet/src)
 endif
 
 COPTS = $(CFLAGS) $(IMPORT_DEFINES) -DINET_IMPORT -DVEINS_IMPORT $(INCLUDE_PATH) -I$(OMNETPP_INCL_DIR)

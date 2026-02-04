@@ -1,11 +1,12 @@
 package benchmark.raft;
 
-import benchmark.veins_inet.VeinsInetApplicationBase;
+import org.car2x.veins.modules.application.ieee80211p.DemoBaseApplLayer;
 
-simple WillemtRaftApplication extends VeinsInetApplicationBase
+// RAFT intersection coordination over WAVE/802.11p transport
+simple WillemtRaftWaveApplication extends DemoBaseApplLayer
 {
     parameters:
-        @class(WillemtRaftApplication);
+        @class(WillemtRaftWaveApplication);
         
         // Vehicle configuration
         int totalVehicles = default(4);

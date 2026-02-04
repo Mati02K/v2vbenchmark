@@ -168,15 +168,27 @@ make MODE=debug all
 
 #  RAFT
 cd /home/mathesh/omnetpp-workspace/benchmark
-./benchmark.sh <NO_OF_VEHICLES> <SCENARIO> <RUNS>
+
+<TYPE_OF_PROTOCOL> <NO_OF_VEHICLES> <SCENARIO> <RUNS>
+
+#UDP
 ./benchmark.sh 4 raft_4veh 10
 ./benchmark.sh 8 raft_8veh 10
 ./benchmark.sh 16 raft_16veh 10
 ./benchmark.sh 32 raft_32veh 10
 
+#WAVE
+./benchmark_wave.sh 4 raftwave_4veh 10
+./benchmark_wave.sh 8 raftwave_8veh 10
+./benchmark_wave.sh 16 raftwave_16veh 10
+./benchmark_wave.sh 32 raftwave_32veh 10
+
 # For plots
 cd /home/mathesh/omnetpp-workspace/benchmark/results
+# Generate UDP Plots
 python3 compare_results.py
+# Generate WAVE Plots
+python3 compare_wave_results.py
 ```
 
 Basic configurations can be done from simulations/raft/*.json files. I need to add more, but structure is more or less finalised.
