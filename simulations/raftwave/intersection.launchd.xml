@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+    <copy file="intersection.sumo.cfg"/>
+    <copy file="intersection.net.xml"/>
+    <copy file="routes.rou.xml"/>
+</launch>

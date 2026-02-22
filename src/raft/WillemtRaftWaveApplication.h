@@ -6,6 +6,7 @@
 #include <fstream>
 #include <map>
 #include <set>
+#include <vector>
 
 extern "C" {
 #include "../../third_party/raft/raft_types.h"
@@ -18,12 +19,10 @@ using namespace veins;
  * RAFT-based intersection coordination using willemt/raft library
  * WAVE/802.11p transport version
  * 
- * ALGORITHM WITH QUORUM CONSENSUS:
- * - Leader collects wayOfSight from all vehicles
- * - Leader picks one vehicle with wayOfSight=true to pass
- * - Leader PROPOSES this decision to Raft as a log entry
- * - Only when entry is COMMITTED (replicated to quorum), vehicle passes
- * - If leader fails before commit, new leader won't execute uncommitted entries
+ * DYNAMIC CLUSTER FORMATION PROTOCOL:
+ * Phase 1 (DISCOVERY): Broadcast lightweight beacons to discover peers
+ * Phase 2 (FORMATION): First vehicle ≤ triggerDistance triggers cluster formation
+ * Phase 3 (COORDINATION): RAFT leader collects VehicleProposals, schedules fair pass order
  */
 class WillemtRaftWaveApplication : public DemoBaseApplLayer
 {
@@ -39,6 +38,15 @@ protected:
     virtual void handlePositionUpdate(cObject* obj) override;
 
 private:
+    // ============ CLUSTER PHASE ============
+    enum ClusterPhase {
+        PHASE_DISCOVERY,     // Broadcasting/receiving beacons
+        PHASE_FORMATION,     // Cluster forming, RAFT initializing
+        PHASE_COORDINATION,  // RAFT running, scheduling passes
+        PHASE_PASSED         // Vehicle has exited intersection
+    };
+    ClusterPhase clusterPhase_;
+
     // ============ RAFT CORE ============
     raft_server_t* raftServer_;
     
@@ -46,12 +54,34 @@ private:
     int myId_;
     int myRaftNodeId_;
     std::string myRoute_;
-    std::string myLane_;
+    std::string myLane_;        // Approach edge this vehicle is on
+    int myLaneIndex_;           // Direction index: 0=W, 1=S, 2=E, 3=N
     
     // Mobility
     TraCIMobility* mobility_;
     TraCICommandInterface* traci_;
     TraCICommandInterface::Vehicle* traciVehicle_;
+    
+    // ============ DISCOVERY STATE ============
+    std::set<int> discoveredPeers_;     // Vehicle IDs discovered via beacons
+    cMessage* discoveryTimer_;          // Periodic beacon timer
+    double discoveryBeaconInterval_;
+    double clusterTriggerDistance_;
+    bool clusterFormed_;
+
+    // Junction center position (computed from network)
+    double junctionX_;
+    double junctionY_;
+    bool junctionPosKnown_;
+    
+    void sendDiscoveryBeacon();
+    void handleDiscoveryBeacon(int senderId);
+    void checkClusterTrigger();
+    double getDistanceToJunction() const;
+    
+    void broadcastClusterForm();
+    void handleClusterForm(const std::vector<uint8_t>& data, int senderId);
+    void formCluster(const std::set<int>& members);
     
     // ============ INTERSECTION STATE ============
     bool isLeader_;
@@ -66,8 +96,12 @@ private:
     int statusResponseCount_;
     int vehicleInFrontOfMe_;
     
-    static const std::set<std::string> INTERSECTION_EDGES;
-    static const std::map<std::string, std::string> ROUTE_TO_LANE;
+    // Dynamic intersection edges (loaded from NED parameters)
+    std::set<std::string> intersectionEdges_;  // All approach + exit edges
+    std::vector<std::string> approachEdgeList_;  // Ordered: dir0, dir1, dir2, dir3
+    std::set<std::string> exitEdges_;  // Exit edges only
+    std::vector<std::string> exitEdgeList_;  // Ordered: matching approach order
+    void parseEdgeParameters();
     
     // ============ RAFT LOG ENTRY TYPES ============
     enum LogEntryType : uint8_t {
@@ -81,10 +115,22 @@ private:
         simtime_t proposedTime;
     };
     
+    // VehicleProposal: sent by each vehicle to leader for scheduling
+    struct VehicleProposal {
+        int vehicleId;
+        char laneEdgeId[64];     // Approach edge ID
+        double positionOnLane;   // Distance from edge start (meters)
+        double speed;            // Current speed (m/s)
+        int laneIndex;           // Direction: 0=W, 1=S, 2=E, 3=N
+        int intendedTurn;        // 0=STRAIGHT, 1=LEFT, 2=RIGHT
+        bool isFirstInLane;      // Frontmost vehicle on this lane?
+    };
+    
+    // Legacy structs (kept for compatibility during transition)
     struct VehicleStatus {
         int vehicleId;
         bool wayOfSight;
-        char lane[8];
+        char lane[64];
         int positionInLane;
         int direction; // 0=Straight, 1=Left, 2=Right
     };
@@ -94,6 +140,18 @@ private:
         VehicleStatus statuses[32];
     };
     
+    // PassSchedule: batched pass order with parallel non-conflicting movements
+    struct PassBatch {
+        int numVehicles;
+        int vehicleIds[8];   // Vehicles that can pass simultaneously
+    };
+    
+    struct PassScheduleEntry {
+        int numBatches;
+        PassBatch batches[8]; // Up to 8 sequential batches
+    };
+    
+    // Legacy PassOrderEntry (flat order, kept for log compatibility)
     struct PassOrderEntry {
         int numVehicles;
         int order[32];
@@ -102,10 +160,16 @@ private:
     std::map<raft_index_t, PassCommandEntry> pendingProposals_;
     raft_index_t lastAppliedIndex_;
     
+    std::map<int, VehicleProposal> collectedProposals_;
     std::map<int, VehicleStatus> committedStatuses_;
     PassOrderEntry committedPassOrder_;
     int waitingForVehicle_;
     bool hasCommittedOrder_;
+    
+    // Fair scheduling state
+    int currentBatch_;                   // Which batch is currently passing
+    PassScheduleEntry committedSchedule_;
+    std::set<int> vehiclesLeftInBatch_;  // Track which vehicles left in current batch
 
     // ============ FALLBACK STATE ============
     bool isFallbackMode_;
@@ -156,6 +220,7 @@ private:
     static int vehiclesCompleted_;
     static int totalVehiclesStatic_;
     static std::string resultsFileNameStatic_;
+    static bool isGlobalInitialized_;
     
     // ============ RAFT CALLBACKS ============
     static int sendRequestVote(raft_server_t* raft, void* user_data, 
@@ -195,7 +260,7 @@ private:
     void deserializeAppendEntries(const std::vector<uint8_t>& data, msg_appendentries_t* msg);
     void deserializeAppendEntriesResponse(const std::vector<uint8_t>& data, msg_appendentries_response_t* msg);
     
-    // ============ COORDINATION PROTOCOL WITH QUORUM ============
+    // ============ COORDINATION PROTOCOL ============
     void sendStatusRequest();
     void handleStatusRequest(int fromLeader);
     void sendStatusResponse(int toLeader, bool wayOfSight, int posInLane, int direction);
@@ -211,6 +276,12 @@ private:
     void checkIfPreviousVehicleLeft(int previousVehicleId);
     int findMyPositionInOrder();
     int getLaneIndex(const std::string& lane);
+    
+    // Fair scheduling
+    bool conflictsWithBatch(const VehicleProposal& proposal, const std::vector<VehicleProposal>& batch);
+    bool movementsConflict(int laneA, int turnA, int laneB, int turnB);
+    VehicleProposal buildMyProposal();
+    bool amIFirstInLane();
     
     int selectVehicleToPass();
     void proposePassCommand(int vehicleId);

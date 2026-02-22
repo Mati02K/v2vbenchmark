@@ -1,0 +1,17 @@
+MSGC: raft/RaftWaveMessage.msg
+MSGC: veins_inet/VeinsInetSampleMessage.msg
+Compiling RAFT: ../third_party/raft/raft_server.c
+Compiling RAFT: ../third_party/raft/raft_server_properties.c
+Compiling RAFT: ../third_party/raft/raft_node.c
+Compiling RAFT: ../third_party/raft/raft_log.c
+raft/WillemtRaftApplication.cc
+raft/WillemtRaftApplication.cc:1087:22: warning: decomposition declarations are a C++17 extension [-Wc++17-extensions]
+ 1087 |     for (const auto& [vid, status] : committedStatuses_) {
+      |                      ^~~~~~~~~~~~~
+raft/WillemtRaftApplication.cc:1176:46: warning: initialized lambda captures are a C++14 extension [-Wc++14-extensions]
+ 1176 |             veins::TimerSpecification([this, idx = response.idx, passOrder]() {
+      |                                              ^
+raft/WillemtRaftApplication.cc:1504:57: warning: initialized lambda captures are a C++14 extension [-Wc++14-extensions]
+ 1504 |             veins::TimerSpecification([this, vehicleId, idx = response.idx]() {
+      |                                                         ^
+3 warnings generated.

@@ -61,8 +61,12 @@ private:
     int statusResponseCount_;
     int vehicleInFrontOfMe_;
     
-    static const std::set<std::string> INTERSECTION_EDGES;
-    static const std::map<std::string, std::string> ROUTE_TO_LANE;
+    // Dynamic intersection edges (loaded from NED parameters)
+    std::set<std::string> intersectionEdges_;  // All approach + exit edges
+    std::vector<std::string> approachEdgeList_;  // Ordered: dir0, dir1, dir2, dir3
+    std::set<std::string> exitEdges_;  // Exit edges only
+    std::vector<std::string> exitEdgeList_;  // Ordered: matching approach order
+    void parseEdgeParameters();
     
     // ============ RAFT LOG ENTRY TYPES ============
     enum LogEntryType : uint8_t {
@@ -79,7 +83,7 @@ private:
     struct VehicleStatus {
         int vehicleId;
         bool wayOfSight;
-        char lane[8];
+        char lane[64];
         int positionInLane;
     };
     

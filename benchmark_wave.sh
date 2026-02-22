@@ -27,7 +27,6 @@ NC='\033[0m' # No Color
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SIM_DIR="$SCRIPT_DIR/simulations/raftwave"
 SRC_DIR="$SCRIPT_DIR/src"
 RESULTS_BASE="$SCRIPT_DIR/results"
 
@@ -55,6 +54,12 @@ NUM_ITERATIONS=${3:-10}  # Default to 10 iterations
 # Validate vehicle count
 if [[ ! "$VEHICLE_COUNT" =~ ^(4|8|16|32)$ ]]; then
     echo -e "${RED}Error: Vehicle count must be 4, 8, 16, or 32${NC}"
+    exit 1
+fi
+
+SIM_DIR="$SCRIPT_DIR/simulations/intersection_$VEHICLE_COUNT"
+if [ ! -d "$SIM_DIR" ]; then
+    echo -e "${RED}Error: Directory $SIM_DIR not found. Run setup_scenarios.py first.${NC}"
     exit 1
 fi
 
@@ -87,103 +92,13 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     ITER_DIR="$RESULT_DIR/run_$iteration"
     mkdir -p "$ITER_DIR"
 
-# Generate route file if needed
-ROUTE_FILE="$SIM_DIR/intersection_${VEHICLE_COUNT}veh.rou.xml"
-if [ ! -f "$ROUTE_FILE" ]; then
-    echo -e "${YELLOW}Generating route file for $VEHICLE_COUNT vehicles...${NC}"
-    cd "$SIM_DIR"
-    python3 generate_config.py "$VEHICLE_COUNT"
-fi
-
-# Copy route file to active location
-echo -e "Setting up route file..."
-cp "$ROUTE_FILE" "$SIM_DIR/intersection.rou.xml"
-
-# Create temporary ini file with correct output path
-TEMP_INI="$SIM_DIR/temp_benchmark.ini"
-RESULTS_JSON="$ITER_DIR/raft_results.json"
-
-# RAFT Timing - Linear Scale to ensure 4 < 8 < 16 < 32
-# Formula: Base + (Count * Factor)
-ELECTION_TIMEOUT_BASE=$((200 + VEHICLE_COUNT * 25))
-STATUS_COLLECTION_TIMEOUT=$((300 + VEHICLE_COUNT * 20))
-REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
-
-cat > "$TEMP_INI" << EOF
-[General]
-network = IntersectionScenario
-sim-time-limit = 300s
-**.cmdenv-log-level = warn
-
-# Random seed - unique for each iteration
-seed-set = $iteration
-
-# World/Playground settings
-*.playgroundSizeX = 2500m
-*.playgroundSizeY = 2500m
-*.playgroundSizeZ = 50m
-
-# Connection Manager
-*.connectionManager.sendDirect = true
-*.connectionManager.maxInterfDist = 2600m
-*.connectionManager.drawMaxIntfDist = false
-
-# World Utility
-*.world.useTorus = false
-*.world.use2D = true
-
-# Veins Manager
-*.manager.updateInterval = 0.1s
-*.manager.host = "localhost"
-*.manager.port = 9999
-*.manager.autoShutdown = true
-*.manager.launchConfig = xmldoc("intersection.launchd.xml")
-*.manager.moduleType = "org.car2x.veins.nodes.Car"
-*.manager.moduleName = "node"
-
-# Application Layer - RAFT over WAVE
-*.node[*].applType = "benchmark.raft.$APP_TYPE"
-*.node[*].appl.headerLength = 80 bit
-*.node[*].appl.sendBeacons = false
-*.node[*].appl.totalVehicles = $VEHICLE_COUNT
-*.node[*].appl.resultsFile = "$RESULTS_JSON"
-
-# RAFT Timing - scale with vehicle count
-*.node[*].appl.electionTimeoutBaseMs = $ELECTION_TIMEOUT_BASE
-*.node[*].appl.electionTimeoutJitterMs = $((100 + VEHICLE_COUNT * 50))
-*.node[*].appl.requestTimeoutMs = $REQUEST_TIMEOUT
-*.node[*].appl.maxFailedElections = 100
-*.node[*].appl.fallbackWaitMinMs = 100
-*.node[*].appl.fallbackWaitMaxMs = 300
-*.node[*].appl.passConfirmationMs = 50
-*.node[*].appl.statusCollectionTimeoutMs = $STATUS_COLLECTION_TIMEOUT
-
-# NIC (Network Interface Card) - 802.11p settings
-*.node[*].nicType = "Nic80211p"
-
-# MAC Layer
-*.node[*].nic.mac1609_4.useServiceChannel = false
-*.node[*].nic.mac1609_4.txPower = 2000mW
-*.node[*].nic.mac1609_4.bitrate = 6Mbps
-
-# PHY Layer
-*.node[*].nic.phy80211p.sensitivity = -120dBm
-*.node[*].nic.phy80211p.maxTXPower = 2000mW
-*.node[*].nic.phy80211p.useThermalNoise = true
-*.node[*].nic.phy80211p.thermalNoise = -130dBm
-*.node[*].nic.phy80211p.useNoiseFloor = true
-*.node[*].nic.phy80211p.noiseFloor = -120dBm
-*.node[*].nic.phy80211p.decider = xmldoc("config.xml")
-*.node[*].nic.phy80211p.analogueModels = xmldoc("config.xml", "//AnalogueModel")
-*.node[*].nic.phy80211p.usePropagationDelay = true
-*.node[*].nic.phy80211p.minPowerLevel = -110dBm
-
-# Mobility
-*.node[*].veinsmobility.x = 0
-*.node[*].veinsmobility.y = 0
-*.node[*].veinsmobility.z = 1.895
-*.node[*].veinsmobility.setHostSpeed = false
-EOF
+    RESULTS_JSON="$ITER_DIR/raft_results.json"
+    
+    # RAFT Timing (scaled by vehicle count)
+    ELECTION_TIMEOUT_BASE=$((200 + VEHICLE_COUNT * 25))
+    STATUS_COLLECTION_TIMEOUT=$((300 + VEHICLE_COUNT * 20))
+    REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
+    ELECTION_JITTER=$((100 + VEHICLE_COUNT * 50))
 
 # Run simulation
 echo -e "${GREEN}Running WAVE simulation (iteration $iteration)...${NC}"
@@ -192,11 +107,27 @@ echo ""
 cd "$SIM_DIR"
 LOG_FILE="$ITER_DIR/console.log"
 
+# Build CLI overrides (no temp INI file needed)
+CLI_OVERRIDES=(
+    "--seed-set=$iteration"
+    "--**.appl.resultsFile=\"$RESULTS_JSON\""
+    "--**.appl.electionTimeoutBaseMs=$ELECTION_TIMEOUT_BASE"
+    "--**.appl.electionTimeoutJitterMs=$ELECTION_JITTER"
+    "--**.appl.requestTimeoutMs=$REQUEST_TIMEOUT"
+    "--**.appl.statusCollectionTimeoutMs=$STATUS_COLLECTION_TIMEOUT"
+)
+
 # Run and capture output
 if [ -x "$SRC_DIR/benchmark" ]; then
-    "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" "$TEMP_INI" 2>&1 | tee "$LOG_FILE" > /dev/null
+    "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_wave.ini "${CLI_OVERRIDES[@]}" 2>&1 | tee "$LOG_FILE" > /dev/null
 else
-    "$SRC_DIR/benchmark_dbg" -u Cmdenv -n "$NED_PATH" "$TEMP_INI" 2>&1 | tee "$LOG_FILE" > /dev/null
+    "$SRC_DIR/benchmark_dbg" -u Cmdenv -n "$NED_PATH" omnetpp_wave.ini "${CLI_OVERRIDES[@]}" 2>&1 | tee "$LOG_FILE" > /dev/null
+fi
+
+# Fallback: Check config for specific filename handling
+if [ ! -f "$RESULTS_JSON" ] && [ -f "raft_results.json" ]; then
+    echo -e "${YELLOW}Moving results file from CWD...${NC}"
+    mv "raft_results.json" "$RESULTS_JSON"
 fi
 
 # Check if results were generated
@@ -268,8 +199,7 @@ echo ""
 
 done  # End of iteration loop
 
-# Cleanup temp files (leave omnetpp.ini in place)
-rm -f "$SIM_DIR"/temp_benchmark.ini
+# No temp files to clean up (using CLI overrides)
 
 echo ""
 echo -e "${GREEN}========================================${NC}"

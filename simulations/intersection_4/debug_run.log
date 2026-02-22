@@ -1,0 +1,33 @@
+OMNeT++ Discrete Event Simulation  (C) 1992-2019 Andras Varga, OpenSim Ltd.
+Version: 5.6.2, build: 200518-aa79d0918f, edition: Academic Public License -- NOT FOR COMMERCIAL USE
+See the license for distribution terms and warranty disclaimer
+
+Setting up Cmdenv...
+
+Loading NED files from ..:  9
+Loading NED files from ../../src:  11
+Loading NED files from ../../../inet/src:  831
+Loading NED files from ../../../inet/examples:  174
+Loading NED files from ../../../inet/tutorials:  10
+Loading NED files from ../../../inet/showcases:  46
+Loading NED files from ../../../../veins/examples/veins:  1
+Loading NED files from ../../../../veins/src/veins:  44
+
+Preparing for running configuration General, run #0...
+Assigned runID=General-0-20260211-01:23:47-442001
+Setting up network "IntersectionScenarioWave"...
+Initializing...
+
+Running simulation...
+** Event #0   t=0   Elapsed: 1.8e-05s (0m 00s)  0% completed  (0% total)
+     Speed:     ev/sec=0   simsec/sec=0   ev/simsec=0
+     Messages:  created: 2   present: 2   in FES: 3
+** Event #2   t=0.1   Elapsed: 0.454837s (0m 00s)  0% completed  (0% total)
+     Speed:     ev/sec=4.39752   simsec/sec=0   ev/simsec=0
+     Messages:  created: 2   present: 2   in FES: 1
+
+<!> Error: ASSERT: Condition 'omnetTimestep == serverTimestep' does not hold in function 'processSimSubscription' at veins/modules/mobility/traci/TraCIScenarioManager.cc:912 -- in module (veins::TraCIScenarioManagerLaunchd) IntersectionScenarioWave.manager (id=6), at t=0.1s, event #2
+[TRACE]	Writing TraCI message of 2 bytes
+[TRACE]	Reading TraCI message of 7 bytes
+
+End.

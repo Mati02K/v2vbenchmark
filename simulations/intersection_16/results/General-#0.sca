@@ -1,0 +1,71 @@
+version 2
+run General-0-20260221-22:17:45-200859
+attr configname General
+attr datetime 20260221-22:17:45
+attr experiment General
+attr inifile omnetpp_wave.ini
+attr iterationvars ""
+attr iterationvarsf ""
+attr measurement ""
+attr network IntersectionScenarioWave
+attr processid 200859
+attr repetition 0
+attr replication #0
+attr resultdir results
+attr runnumber 0
+attr seedset 1
+param **.appl.electionTimeoutBaseMs 600
+param **.appl.electionTimeoutJitterMs 900
+param **.appl.requestTimeoutMs 180
+param **.appl.resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/test9/run_1/raft_results.json\""
+param **.appl.statusCollectionTimeoutMs 620
+param *.manager.updateInterval 0.1s
+param *.manager.host "\"localhost\""
+param *.manager.port 9999
+param *.manager.autoShutdown true
+param *.manager.launchConfig "xmldoc(\"intersection.launchd.xml\")"
+param *.manager.moduleType "\"org.car2x.veins.nodes.Car\""
+param *.manager.moduleName "\"node\""
+param *.manager.moduleDisplayString "\"\""
+param *.node[*].veinsmobility.x 0
+param *.node[*].veinsmobility.y 0
+param *.node[*].veinsmobility.z 0
+param *.node[*].veinsmobility.setHostSpeed false
+param *.node[*].veinsmobility0.x 0
+param *.node[*].veinsmobility0.y 0
+param *.node[*].veinsmobility0.z 0
+param *.node[*].veinsmobility0.setHostSpeed false
+param *.playgroundSizeX 2500m
+param *.playgroundSizeY 2500m
+param *.playgroundSizeZ 50m
+param *.connectionManager.sendDirect true
+param *.connectionManager.maxInterfDist 2600m
+param *.connectionManager.drawMaxIntfDist false
+param *.**.nic.mac1609_4.useServiceChannel false
+param *.**.nic.mac1609_4.txPower 20mW
+param *.**.nic.mac1609_4.bitrate 6Mbps
+param *.node[*].applType "\"benchmark.raft.WillemtRaftWaveApplication\""
+param *.node[*].appl.totalVehicles 16
+param *.node[*].appl.approachEdges "\"-34894202#13,34894202#10,36905242#11,37551802#8\""
+param *.node[*].appl.exitEdges "\"-34894202#10,34894202#13,-37551802#8,-36905242#11\""
+param *.node[*].appl.resultsFile "\"raft_results.json\""
+param *.node[*].appl.electionTimeoutBaseMs 500
+param *.node[*].appl.electionTimeoutJitterMs 1000
+param *.node[*].appl.requestTimeoutMs 200
+param *.node[*].appl.maxFailedElections 100
+param *.node[*].appl.fallbackWaitMinMs 100
+param *.node[*].appl.fallbackWaitMaxMs 300
+param *.node[*].appl.passConfirmationMs 300
+param *.node[*].appl.statusCollectionTimeoutMs 200
+param *.node[*].nic.phy80211p.analogueModels "xmldoc(\"config.xml\", \"//AnalogueModel\")"
+param *.node[*].nic.phy80211p.decider "xmldoc(\"config.xml\", \"//Decider\")"
+param *.node[*].nic.phy80211p.sensitivity -85dBm
+param *.node[*].nic.phy80211p.maxTXPower 200mW
+param *.node[*].nic.phy80211p.useThermalNoise true
+param *.node[*].nic.phy80211p.thermalNoise -110dBm
+param *.node[*].nic.phy80211p.useNoiseFloor true
+param *.node[*].nic.phy80211p.noiseFloor -98dBm
+param *.node[*].nic.phy80211p.usePropagationDelay true
+param *.node[*].nic.phy80211p.minPowerLevel -110dBm
+
+

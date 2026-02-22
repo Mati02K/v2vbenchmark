@@ -46,6 +46,9 @@ namespace benchmark {
  *     COORD_VEHICLE_PASSED = 12;
  *     COORD_VEHICLE_LEFT = 13;
  *     COORD_VEHICLE_LEFT_REBROADCAST = 14;
+ *     // Dynamic cluster discovery
+ *     DISCOVERY_BEACON = 20;
+ *     CLUSTER_FORM = 21;
  * }
  * </pre>
  */
@@ -58,11 +61,13 @@ enum RaftMsgType {
     COORD_STATUS_RESPONSE = 11,
     COORD_VEHICLE_PASSED = 12,
     COORD_VEHICLE_LEFT = 13,
-    COORD_VEHICLE_LEFT_REBROADCAST = 14
+    COORD_VEHICLE_LEFT_REBROADCAST = 14,
+    DISCOVERY_BEACON = 20,
+    CLUSTER_FORM = 21
 };
 
 /**
- * Class generated from <tt>raft/RaftWaveMessage.msg:26</tt> by nedtool.
+ * Class generated from <tt>raft/RaftWaveMessage.msg:29</tt> by nedtool.
  * <pre>
  * // RAFT WAVE message with binary payload
  * packet RaftWaveMessage extends veins::BaseFrame1609_4

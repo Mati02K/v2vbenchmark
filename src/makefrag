@@ -13,6 +13,9 @@ EXTRA_OBJS += $(RAFT_OBJS)
 
 # Force RAFT files to be built before any .cc files are compiled
 # This ensures they exist when $(wildcard) is evaluated during linking
+# Declare 'all' as the default target so this rule doesn't hijack it
+all: $(TARGET_DIR)/$(TARGET)
+
 $(OBJS): | $(RAFT_OBJS)
 
 # Explicit rules to compile each RAFT C file

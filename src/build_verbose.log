@@ -1,0 +1,21 @@
+opp_msgc --msg6 -s _m.cc -MD -MP -MF ../out/clang-release/src/raft/RaftWaveMessage_m.h.d -I../third_party/raft -I/home/mathesh/veins/src -I. -I../../inet/src raft/RaftWaveMessage.msg
+opp_msgc --msg6 -s _m.cc -MD -MP -MF ../out/clang-release/src/veins_inet/VeinsInetSampleMessage_m.h.d -I../third_party/raft -I/home/mathesh/veins/src -I. -I../../inet/src veins_inet/VeinsInetSampleMessage.msg
+Compiling RAFT: ../third_party/raft/raft_server.c
+clang -c -std=c99 -I../third_party/raft -O2 -o ../out/clang-release/src/raft_c/raft_server.o ../third_party/raft/raft_server.c
+Compiling RAFT: ../third_party/raft/raft_server_properties.c
+clang -c -std=c99 -I../third_party/raft -O2 -o ../out/clang-release/src/raft_c/raft_server_properties.o ../third_party/raft/raft_server_properties.c
+Compiling RAFT: ../third_party/raft/raft_node.c
+clang -c -std=c99 -I../third_party/raft -O2 -o ../out/clang-release/src/raft_c/raft_node.o ../third_party/raft/raft_node.c
+Compiling RAFT: ../third_party/raft/raft_log.c
+clang -c -std=c99 -I../third_party/raft -O2 -o ../out/clang-release/src/raft_c/raft_log.o ../third_party/raft/raft_log.c
+clang++ -c -std=c++11 -O3 -DNDEBUG=1 -MMD -MP -MF ../out/clang-release/src/raft/WillemtRaftApplication.o.d  -fPIC  -Wno-deprecated-register -Wno-unused-function -fno-omit-frame-pointer -DHAVE_SWAPCONTEXT -DWITH_MPI -DXMLPARSER=libxml -DPREFER_QTENV -DWITH_QTENV -DWITH_PARSIM -DWITH_NETBUILDER -DWITH_OSG  -DINET_IMPORT -DVEINS_IMPORT -I../third_party/raft -I/home/mathesh/veins/src -I. -I../../inet/src -I/home/mathesh/omnetpp-5.6.2/include -o ../out/clang-release/src/raft/WillemtRaftApplication.o raft/WillemtRaftApplication.cc
+raft/WillemtRaftApplication.cc:1087:22: warning: decomposition declarations are a C++17 extension [-Wc++17-extensions]
+ 1087 |     for (const auto& [vid, status] : committedStatuses_) {
+      |                      ^~~~~~~~~~~~~
+raft/WillemtRaftApplication.cc:1176:46: warning: initialized lambda captures are a C++14 extension [-Wc++14-extensions]
+ 1176 |             veins::TimerSpecification([this, idx = response.idx, passOrder]() {
+      |                                              ^
+raft/WillemtRaftApplication.cc:1504:57: warning: initialized lambda captures are a C++14 extension [-Wc++14-extensions]
+ 1504 |             veins::TimerSpecification([this, vehicleId, idx = response.idx]() {
+      |                                                         ^
+3 warnings generated.

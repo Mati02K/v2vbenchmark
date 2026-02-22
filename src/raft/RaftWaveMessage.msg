@@ -20,6 +20,9 @@ enum RaftMsgType {
     COORD_VEHICLE_PASSED = 12;
     COORD_VEHICLE_LEFT = 13;
     COORD_VEHICLE_LEFT_REBROADCAST = 14;
+    // Dynamic cluster discovery
+    DISCOVERY_BEACON = 20;
+    CLUSTER_FORM = 21;
 }
 
 // RAFT WAVE message with binary payload

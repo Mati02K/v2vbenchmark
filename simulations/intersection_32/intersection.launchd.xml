@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+    <copy file="intersection.sumocfg" type="config"/>
+    <copy file="osm.net.xml"/>
+    <copy file="intersection.rou.xml"/>
+</launch>

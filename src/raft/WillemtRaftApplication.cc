@@ -7,6 +7,7 @@
 #include <cstring>
 #include <algorithm>
 #include <cstddef>
+#include <vector>
 #include <iomanip>
 #include <random>
 #include "inet/common/packet/Packet.h"
@@ -21,18 +22,6 @@ using namespace inet;
 Define_Module(WillemtRaftApplication);
 
 // ============ STATIC MEMBERS ============
-
-const std::set<std::string> WillemtRaftApplication::INTERSECTION_EDGES = {
-    "N2C", "S2C", "E2C", "W2C",
-    "C2S", "C2N", "C2E", "C2W"
-};
-
-const std::map<std::string, std::string> WillemtRaftApplication::ROUTE_TO_LANE = {
-    {"rN", "N2C"},
-    {"rS", "S2C"},
-    {"rE", "E2C"},
-    {"rW", "W2C"}
-};
 
 std::ofstream WillemtRaftApplication::resultsFile_;
 bool WillemtRaftApplication::resultsFileOpened_ = false;
@@ -119,6 +108,50 @@ void WillemtRaftApplication::closeResultsFile()
     }
 }
 
+// ============ EDGE PARAMETER PARSING ============
+
+void WillemtRaftApplication::parseEdgeParameters()
+{
+    // Parse approach edges (comma-separated)
+    std::string approachStr = par("approachEdges").stdstringValue();
+    std::string exitStr = par("exitEdges").stdstringValue();
+    
+    approachEdgeList_.clear();
+    exitEdgeList_.clear();
+    intersectionEdges_.clear();
+    exitEdges_.clear();
+    
+    // Split comma-separated strings
+    std::stringstream ssApproach(approachStr);
+    std::string token;
+    while (std::getline(ssApproach, token, ',')) {
+        // Trim whitespace
+        size_t start = token.find_first_not_of(" \t");
+        size_t end = token.find_last_not_of(" \t");
+        if (start != std::string::npos) {
+            token = token.substr(start, end - start + 1);
+            approachEdgeList_.push_back(token);
+            intersectionEdges_.insert(token);
+        }
+    }
+    
+    std::stringstream ssExit(exitStr);
+    while (std::getline(ssExit, token, ',')) {
+        size_t start = token.find_first_not_of(" \t");
+        size_t end = token.find_last_not_of(" \t");
+        if (start != std::string::npos) {
+            token = token.substr(start, end - start + 1);
+            exitEdgeList_.push_back(token);
+            exitEdges_.insert(token);
+            intersectionEdges_.insert(token);
+        }
+    }
+    
+    std::cout << "Vehicle " << myId_ << " edge config: "
+              << approachEdgeList_.size() << " approach edges, "
+              << exitEdgeList_.size() << " exit edges" << std::endl;
+}
+
 // ============ APPLICATION START ============
 
 bool WillemtRaftApplication::startApplication()
@@ -144,6 +177,9 @@ bool WillemtRaftApplication::startApplication()
     
     resultsFileName_ = par("resultsFile").stdstringValue();
     
+    // Parse dynamic intersection edge configuration
+    parseEdgeParameters();
+    
     // Calculate vehicle's lane
     int vehiclesPerSide = totalVehicles_ / 4;
     if (vehiclesPerSide == 0) vehiclesPerSide = 1;
@@ -151,12 +187,12 @@ bool WillemtRaftApplication::startApplication()
     int sideIndex = myId_ / vehiclesPerSide;
     int positionInLane = myId_ % vehiclesPerSide;
     
-    switch (sideIndex % 4) {
-        case 0: myLane_ = "N2C"; myRoute_ = "rN"; break;
-        case 1: myLane_ = "S2C"; myRoute_ = "rS"; break;
-        case 2: myLane_ = "E2C"; myRoute_ = "rE"; break;
-        case 3: myLane_ = "W2C"; myRoute_ = "rW"; break;
-    }
+    // Assign lane from dynamic approach edge list
+    int dirIndex = sideIndex % (int)approachEdgeList_.size();
+    myLane_ = approachEdgeList_[dirIndex];
+    // Route names for logging: rDir0, rDir1, rDir2, rDir3
+    static const char* routeNames[] = {"rW", "rS", "rE", "rN"};
+    myRoute_ = routeNames[dirIndex % 4];
     
     // Determine vehicle in front
     if (positionInLane > 0) {
@@ -231,6 +267,9 @@ bool WillemtRaftApplication::startApplication()
     timerManager.create(
         veins::TimerSpecification([this]() {
             checkAndStopAtIntersection();
+            if (hasStoppedAtIntersection_ && !hasPassedIntersection_) {
+                checkIfLeftIntersection();
+            }
         }).interval(SimTime(CHECK_INTERVAL))
     );
     
@@ -1670,7 +1709,7 @@ bool WillemtRaftApplication::isAtIntersection() const
     if (!traciVehicle_) return false;
     try {
         std::string roadId = traciVehicle_->getRoadId();
-        return INTERSECTION_EDGES.count(roadId) > 0;
+        return intersectionEdges_.count(roadId) > 0;
     } catch (...) {
         return false;
     }
@@ -1755,10 +1794,18 @@ void WillemtRaftApplication::checkIfLeftIntersection()
     try {
         std::string currentRoad = traciVehicle_->getRoadId();
         
-        // STRICT HONEST MODE: Explicitly check for Exit Edges only.
-        // Logic copied from WAVE implementation.
-        bool isExit = (currentRoad == "C2S" || currentRoad == "C2N" || 
-                       currentRoad == "C2E" || currentRoad == "C2W");
+        // Dynamic exit edge detection using parsed edge configuration
+        bool isExit = (exitEdges_.count(currentRoad) > 0);
+        
+        // Robust fallback: if vehicle has resumed and is no longer on
+        // approach or internal edge, it has passed through
+        if (!isExit && timeStartedMoving_ > SIMTIME_ZERO && !currentRoad.empty()) {
+            bool onApproach = intersectionEdges_.count(currentRoad) > 0;
+            bool onInternal = (currentRoad[0] == ':');
+            if (!onApproach && !onInternal) {
+                isExit = true;
+            }
+        }
         
         if (isExit) {
             // We've truly left the intersection!
@@ -1925,6 +1972,8 @@ void WillemtRaftApplication::outputMetricsJSON()
 
     if (vehiclesCompleted_ >= totalVehiclesStatic_) {
         closeResultsFile();
+        std::cout << "All " << totalVehiclesStatic_ << " vehicles completed. Terminating simulation." << std::endl;
+        endSimulation();
     }
 }
 

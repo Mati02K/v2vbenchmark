@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root>
+    <!-- Path Loss: Log-Distance model for urban intersection (NLOS) -->
+    <!-- Alpha = 2.8 per Winner+ B1 urban micro-cell model -->
+    <AnalogueModel type="SimplePathlossModel">
+        <parameter name="alpha" type="double" value="2.8"/>
+        <parameter name="carrierFrequency" type="double" value="5.890e9"/>
+    </AnalogueModel>
+    
+    <!-- Decider: SNIR-based packet delivery for 802.11p -->
+    <!-- Sensitivity: -85 dBm for 10 MHz @ 6 Mbps (QPSK 1/2) -->
+    <Decider type="Decider80211p">
+        <parameter name="centerFrequency" type="double" value="5.890e9"/>
+        <parameter name="bandwidth" type="double" value="10e6"/>
+        <parameter name="sensitivity" type="double" value="-85.0"/>
+    </Decider>
+    
+    <Antenna type="AntennaPosition">
+        <parameter name="offsetX" type="double" value="0.0"/>
+        <parameter name="offsetY" type="double" value="0.0"/>
+        <parameter name="offsetZ" type="double" value="1.895"/>
+    </Antenna>
+</root>

@@ -27,7 +27,6 @@ NC='\033[0m' # No Color
 
 # Paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SIM_DIR="$SCRIPT_DIR/simulations/raft"
 SRC_DIR="$SCRIPT_DIR/src"
 RESULTS_BASE="$SCRIPT_DIR/results"
 
@@ -59,6 +58,12 @@ if [[ ! "$VEHICLE_COUNT" =~ ^(4|8|16|32)$ ]]; then
     exit 1
 fi
 
+SIM_DIR="$SCRIPT_DIR/simulations/intersection_$VEHICLE_COUNT"
+if [ ! -d "$SIM_DIR" ]; then
+    echo -e "${RED}Error: Directory $SIM_DIR not found. Run setup_scenarios.py first.${NC}"
+    exit 1
+fi
+
 APP_TYPE="WillemtRaftApplication"
 
 echo -e "${GREEN}========================================${NC}"
@@ -87,74 +92,13 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     ITER_DIR="$RESULT_DIR/run_$iteration"
     mkdir -p "$ITER_DIR"
 
-# Generate route file if needed
-ROUTE_FILE="$SIM_DIR/intersection_${VEHICLE_COUNT}veh.rou.xml"
-if [ ! -f "$ROUTE_FILE" ]; then
-    echo -e "${YELLOW}Generating route file for $VEHICLE_COUNT vehicles...${NC}"
-    cd "$SIM_DIR"
-    python3 generate_config.py "$VEHICLE_COUNT"
-fi
+    RESULTS_JSON="$ITER_DIR/raft_results.json"
 
-# Copy route file to active location
-echo -e "Setting up route file..."
-cp "$ROUTE_FILE" "$SIM_DIR/intersection.rou.xml"
-
-# Create temporary ini file with correct output path
-TEMP_INI="$SIM_DIR/temp_benchmark.ini"
-RESULTS_JSON="$ITER_DIR/raft_results.json"
-
-cat > "$TEMP_INI" << EOF
-[General]
-network = IntersectionScenario
-sim-time-limit = 300s
-**.cmdenv-log-level = warn
-
-# Random seed - unique for each iteration
-seed-set = $iteration
-
-# Manager
-*.manager.moduleType = "benchmark.veins_inet.VeinsInetCar"
-*.manager.moduleName = "node"
-*.manager.moduleDisplayString = ""
-*.manager.launchConfig = xmldoc("intersection.launchd.xml")
-*.manager.autoShutdown = true
-*.manager.updateInterval = 0.1s
-*.manager.host = "localhost"
-*.manager.port = 9999
-
-# Scenario
-*.node[*].mobility.typename = "VeinsInetMobility"
-
-# Application - RAFT
-*.node[*].numApps = 1
-*.node[*].app[0].typename = "$APP_TYPE"
-*.node[*].app[0].totalVehicles = $VEHICLE_COUNT
-*.node[*].app[0].resultsFile = "$RESULTS_JSON"
-*.node[*].app[0].interface = "wlan0"
-*.node[*].app[0].destPort = 9001
-*.node[*].app[0].localPort = 9001
-*.node[*].app[0].destAddress = "255.255.255.255"
-
-# Timing - scale with vehicle count and algorithm
-# Greedy: faster fallback to keep total time reasonable
-*.node[*].app[0].electionTimeoutBaseMs = $((500 + VEHICLE_COUNT * 25))
-*.node[*].app[0].electionTimeoutJitterMs = $((100 + VEHICLE_COUNT * 50))
-*.node[*].app[0].requestTimeoutMs = $((100 + VEHICLE_COUNT * 5))
-*.node[*].app[0].maxFailedElections = 100
-*.node[*].app[0].fallbackWaitMinMs = 100
-*.node[*].app[0].fallbackWaitMaxMs = 300
-*.node[*].app[0].passConfirmationMs = 50
-*.node[*].app[0].statusCollectionTimeoutMs = $((300 + VEHICLE_COUNT * 20))
-
-# Radio
-*.node[*].wlan[0].radio.transmitter.power = 20mW
-*.node[*].wlan[0].typename = "Ieee80211Interface"
-*.node[*].wlan[0].radio.typename = "Ieee80211ScalarRadio"
-*.node[*].wlan[0].mac.dcf.channelAccess.cwMin = 7
-*.node[*].wlan[0].radio.transmitter.communicationRange = 500m
-*.node[*].wlan[*].radio.receiver.sensitivity = -89dBm
-*.node[*].wlan[*].radio.receiver.snirThreshold = 4dB
-EOF
+    # RAFT Timing (scaled by vehicle count)
+    ELECTION_TIMEOUT_BASE=$((500 + VEHICLE_COUNT * 25))
+    ELECTION_JITTER=$((100 + VEHICLE_COUNT * 50))
+    REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
+    STATUS_COLLECTION_TIMEOUT=$((300 + VEHICLE_COUNT * 20))
 
 # Run simulation
 echo -e "${GREEN}Running simulation (iteration $iteration)...${NC}"
@@ -163,12 +107,22 @@ echo ""
 cd "$SIM_DIR"
 LOG_FILE="$ITER_DIR/console.log"
 
+# Build CLI overrides (no temp INI file needed)
+CLI_OVERRIDES=(
+    "--seed-set=$iteration"
+    "--**.app[0].resultsFile=\"$RESULTS_JSON\""
+    "--**.app[0].electionTimeoutBaseMs=$ELECTION_TIMEOUT_BASE"
+    "--**.app[0].electionTimeoutJitterMs=$ELECTION_JITTER"
+    "--**.app[0].requestTimeoutMs=$REQUEST_TIMEOUT"
+    "--**.app[0].statusCollectionTimeoutMs=$STATUS_COLLECTION_TIMEOUT"
+)
+
 # Run and capture output (use release build to avoid library conflicts)
 # If release doesn't exist, fall back to debug
 if [ -x "$SRC_DIR/benchmark" ]; then
-    "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" "$TEMP_INI" 2>&1 | tee "$LOG_FILE" > /dev/null
+    "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_udp.ini "${CLI_OVERRIDES[@]}" 2>&1 | tee "$LOG_FILE" > /dev/null
 else
-    "$SRC_DIR/benchmark_dbg" -u Cmdenv -n "$NED_PATH" "$TEMP_INI" 2>&1 | tee "$LOG_FILE" > /dev/null
+    "$SRC_DIR/benchmark_dbg" -u Cmdenv -n "$NED_PATH" omnetpp_udp.ini "${CLI_OVERRIDES[@]}" 2>&1 | tee "$LOG_FILE" > /dev/null
 fi
 
 # Check if results were generated
@@ -239,8 +193,8 @@ echo ""
 
 done  # End of iteration loop
 
-# Cleanup temp files
-rm -f "$SIM_DIR"/*.ini
+# Cleanup temp files (do NOT delete base omnetpp_udp.ini / omnetpp_wave.ini)
+# No temp files to clean up (using CLI overrides)
 
 echo ""
 echo -e "${GREEN}========================================${NC}"

@@ -27,6 +27,16 @@ simple WillemtRaftWaveApplication extends DemoBaseApplLayer
         // Status collection timeout (milliseconds)
         int statusCollectionTimeoutMs = default(200);
         
+        // Dynamic cluster formation
+        double clusterTriggerDistance = default(100.0);  // meters from junction center
+        double discoveryBeaconInterval = default(0.3);   // seconds between beacons
+        
+        // Intersection edge configuration (comma-separated edge IDs)
+        // Approach edges: edges leading INTO the intersection (one per direction W,S,E,N)
+        string approachEdges = default("W2C,S2C,E2C,N2C");
+        // Exit edges: edges leading OUT of the intersection (one per direction, matching approach order)
+        string exitEdges = default("C2E,C2N,C2W,C2S");
+        
         // Output file name
         string resultsFile = default("raft_results.json");
 }
