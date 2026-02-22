@@ -81,6 +81,9 @@ private:
     
     void broadcastClusterForm();
     void handleClusterForm(const std::vector<uint8_t>& data, int senderId);
+    void handleClusterExists(const std::vector<uint8_t>& data, int senderId);  // FIX #2
+    void mergeIntoCluster(const std::set<int>& members);  // FIX #2
+    void broadcastClusterExists();  // FIX #2: continuous cluster beaconing
     void formCluster(const std::set<int>& members);
     
     // ============ INTERSECTION STATE ============
@@ -107,12 +110,18 @@ private:
     enum LogEntryType : uint8_t {
         PASS_COMMAND = 1,
         STATUS_REPORT = 2,
-        PASS_ORDER = 3
+        PASS_ORDER = 3,
+        VEHICLE_LEFT = 4    // New: vehicle departure via RAFT consensus
     };
 
     struct PassCommandEntry {
         int vehicleId;
         simtime_t proposedTime;
+    };
+    
+    struct VehicleLeftEntry {
+        int vehicleId;
+        int batch;          // Which batch this vehicle was in
     };
     
     // VehicleProposal: sent by each vehicle to leader for scheduling
@@ -124,6 +133,10 @@ private:
         int laneIndex;           // Direction: 0=W, 1=S, 2=E, 3=N
         int intendedTurn;        // 0=STRAIGHT, 1=LEFT, 2=RIGHT
         bool isFirstInLane;      // Frontmost vehicle on this lane?
+        // P1 Additions:
+        int blockedByVehicleId;  // ID of vehicle blocking this one (-1 if none)
+        double waitingTimeMs;    // How long this vehicle has been waiting
+        double distanceToJunction; // Distance to junction center (meters)
     };
     
     // Legacy structs (kept for compatibility during transition)
@@ -143,12 +156,12 @@ private:
     // PassSchedule: batched pass order with parallel non-conflicting movements
     struct PassBatch {
         int numVehicles;
-        int vehicleIds[8];   // Vehicles that can pass simultaneously
+        int vehicleIds[8];   // Vehicles that can pass simultaneously (max 8 per batch)
     };
     
     struct PassScheduleEntry {
         int numBatches;
-        PassBatch batches[8]; // Up to 8 sequential batches
+        PassBatch batches[16]; // Up to 16 sequential batches (supports up to 64 vehicles)
     };
     
     // Legacy PassOrderEntry (flat order, kept for log compatibility)
@@ -168,6 +181,7 @@ private:
     
     // Fair scheduling state
     int currentBatch_;                   // Which batch is currently passing
+    int myBatch_;                        // The batch this vehicle is assigned to cross in
     PassScheduleEntry committedSchedule_;
     std::set<int> vehiclesLeftInBatch_;  // Track which vehicles left in current batch
 
@@ -197,10 +211,13 @@ private:
     cMessage* statusTimeoutTimer_;
     cMessage* passOrderTimer_;
     cMessage* fallbackTimer_;
+    cMessage* arrivalWaitTimer_;       // Timer to wait for all vehicles to arrive
+    bool waitingForVehiclesToArrive_;  // Flag for arrival wait state
     
     // ============ METRICS TRACKING ============
     simtime_t timeArrived_;
     simtime_t timeStopped_;
+    simtime_t timeClusterFormed_;   // When RAFT cluster was formed
     simtime_t timeElected_;
     simtime_t timeOrderCommitted_;
     simtime_t timeStartedMoving_;
@@ -263,18 +280,15 @@ private:
     // ============ COORDINATION PROTOCOL ============
     void sendStatusRequest();
     void handleStatusRequest(int fromLeader);
-    void sendStatusResponse(int toLeader, bool wayOfSight, int posInLane, int direction);
-    void handleStatusResponse(int fromVehicle, bool wayOfSight, int posInLane, int direction);
+    void sendStatusResponse(int toLeader);
+    void handleStatusResponse(int fromVehicle, const std::vector<uint8_t>& payload);
     void sendVehiclePassed();
     void handleVehiclePassed(int vehicleId);
     
     void collectStatusAndDecide();
     void proposeStatusReport();
     void proposePassOrder();
-    std::vector<int> createDeterministicOrder();
     void executePassOrder();
-    void checkIfPreviousVehicleLeft(int previousVehicleId);
-    int findMyPositionInOrder();
     int getLaneIndex(const std::string& lane);
     
     // Fair scheduling
@@ -283,12 +297,19 @@ private:
     VehicleProposal buildMyProposal();
     bool amIFirstInLane();
     
+    // P1: Blocked vehicle detection
+    int detectBlockingVehicle();  // Returns ID of vehicle blocking me, or -1
+    void updateBlockedStatus();   // Called when a vehicle leaves to update blocked status
+    double calculateDistanceToJunction();  // Calculate distance to junction center
+    
     int selectVehicleToPass();
     void proposePassCommand(int vehicleId);
     void executePassCommand(int vehicleId);
     
     void sendVehicleLeft();
     void handleVehicleLeft(int vehicleId);
+    void proposeVehicleLeft(int vehicleId, int batch);  // RAFT-based vehicle departure
+    void applyVehicleLeftFromRaft(int vehicleId, int batch);  // Apply committed VEHICLE_LEFT
     void rebroadcastVehicleLeft(int vehicleId);
     
     void calculateWayOfSight();

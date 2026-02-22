@@ -24,8 +24,8 @@ simple WillemtRaftWaveApplication extends DemoBaseApplLayer
         // Pass confirmation time (milliseconds)
         int passConfirmationMs = default(300);
         
-        // Status collection timeout (milliseconds)
-        int statusCollectionTimeoutMs = default(200);
+        // Status collection timeout (milliseconds) - increased for WAVE wireless delays
+        int statusCollectionTimeoutMs = default(1000);
         
         // Dynamic cluster formation
         double clusterTriggerDistance = default(100.0);  // meters from junction center

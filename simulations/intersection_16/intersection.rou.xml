@@ -8,21 +8,25 @@
     <route id="rE" edges="36905242#8 36905242#11 -37551802#8 -37551802#6"/>
     <route id="rN" edges="37551802#6 37551802#8 -36905242#11 -36905242#8"/>
 
-    <!-- 16 vehicles total, 4 per direction -->
+    <!-- 16 vehicles total, 4 per direction - ALL spawn at same time -->
+    <!-- Lane W (rW): veh0, veh1, veh2, veh3 -->
     <vehicle id="veh0" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
-    <vehicle id="veh4" type="car" route="rS" depart="0.30" departPos="0" departSpeed="max"/>
-    <vehicle id="veh8" type="car" route="rE" depart="0.60" departPos="0" departSpeed="max"/>
-    <vehicle id="veh12" type="car" route="rN" depart="0.90" departPos="0" departSpeed="max"/>
-    <vehicle id="veh1" type="car" route="rW" depart="2.00" departPos="0" departSpeed="max"/>
-    <vehicle id="veh5" type="car" route="rS" depart="2.30" departPos="0" departSpeed="max"/>
-    <vehicle id="veh9" type="car" route="rE" depart="2.60" departPos="0" departSpeed="max"/>
-    <vehicle id="veh13" type="car" route="rN" depart="2.90" departPos="0" departSpeed="max"/>
-    <vehicle id="veh2" type="car" route="rW" depart="4.00" departPos="0" departSpeed="max"/>
-    <vehicle id="veh6" type="car" route="rS" depart="4.30" departPos="0" departSpeed="max"/>
-    <vehicle id="veh10" type="car" route="rE" depart="4.60" departPos="0" departSpeed="max"/>
-    <vehicle id="veh14" type="car" route="rN" depart="4.90" departPos="0" departSpeed="max"/>
-    <vehicle id="veh3" type="car" route="rW" depart="6.00" departPos="0" departSpeed="max"/>
-    <vehicle id="veh7" type="car" route="rS" depart="6.30" departPos="0" departSpeed="max"/>
-    <vehicle id="veh11" type="car" route="rE" depart="6.60" departPos="0" departSpeed="max"/>
-    <vehicle id="veh15" type="car" route="rN" depart="6.90" departPos="0" departSpeed="max"/>
+    <vehicle id="veh1" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh2" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh3" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
+    <!-- Lane S (rS): veh4, veh5, veh6, veh7 -->
+    <vehicle id="veh4" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh5" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh6" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh7" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
+    <!-- Lane E (rE): veh8, veh9, veh10, veh11 -->
+    <vehicle id="veh8" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh9" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh10" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh11" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
+    <!-- Lane N (rN): veh12, veh13, veh14, veh15 -->
+    <vehicle id="veh12" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh13" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh14" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh15" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
 </routes>

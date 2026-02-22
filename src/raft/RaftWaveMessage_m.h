@@ -49,6 +49,7 @@ namespace benchmark {
  *     // Dynamic cluster discovery
  *     DISCOVERY_BEACON = 20;
  *     CLUSTER_FORM = 21;
+ *     CLUSTER_EXISTS = 22;    // FIX #2: Continuous beacon that cluster exists
  * }
  * </pre>
  */
@@ -63,11 +64,12 @@ enum RaftMsgType {
     COORD_VEHICLE_LEFT = 13,
     COORD_VEHICLE_LEFT_REBROADCAST = 14,
     DISCOVERY_BEACON = 20,
-    CLUSTER_FORM = 21
+    CLUSTER_FORM = 21,
+    CLUSTER_EXISTS = 22
 };
 
 /**
- * Class generated from <tt>raft/RaftWaveMessage.msg:29</tt> by nedtool.
+ * Class generated from <tt>raft/RaftWaveMessage.msg:30</tt> by nedtool.
  * <pre>
  * // RAFT WAVE message with binary payload
  * packet RaftWaveMessage extends veins::BaseFrame1609_4

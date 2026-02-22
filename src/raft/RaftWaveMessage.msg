@@ -23,6 +23,7 @@ enum RaftMsgType {
     // Dynamic cluster discovery
     DISCOVERY_BEACON = 20;
     CLUSTER_FORM = 21;
+    CLUSTER_EXISTS = 22;    // FIX #2: Continuous beacon that cluster exists
 }
 
 // RAFT WAVE message with binary payload

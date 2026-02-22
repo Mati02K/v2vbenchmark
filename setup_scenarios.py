@@ -303,7 +303,7 @@ def generate_config_xml(output_path):
     <!-- Path Loss: Log-Distance model for urban intersection (NLOS) -->
     <!-- Alpha = 2.8 per Winner+ B1 urban micro-cell model -->
     <AnalogueModel type="SimplePathlossModel">
-        <parameter name="alpha" type="double" value="2.8"/>
+        <parameter name="alpha" type="double" value="2.0"/>
         <parameter name="carrierFrequency" type="double" value="5.890e9"/>
     </AnalogueModel>
     
@@ -476,7 +476,7 @@ print-undisposed = false
 
 # MAC 1609.4
 *.**.nic.mac1609_4.useServiceChannel = false
-*.**.nic.mac1609_4.txPower = 20mW
+*.**.nic.mac1609_4.txPower = 100mW
 *.**.nic.mac1609_4.bitrate = 6Mbps
 
 # RAFT Application
@@ -494,7 +494,7 @@ print-undisposed = false
 *.node[*].appl.fallbackWaitMinMs = 100
 *.node[*].appl.fallbackWaitMaxMs = 300
 *.node[*].appl.passConfirmationMs = 300
-*.node[*].appl.statusCollectionTimeoutMs = 200
+*.node[*].appl.statusCollectionTimeoutMs = 800
 
 # 802.11p NIC
 *.node[*].nic.phy80211p.analogueModels = xmldoc("config.xml", "//AnalogueModel")

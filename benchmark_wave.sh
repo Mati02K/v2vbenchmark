@@ -96,7 +96,8 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     
     # RAFT Timing (scaled by vehicle count)
     ELECTION_TIMEOUT_BASE=$((200 + VEHICLE_COUNT * 25))
-    STATUS_COLLECTION_TIMEOUT=$((300 + VEHICLE_COUNT * 20))
+    # Increased timeout to ensure all WAVE responses are collected (500ms base + 150ms per vehicle)
+    STATUS_COLLECTION_TIMEOUT=$((500 + VEHICLE_COUNT * 150))
     REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
     ELECTION_JITTER=$((100 + VEHICLE_COUNT * 50))
 

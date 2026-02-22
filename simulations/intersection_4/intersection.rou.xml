@@ -8,9 +8,9 @@
     <route id="rE" edges="36905242#8 36905242#11 -37551802#8 -37551802#6"/>
     <route id="rN" edges="37551802#6 37551802#8 -36905242#11 -36905242#8"/>
 
-    <!-- 4 vehicles total, 1 per direction -->
+    <!-- 4 vehicles total, 1 per direction - ALL spawn at same time -->
     <vehicle id="veh0" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
-    <vehicle id="veh1" type="car" route="rS" depart="0.30" departPos="0" departSpeed="max"/>
-    <vehicle id="veh2" type="car" route="rE" depart="0.60" departPos="0" departSpeed="max"/>
-    <vehicle id="veh3" type="car" route="rN" depart="0.90" departPos="0" departSpeed="max"/>
+    <vehicle id="veh1" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh2" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh3" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
 </routes>

@@ -1,24 +1,24 @@
 version 2
-run General-0-20260222-02:28:12-323854
+run General-0-20260222-02:28:23-324011
 attr configname General
-attr datetime 20260222-02:28:12
+attr datetime 20260222-02:28:23
 attr experiment General
 attr inifile omnetpp_wave.ini
 attr iterationvars ""
 attr iterationvarsf ""
 attr measurement ""
 attr network IntersectionScenarioWave
-attr processid 323854
+attr processid 324011
 attr repetition 0
 attr replication #0
 attr resultdir results
 attr runnumber 0
 attr seedset 2
-param **.appl.electionTimeoutBaseMs 400
-param **.appl.electionTimeoutJitterMs 500
-param **.appl.requestTimeoutMs 140
-param **.appl.resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/final_8v/run_2/raft_results.json\""
-param **.appl.statusCollectionTimeoutMs 1700
+param **.appl.electionTimeoutBaseMs 1000
+param **.appl.electionTimeoutJitterMs 1700
+param **.appl.requestTimeoutMs 260
+param **.appl.resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/final_32v/run_2/raft_results.json\""
+param **.appl.statusCollectionTimeoutMs 5300
 param *.manager.updateInterval 0.1s
 param *.manager.host "\"localhost\""
 param *.manager.port 9999
@@ -45,7 +45,7 @@ param *.**.nic.mac1609_4.useServiceChannel false
 param *.**.nic.mac1609_4.txPower 100mW
 param *.**.nic.mac1609_4.bitrate 6Mbps
 param *.node[*].applType "\"benchmark.raft.WillemtRaftWaveApplication\""
-param *.node[*].appl.totalVehicles 8
+param *.node[*].appl.totalVehicles 32
 param *.node[*].appl.approachEdges "\"-34894202#13,34894202#10,36905242#11,37551802#8\""
 param *.node[*].appl.exitEdges "\"-34894202#10,34894202#13,-37551802#8,-36905242#11\""
 param *.node[*].appl.resultsFile "\"raft_results.json\""
