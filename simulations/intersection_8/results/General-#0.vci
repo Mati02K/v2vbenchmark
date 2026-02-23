@@ -1,0 +1,1596 @@
+file 8938096 1771824094                                         
+version 2
+run General-0-20260222-21:21:31-79143
+attr configname General
+attr datetime 20260222-21:21:31
+attr experiment General
+attr inifile omnetpp_udp.ini
+attr iterationvars ""
+attr iterationvarsf ""
+attr measurement ""
+attr network IntersectionScenarioInet
+attr processid 79143
+attr repetition 0
+attr replication #0
+attr resultdir results
+attr runnumber 0
+attr seedset 5
+param **.app[0].arrivalWaitTimeMs 6200
+param **.app[0].electionTimeoutBaseMs 500
+param **.app[0].electionTimeoutJitterMs 350
+param **.app[0].intersectionStopDistance 25m
+param **.app[0].requestTimeoutMs 140
+param **.app[0].resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/udp_8veh/run_5/raft_results.json\""
+param **.app[0].statusCollectionTimeoutMs 1700
+param *.manager.updateInterval 0.1s
+param *.manager.host "\"localhost\""
+param *.manager.port 9999
+param *.manager.autoShutdown true
+param *.manager.launchConfig "xmldoc(\"intersection.launchd.xml\")"
+param *.manager.moduleType "\"benchmark.veins_inet.VeinsInetCar\""
+param *.manager.moduleName "\"node\""
+param *.manager.moduleDisplayString "\"\""
+param *.node[*].mobility.typename "\"VeinsInetMobility\""
+param *.node[*].numApps 1
+param *.node[*].app[0].typename "\"WillemtRaftApplication\""
+param *.node[*].app[0].middleware.typename "\"benchmark.raft.WillemtRaftApplication\""
+param *.node[*].app[0].totalVehicles 8
+param *.node[*].app[0].approachEdges "\"-34894202#13,34894202#10,36905242#11,37551802#8\""
+param *.node[*].app[0].exitEdges "\"-34894202#10,34894202#13,-37551802#8,-36905242#11\""
+param *.node[*].app[0].resultsFile "\"raft_results.json\""
+param *.node[*].app[0].intersectionStopDistance 25m
+param *.node[*].app[0].arrivalWaitTimeMs 3000
+param *.node[*].app[0].electionTimeoutBaseMs 500
+param *.node[*].app[0].electionTimeoutJitterMs 1000
+param *.node[*].app[0].requestTimeoutMs 200
+param *.node[*].app[0].maxFailedElections 100
+param *.node[*].app[0].fallbackWaitMinMs 100
+param *.node[*].app[0].fallbackWaitMaxMs 300
+param *.node[*].app[0].passConfirmationMs 300
+param *.node[*].app[0].statusCollectionTimeoutMs 200
+param *.node[*].wlan[0].typename "\"Ieee80211Interface\""
+param *.node[*].wlan[0].radio.typename "\"Ieee80211ScalarRadio\""
+param *.node[*].wlan[0].radio.transmitter.communicationRange 500m
+param *.node[*].wlan[0].radio.transmitter.power 20mW
+param *.node[*].wlan[0].mac.dcf.channelAccess.cwMin 7
+param *.node[*].wlan[0].radio.receiver.sensitivity -85dBm
+param *.node[*].wlan[0].radio.centerFrequency 5.9GHz
+param *.node[*].wlan[0].radio.bandwidth 10MHz
+
+vector 0 IntersectionScenarioInet.node[0].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 1 IntersectionScenarioInet.node[0].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 2 IntersectionScenarioInet.node[0].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 3 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 4 IntersectionScenarioInet.node[1].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 5 IntersectionScenarioInet.node[1].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 6 IntersectionScenarioInet.node[1].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 7 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 8 IntersectionScenarioInet.node[2].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 9 IntersectionScenarioInet.node[2].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 10 IntersectionScenarioInet.node[2].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 11 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 12 IntersectionScenarioInet.node[3].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 13 IntersectionScenarioInet.node[3].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 14 IntersectionScenarioInet.node[3].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 15 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 16 IntersectionScenarioInet.node[0].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 17 IntersectionScenarioInet.node[1].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 18 IntersectionScenarioInet.node[2].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 19 IntersectionScenarioInet.node[3].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 20 IntersectionScenarioInet.node[0].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 21 IntersectionScenarioInet.node[1].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 22 IntersectionScenarioInet.node[2].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 23 IntersectionScenarioInet.node[3].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 24 IntersectionScenarioInet.node[0].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 25 IntersectionScenarioInet.node[0].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 26 IntersectionScenarioInet.node[1].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 27 IntersectionScenarioInet.node[1].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 28 IntersectionScenarioInet.node[2].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 29 IntersectionScenarioInet.node[2].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 30 IntersectionScenarioInet.node[3].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 31 IntersectionScenarioInet.node[3].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 32 IntersectionScenarioInet.node[0].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 33 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 34 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 35 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 36 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 37 IntersectionScenarioInet.node[1].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 38 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 39 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 40 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 41 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 42 IntersectionScenarioInet.node[2].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 43 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 44 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 45 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 46 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 47 IntersectionScenarioInet.node[3].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 48 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 49 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 50 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 51 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 52 IntersectionScenarioInet.node[0].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 53 IntersectionScenarioInet.node[0].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 54 IntersectionScenarioInet.node[1].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 55 IntersectionScenarioInet.node[1].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 56 IntersectionScenarioInet.node[2].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 57 IntersectionScenarioInet.node[2].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 58 IntersectionScenarioInet.node[3].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 59 IntersectionScenarioInet.node[3].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 60 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 61 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 62 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 63 IntersectionScenarioInet.node[0].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 64 IntersectionScenarioInet.node[0].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 65 IntersectionScenarioInet.node[0].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 66 IntersectionScenarioInet.node[0].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 67 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 68 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 69 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 70 IntersectionScenarioInet.node[1].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 71 IntersectionScenarioInet.node[1].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 72 IntersectionScenarioInet.node[1].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 73 IntersectionScenarioInet.node[1].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 74 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 75 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 76 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 77 IntersectionScenarioInet.node[2].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 78 IntersectionScenarioInet.node[2].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 79 IntersectionScenarioInet.node[2].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 80 IntersectionScenarioInet.node[2].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 81 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 82 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 83 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 84 IntersectionScenarioInet.node[3].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 85 IntersectionScenarioInet.node[3].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 86 IntersectionScenarioInet.node[3].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 87 IntersectionScenarioInet.node[3].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 88 IntersectionScenarioInet.node[0].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 89 IntersectionScenarioInet.node[0].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 90 IntersectionScenarioInet.node[0].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 91 IntersectionScenarioInet.node[0].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+vector 92 IntersectionScenarioInet.node[1].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 93 IntersectionScenarioInet.node[1].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 94 IntersectionScenarioInet.node[1].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 95 IntersectionScenarioInet.node[1].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+vector 96 IntersectionScenarioInet.node[2].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 97 IntersectionScenarioInet.node[2].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 98 IntersectionScenarioInet.node[2].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 99 IntersectionScenarioInet.node[2].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+vector 100 IntersectionScenarioInet.node[3].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 101 IntersectionScenarioInet.node[3].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 102 IntersectionScenarioInet.node[3].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 103 IntersectionScenarioInet.node[3].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+vector 104 IntersectionScenarioInet.node[4].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 105 IntersectionScenarioInet.node[4].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 106 IntersectionScenarioInet.node[4].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 107 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 108 IntersectionScenarioInet.node[5].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 109 IntersectionScenarioInet.node[5].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 110 IntersectionScenarioInet.node[5].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 111 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 112 IntersectionScenarioInet.node[6].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 113 IntersectionScenarioInet.node[6].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 114 IntersectionScenarioInet.node[6].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 115 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 116 IntersectionScenarioInet.node[7].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 117 IntersectionScenarioInet.node[7].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 118 IntersectionScenarioInet.node[7].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 119 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 120 IntersectionScenarioInet.node[7].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 121 IntersectionScenarioInet.node[7].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 122 IntersectionScenarioInet.node[7].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 123 IntersectionScenarioInet.node[7].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 124 IntersectionScenarioInet.node[7].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 125 IntersectionScenarioInet.node[7].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 126 IntersectionScenarioInet.node[7].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 127 IntersectionScenarioInet.node[7].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 128 IntersectionScenarioInet.node[7].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 129 IntersectionScenarioInet.node[6].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 130 IntersectionScenarioInet.node[6].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 131 IntersectionScenarioInet.node[6].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 132 IntersectionScenarioInet.node[6].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 133 IntersectionScenarioInet.node[6].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 134 IntersectionScenarioInet.node[6].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 135 IntersectionScenarioInet.node[6].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 136 IntersectionScenarioInet.node[6].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 137 IntersectionScenarioInet.node[6].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 138 IntersectionScenarioInet.node[4].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 139 IntersectionScenarioInet.node[4].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 140 IntersectionScenarioInet.node[4].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 141 IntersectionScenarioInet.node[4].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 142 IntersectionScenarioInet.node[4].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 143 IntersectionScenarioInet.node[4].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 144 IntersectionScenarioInet.node[4].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 145 IntersectionScenarioInet.node[4].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 146 IntersectionScenarioInet.node[4].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 147 IntersectionScenarioInet.node[5].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 148 IntersectionScenarioInet.node[5].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 149 IntersectionScenarioInet.node[5].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 150 IntersectionScenarioInet.node[5].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 151 IntersectionScenarioInet.node[5].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 152 IntersectionScenarioInet.node[5].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 153 IntersectionScenarioInet.node[5].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 154 IntersectionScenarioInet.node[5].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 155 IntersectionScenarioInet.node[5].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 156 IntersectionScenarioInet.node[4].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 157 IntersectionScenarioInet.node[5].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 158 IntersectionScenarioInet.node[6].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 159 IntersectionScenarioInet.node[4].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 160 IntersectionScenarioInet.node[5].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 161 IntersectionScenarioInet.node[6].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 162 IntersectionScenarioInet.node[4].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 163 IntersectionScenarioInet.node[4].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 164 IntersectionScenarioInet.node[5].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 165 IntersectionScenarioInet.node[5].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 166 IntersectionScenarioInet.node[6].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 167 IntersectionScenarioInet.node[6].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 168 IntersectionScenarioInet.node[4].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 169 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 170 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 171 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 172 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 173 IntersectionScenarioInet.node[5].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 174 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 175 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 176 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 177 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 178 IntersectionScenarioInet.node[6].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 179 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 180 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 181 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 182 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 183 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 184 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 185 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 186 IntersectionScenarioInet.node[4].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 187 IntersectionScenarioInet.node[4].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 188 IntersectionScenarioInet.node[4].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 189 IntersectionScenarioInet.node[4].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 190 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 191 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 192 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 193 IntersectionScenarioInet.node[5].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 194 IntersectionScenarioInet.node[5].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 195 IntersectionScenarioInet.node[5].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 196 IntersectionScenarioInet.node[5].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 197 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 198 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 199 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 200 IntersectionScenarioInet.node[6].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 201 IntersectionScenarioInet.node[6].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 202 IntersectionScenarioInet.node[6].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 203 IntersectionScenarioInet.node[6].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 204 IntersectionScenarioInet.node[4].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 205 IntersectionScenarioInet.node[4].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 206 IntersectionScenarioInet.node[4].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 207 IntersectionScenarioInet.node[4].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+vector 208 IntersectionScenarioInet.node[5].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 209 IntersectionScenarioInet.node[5].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 210 IntersectionScenarioInet.node[5].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 211 IntersectionScenarioInet.node[5].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+vector 212 IntersectionScenarioInet.node[6].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 213 IntersectionScenarioInet.node[6].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 214 IntersectionScenarioInet.node[6].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 215 IntersectionScenarioInet.node[6].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+vector 216 IntersectionScenarioInet.node[2].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 217 IntersectionScenarioInet.node[2].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 218 IntersectionScenarioInet.node[2].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 219 IntersectionScenarioInet.node[2].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 220 IntersectionScenarioInet.node[2].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 221 IntersectionScenarioInet.node[2].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 222 IntersectionScenarioInet.node[2].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 223 IntersectionScenarioInet.node[0].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 224 IntersectionScenarioInet.node[0].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 225 IntersectionScenarioInet.node[0].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 226 IntersectionScenarioInet.node[0].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 227 IntersectionScenarioInet.node[0].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 228 IntersectionScenarioInet.node[0].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 229 IntersectionScenarioInet.node[0].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 230 IntersectionScenarioInet.node[1].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 231 IntersectionScenarioInet.node[1].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 232 IntersectionScenarioInet.node[1].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 233 IntersectionScenarioInet.node[1].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 234 IntersectionScenarioInet.node[1].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 235 IntersectionScenarioInet.node[1].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 236 IntersectionScenarioInet.node[1].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 237 IntersectionScenarioInet.node[3].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 238 IntersectionScenarioInet.node[3].wlan[0].mac packetDrop:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropped
+attr title "packet drops, vector(packetBytes)"
+vector 239 IntersectionScenarioInet.node[3].wlan[0].mac packetDropIncorrectlyReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropReasonIsIncorrectlyReceived(packetDropped)
+attr title "packet drops: incorrectly received, vector(packetBytes)"
+vector 240 IntersectionScenarioInet.node[7].wlan[0].mac packetDrop:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropped
+attr title "packet drops, vector(packetBytes)"
+vector 241 IntersectionScenarioInet.node[7].wlan[0].mac packetDropIncorrectlyReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropReasonIsIncorrectlyReceived(packetDropped)
+attr title "packet drops: incorrectly received, vector(packetBytes)"
+vector 242 IntersectionScenarioInet.node[3].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 243 IntersectionScenarioInet.node[3].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 244 IntersectionScenarioInet.node[3].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 245 IntersectionScenarioInet.node[3].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 246 IntersectionScenarioInet.node[3].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 247 IntersectionScenarioInet.node[3].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 248 IntersectionScenarioInet.node[1].wlan[0].mac packetDrop:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropped
+attr title "packet drops, vector(packetBytes)"
+vector 249 IntersectionScenarioInet.node[1].wlan[0].mac packetDropIncorrectlyReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropReasonIsIncorrectlyReceived(packetDropped)
+attr title "packet drops: incorrectly received, vector(packetBytes)"
+vector 250 IntersectionScenarioInet.node[5].wlan[0].mac packetDrop:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropped
+attr title "packet drops, vector(packetBytes)"
+vector 251 IntersectionScenarioInet.node[5].wlan[0].mac packetDropIncorrectlyReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropReasonIsIncorrectlyReceived(packetDropped)
+attr title "packet drops: incorrectly received, vector(packetBytes)"
+vector 252 IntersectionScenarioInet.node[0].wlan[0].mac packetDrop:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropped
+attr title "packet drops, vector(packetBytes)"
+vector 253 IntersectionScenarioInet.node[0].wlan[0].mac packetDropIncorrectlyReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropReasonIsIncorrectlyReceived(packetDropped)
+attr title "packet drops: incorrectly received, vector(packetBytes)"
+vector 254 IntersectionScenarioInet.node[4].wlan[0].mac packetDrop:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropped
+attr title "packet drops, vector(packetBytes)"
+vector 255 IntersectionScenarioInet.node[4].wlan[0].mac packetDropIncorrectlyReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropReasonIsIncorrectlyReceived(packetDropped)
+attr title "packet drops: incorrectly received, vector(packetBytes)"
+vector 256 IntersectionScenarioInet.node[7].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 257 IntersectionScenarioInet.node[7].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 258 IntersectionScenarioInet.node[7].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 259 IntersectionScenarioInet.node[7].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 260 IntersectionScenarioInet.node[7].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 261 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 262 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 263 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 264 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 265 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 266 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 267 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 268 IntersectionScenarioInet.node[7].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 269 IntersectionScenarioInet.node[7].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 270 IntersectionScenarioInet.node[7].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 271 IntersectionScenarioInet.node[7].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 272 IntersectionScenarioInet.node[7].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 273 IntersectionScenarioInet.node[7].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 274 IntersectionScenarioInet.node[7].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 275 IntersectionScenarioInet.node[7].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+vector 276 IntersectionScenarioInet.node[2].wlan[0].mac packetDrop:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropped
+attr title "packet drops, vector(packetBytes)"
+vector 277 IntersectionScenarioInet.node[2].wlan[0].mac packetDropIncorrectlyReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropReasonIsIncorrectlyReceived(packetDropped)
+attr title "packet drops: incorrectly received, vector(packetBytes)"
+vector 278 IntersectionScenarioInet.node[6].wlan[0].mac packetDrop:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropped
+attr title "packet drops, vector(packetBytes)"
+vector 279 IntersectionScenarioInet.node[6].wlan[0].mac packetDropIncorrectlyReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetDropReasonIsIncorrectlyReceived(packetDropped)
+attr title "packet drops: incorrectly received, vector(packetBytes)"
+28	60707 6215 118 162588 0.4 22.4 288 33 64 15238 847962
+29	66922 6215 118 162588 0.4 22.4 288 33 64 15238 847962
+216	73137 68638 604 189616 0.800050033657 26.741246586588 2346 69 1500 247235 44624235
+78	141775 7119 148 162661 0.4 22.4 288 69 100 25606 2318346
+42	148894 6215 127 162613 0.4 22.4 288 41 72 17542 1110202
+220	155109 61441 604 189616 0.800050033657 26.741246586588 2133 41 2308 168918 46187222
+277	216550 5974 3419 188267 1.100223455791 26.600050356737 207 69 706 18425 2067733
+276	222524 5974 3419 188267 1.100223455791 26.600050356737 207 69 706 18425 2067733
+77	228498 8827 148 162661 0.4 22.4 288 24000000 24000000 6912000000 1.65888e+17
+79	237325 13943 148 162721 0.4 22.400054 576 0 1 288 288
+219	251268 62664 604 189616 0.800050033657 26.741246586588 2139 69 1500 228810 42556502
+218	313932 62664 604 189616 0.800050033657 26.741246586588 2139 69 1500 228810 42556502
+217	376596 62664 604 189616 0.800050033657 26.741246586588 2139 69 1500 228810 42556502
+98	439260 7440 168 162721 0.40005 22.400054 288 69 100 25606 2318346
+97	446700 7440 168 162721 0.40005 22.400054 288 69 100 25606 2318346
+96	454140 7440 168 162721 0.40005 22.400054 288 69 100 25606 2318346
+75	461580 7048 148 162661 0.4 22.4 288 0 0.00145346971 0.036814772677 1.981889164242e-05
+74	468628 6305 148 162661 0.4 22.4 288 69 100 25606 2318346
+43	474933 6235 127 162613 0.4 22.4 288 69 100 25606 2318346
+44	481168 11924 127 162661 0.4 22.4 576 0 7 484 860
+99	493092 9261 168 162721 0.40005 22.400054 288 5e-05 0.000802034244 0.040443216881 1.3051908937163e-05
+76	502353 13129 148 162721 0.4 22.400054 576 0 2 450 612
+46	515482 24266 127 162651 0.4 22.4 980 0 1 490 490
+45	539748 6290 127 162613 0.4 22.4 288 0 7 969 4833
+11	546038 11 2 2 0.1 0.1 1 7 7 7 49
+9	546049 10 2 2 0.1 0.1 1 0 0 0 0
+8	546059 13397 2 162722 0.1 22.400054 579 0 3 1442 3748
+10	559456 148731 2 189615 0.1 26.741246586588 5609 0 3 10353 25109
+80	708187 27886 149 162722 0.4 22.400054 1152 0 2 1152 1728
+56	736073 65345 132 189619 0.4 26.741246586588 2415 13 2634 118672 48439168
+22	801418 6215 108 162558 0.4 22.4 288 13 44 9478 353642
+57	807633 69050 132 189619 0.4 26.741246586588 2415 1 2415 2917320 4697857640
+222	876683 5464 608 189659 0.1 26.8 268 0 1273280 7374240 1870111526400
+221	882147 61162 608 189620 0.800050033657 26.741246586588 2127 5 2626 92178 46474550
+18	943309 6139 95 162542 0.4 22.4 288 5 36 7174 220426
+162	949448 8625 540 194814 0.8 27.9 369 33 64 19563 1088027
+163	958073 8625 540 194814 0.8 27.9 369 33 64 19563 1088027
+138	966698 69007 436 194886 0.700050032965 27.900242197826 2343 69 1500 247413 44300445
+187	1035705 9706 567 194833 0.8 27.9 369 69 100 32847 2974787
+168	1045411 8627 549 194821 0.8 27.9 369 41 72 22515 1424651
+142	1054038 63615 436 194886 0.700050032965 27.900242197826 2197 41 2308 173560 46533824
+255	1117653 4090 1256 193378 0.820759713405 27.580994213898 140 69 104 12169 1087213
+254	1121743 4090 1256 193378 0.820759713405 27.580994213898 140 69 104 12169 1087213
+186	1125833 11901 567 194833 0.8 27.9 369 24000000 24000000 8856000000 2.12544e+17
+188	1137734 19027 567 194856 0.8 27.900054 738 0 1 369 369
+141	1156761 64917 436 194886 0.700050032965 27.900242197826 2203 69 1500 235244 43213232
+140	1221678 64917 436 194886 0.700050032965 27.900242197826 2203 69 1500 235244 43213232
+139	1286595 64917 436 194886 0.700050032965 27.900242197826 2203 69 1500 235244 43213232
+206	1351512 10097 597 194856 0.80005 27.900054 369 69 100 32847 2974787
+205	1361609 10097 597 194856 0.80005 27.900054 369 69 100 32847 2974787
+204	1371706 10097 597 194856 0.80005 27.900054 369 69 100 32847 2974787
+184	1381803 9871 567 194833 0.8 27.9 369 0 0.003078414543 0.058960127937 4.6687836120816e-05
+183	1391674 8694 567 194833 0.8 27.9 369 69 100 32847 2974787
+169	1400368 8646 549 194821 0.8 27.9 369 69 100 32847 2974787
+170	1409014 16564 549 194833 0.8 27.9 738 0 7 605 1017
+207	1425578 12421 597 194856 0.80005 27.900054 369 5e-05 0.001094325034 0.049271368469 1.5359813261147e-05
+185	1437999 18015 567 194856 0.8 27.900054 738 0 2 567 765
+172	1456014 35346 549 194829 0.8 27.9 1338 0 1 669 669
+171	1491360 8695 549 194821 0.8 27.9 369 0 7 1203 5709
+107	1500055 14 207 207 0.5 0.5 1 7 7 7 49
+105	1500069 14 207 207 0.5 0.5 1 0 0 0 0
+104	1500083 19069 207 194857 0.5 27.900054 741 0 3 1847 4801
+106	1519152 159490 207 194885 0.5 27.900242197826 5765 0 3 10422 25160
+189	1678642 38054 568 194857 0.8 27.900054 1476 0 2 1476 2214
+143	1716696 72050 439 194889 0.700050032965 27.900242197826 2560 13 2634 124227 48675459
+159	1788746 8625 532 194806 0.8 27.9 369 13 44 12183 453107
+144	1797371 76045 439 194889 0.700050032965 27.900242197826 2560 1 2560 3278080 5595682560
+146	1873416 5727 440 194964 0.1 28 280 0 1273280 7561280 1877458483200
+145	1879143 63318 440 194890 0.700050032965 27.900242197826 2191 5 2626 94516 46569872
+156	1942461 8533 512 194791 0.8 27.9 369 5 36 9231 281795
+vector 280 IntersectionScenarioInet.node[8].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 281 IntersectionScenarioInet.node[8].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 282 IntersectionScenarioInet.node[8].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 283 IntersectionScenarioInet.node[8].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 284 IntersectionScenarioInet.node[8].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 285 IntersectionScenarioInet.node[8].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 286 IntersectionScenarioInet.node[8].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 287 IntersectionScenarioInet.node[8].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 288 IntersectionScenarioInet.node[8].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 289 IntersectionScenarioInet.node[8].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 290 IntersectionScenarioInet.node[8].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 291 IntersectionScenarioInet.node[8].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 292 IntersectionScenarioInet.node[8].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+284	1953566 214 195063 195367 28.000062427431 28.000814723391 7 96 104 712 72512
+288	1953780 209 195063 195367 28.000062427431 28.000814723391 7 68 76 516 38128
+287	1953989 214 195063 195367 28.000062427431 28.000814723391 7 96 104 712 72512
+286	1954203 214 195063 195367 28.000062427431 28.000814723391 7 96 104 712 72512
+285	1954417 214 195063 195367 28.000062427431 28.000814723391 7 96 104 712 72512
+283	1954631 16 194964 194964 28 28 1 7 7 7 49
+281	1954647 16 194964 194964 28 28 1 0 0 0 0
+280	1954663 48 194964 194964 28 28 3 0 2 2 4
+282	1954711 420 194964 195366 28 28.000814723391 15 1 3 29 71
+289	1955131 209 195066 195370 28.000062427431 28.000814723391 7 40 48 320 14720
+290	1955340 202 195066 195370 28.000062427431 28.000814723391 7 1 7 28 140
+292	1955542 4907 195067 195417 0.1 28.1 281 0 21120 21120 446054400
+291	1960449 209 195067 195371 28.000062427431 28.000814723391 7 32 40 264 10048
+30	1960658 7872 120 187361 0.4 26.4 352 33 64 18659 1038023
+31	1968530 7872 120 187361 0.4 26.4 352 33 64 18659 1038023
+237	1976402 72085 626 200021 0.800050501886 29.261234632461 2449 69 1500 256966 45181300
+85	2048487 8818 151 187380 0.4 26.4 352 69 100 31331 2837663
+47	2057305 7872 129 187368 0.4 26.4 352 41 72 21475 1359095
+245	2065177 63962 673 200021 0.800223614486 29.261234632461 2209 41 2308 175048 46667004
+239	2129139 6809 626 199109 0.800050501886 29.000158238751 234 69 134 19898 1742152
+238	2135948 6809 626 199109 0.800050501886 29.000158238751 234 69 134 19898 1742152
+84	2142757 10910 151 187380 0.4 26.4 352 24000000 24000000 8448000000 2.02752e+17
+86	2153667 17283 151 187407 0.4 26.400054 704 0 1 352 352
+244	2170950 65276 673 200021 0.800223614486 29.261234632461 2215 69 1500 237068 43439148
+243	2236226 65276 673 200021 0.800223614486 29.261234632461 2215 69 1500 237068 43439148
+242	2301502 65276 673 200021 0.800223614486 29.261234632461 2215 69 1500 237068 43439148
+102	2366778 9561 169 187407 0.40005 26.400054 352 69 100 31331 2837663
+101	2376339 9561 169 187407 0.40005 26.400054 352 69 100 31331 2837663
+100	2385900 9561 169 187407 0.40005 26.400054 352 69 100 31331 2837663
+82	2395461 8981 151 187380 0.4 26.4 352 0 0.001934 0.049368545798 2.5462185150704e-05
+81	2404442 7935 151 187380 0.4 26.4 352 69 100 31331 2837663
+48	2412377 7892 129 187368 0.4 26.4 352 69 100 31331 2837663
+49	2420269 15083 129 187380 0.4 26.4 704 0 6 552 832
+103	2435352 11697 169 187407 0.40005 26.400054 352 5e-05 0.000891972004 0.048590654365 1.6653345850847e-05
+83	2447049 16400 151 187407 0.4 26.400054 704 0 2 538 724
+51	2463449 32263 129 187376 0.4 26.4 1274 0 1 637 637
+50	2495712 7936 129 187368 0.4 26.4 352 0 7 1199 5949
+15	2503648 11 2 2 0.1 0.1 1 7 7 7 49
+13	2503659 11 2 2 0.1 0.1 1 0 0 0 0
+12	2503670 17316 2 187408 0.1 26.400054 707 0 3 1762 4580
+14	2520986 159026 2 200020 0.1 29.261234632461 5966 0 3 10875 26295
+87	2680012 34566 152 187408 0.4 26.400054 1408 0 2 1408 2112
+58	2714578 69441 133 200024 0.4 29.261234632461 2555 13 2634 124815 48714075
+23	2784019 7872 109 187353 0.4 26.4 352 13 44 11619 432463
+59	2791891 73426 133 200024 0.4 29.261234632461 2555 1 2555 3265290 5562965730
+247	2865317 5980 677 200042 0.1 29.3 293 0 1273280 7645760 1871847040000
+246	2871297 63687 677 200025 0.800223614486 29.261234632461 2203 5 2626 95572 46611468
+19	2934984 7783 96 187342 0.4 26.4 352 5 36 8803 269087
+164	2942767 17965 542 201097 0.8 29.68 887 33 2654 75021 48898569
+165	2960732 17965 542 201097 0.8 29.68 887 33 2654 75021 48898569
+147	2978697 55907 442 201453 0.700050033024 29.7001981081 1930 69 134 184645 17838005
+194	3034604 23907 570 201298 0.8 29.680860190232 899 69 1500 107457 31020609
+173	3058511 18094 551 201108 0.8 29.68 893 41 2308 82285 40474937
+151	3076605 51058 442 201453 0.700050033024 29.7001981081 1781 41 106 122197 8504391
+251	3127663 4251 1250 200520 0.820759393895 29.401050385568 149 69 134 12580 1094278
+250	3131914 4251 1250 200520 0.820759393895 29.401050385568 149 69 134 12580 1094278
+193	3136165 28666 570 201298 0.8 29.680860190232 899 24000000 24000000 21576000000 5.17824e+17
+195	3164831 45577 570 201305 0.8 29.680922190232 1798 0 1 899 899
+150	3210408 51656 442 201453 0.700050033024 29.7001981081 1781 69 134 172065 16743727
+149	3262064 51656 442 201453 0.700050033024 29.7001981081 1781 69 134 172065 16743727
+148	3313720 51656 442 201453 0.700050033024 29.7001981081 1781 69 134 172065 16743727
+210	3365376 24738 598 201305 0.80005 29.680922190232 899 69 1500 107457 31020609
+209	3390114 24738 598 201305 0.80005 29.680922190232 899 69 1500 107457 31020609
+208	3414852 24738 598 201305 0.80005 29.680922190232 899 69 1500 107457 31020609
+191	3439590 25023 570 201222 0.8 29.680516 893 0 0.007648373012 0.293257069948 0.00042314764895784
+190	3464613 21674 570 201222 0.8 29.680516 893 69 2336 107289 45783009
+174	3486287 18697 551 201108 0.8 29.68 893 69 2336 107289 45783009
+175	3504984 37332 551 201222 0.8 29.680516 1786 0 12 4107 15597
+211	3542316 30780 598 201305 0.80005 29.680922190232 899 5e-05 0.001458117482 0.22301015105 8.956463532312e-05
+192	3573096 43504 570 201305 0.8 29.680922190232 1798 0 3 2139 3399
+177	3616600 70067 551 201297 0.8 29.680860190232 2716 0 1 1358 1358
+176	3686667 21144 551 201229 0.8 29.680578 899 0 7 3160 15814
+111	3707811 14 207 207 0.5 0.5 1 7 7 7 49
+109	3707825 14 207 207 0.5 0.5 1 0 0 0 0
+108	3707839 45619 207 201306 0.5 29.680922190232 1801 0 3 4497 11691
+110	3753458 162084 207 201452 0.5 29.7001981081 6010 0 3 9322 21604
+196	3915542 91154 571 201306 0.8 29.680922190232 3596 0 2 3596 5394
+152	4006696 69020 445 201456 0.700050033024 29.7001981081 2668 13 2634 129610 49310192
+160	4075716 17965 533 201083 0.8 29.68 887 13 2634 57281 46252529
+153	4093681 73230 445 201456 0.700050033024 29.7001981081 2668 1 2668 3560446 6334033434
+155	4166911 6065 446 201506 0.1 29.8 298 0 66640 4646480 128286713600
+154	4172976 50953 446 201457 0.700050033024 29.7001981081 1781 5 70 58081 2014383
+157	4223929 17868 513 201075 0.8 29.68 887 5 2626 50185 45392801
+vector 293 IntersectionScenarioInet.node[9].wlan[0].radio radioMode:vector ETV
+attr interpolationmode sample-hold
+attr source radioModeChanged
+attr title "Radio mode, vector"
+vector 294 IntersectionScenarioInet.node[9].wlan[0].radio radioChannel:vector ETV
+attr interpolationmode sample-hold
+attr source radioChannelChanged
+attr title "Radio channel, vector"
+vector 295 IntersectionScenarioInet.node[9].wlan[0].radio receptionState:vector ETV
+attr interpolationmode sample-hold
+attr source receptionStateChanged
+attr title "Radio reception state, vector"
+vector 296 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.recoveryProcedure contentionWindowChanged:vector ETV
+attr interpolationmode sample-hold
+attr title "contention window, vector"
+vector 297 IntersectionScenarioInet.node[9].wlan[0].mac packetReceivedFromLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from lower layer, vector(packetBytes)"
+vector 298 IntersectionScenarioInet.node[9].wlan[0].mac.dcf packetReceivedFromPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received, vector(packetBytes)"
+vector 299 IntersectionScenarioInet.node[9].wlan[0].mac.dcf packetReceivedFromPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetReceivedFromPeer)
+attr title "packets received: multicast, vector(packetBytes)"
+vector 300 IntersectionScenarioInet.node[9].wlan[0].mac.dcf packetReceivedFromPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetReceivedFromPeer)
+attr title "packets received: without retry, vector(packetBytes)"
+vector 301 IntersectionScenarioInet.node[9].wlan[0].mac packetSentToUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to upper layer, vector(packetBytes)"
+vector 302 IntersectionScenarioInet.node[9].udp packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 303 IntersectionScenarioInet.node[9].udp passedUpPk:vector(count) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed up, vector(count)"
+vector 304 IntersectionScenarioInet.node[9].app[0] packetReceived:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceived
+attr title "packets received, vector(packetBytes)"
+vector 305 IntersectionScenarioInet.node[9].app[0] throughput:vector ETV
+attr source throughput(packetReceived)
+attr title "throughput, vector"
+attr unit bps
+vector 306 IntersectionScenarioInet.node[9].app[0] packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 307 IntersectionScenarioInet.node[9].udp packetSent:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSent
+attr title "packets sent, vector(packetBytes)"
+vector 308 IntersectionScenarioInet.node[9].lo[0].lo rcvdPkFromHl:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetReceivedFromUpper
+attr title "packets received from higher layer, vector(packetBytes)"
+vector 309 IntersectionScenarioInet.node[9].lo[0].lo passedUpPk:vector(packetBytes) ETV
+attr interpolationmode none
+attr source packetSentToUpper
+attr title "packets passed to higher layer, vector(packetBytes)"
+vector 310 IntersectionScenarioInet.node[9].wlan[0].mac packetReceivedFromUpper:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets received from upper layer, vector(packetBytes)"
+vector 311 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.channelAccess.pendingQueue packetPushed:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet pushed, vector(packetBytes)"
+vector 312 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.channelAccess.pendingQueue queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetPushed) - count(packetPopped) - count(packetRemoved) - count(packetDropped)"
+attr title "queue length, vector"
+vector 313 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.channelAccess.contention backoffPeriodGenerated:vector ETV
+attr interpolationmode none
+attr title "backoff periods, vector"
+vector 314 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.channelAccess.contention backoffActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(backoffStarted)-count(backoffStopped)
+attr title "backoff active, vector"
+vector 315 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.channelAccess.pendingQueue packetPopped:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packet popped, vector(packetBytes)"
+vector 316 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.channelAccess.pendingQueue queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetPopped)
+attr title "queueing times, vector"
+attr unit s
+vector 317 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.channelAccess.inProgressFrames queueLength:vector ETV
+attr interpolationmode sample-hold
+attr source "count(packetEnqueued) - count(packetDequeued)"
+attr title "queue length, vector"
+vector 318 IntersectionScenarioInet.node[9].wlan[0].mac.dcf datarateSelected:vector ETV
+attr interpolationmode none
+attr title "datarates selected, vector"
+vector 319 IntersectionScenarioInet.node[9].wlan[0].mac packetSentToLower:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent to lower layer, vector(packetBytes)"
+vector 320 IntersectionScenarioInet.node[9].wlan[0].mac.dcf frameSequenceActive:vector ETV
+attr interpolationmode sample-hold
+attr source count(frameSequenceStarted)-count(frameSequenceFinished)
+attr title "frame sequence active, vector"
+vector 321 IntersectionScenarioInet.node[9].wlan[0].radio transmissionState:vector ETV
+attr interpolationmode sample-hold
+attr source transmissionStateChanged
+attr title "Radio transmission state, vector"
+vector 322 IntersectionScenarioInet.node[9].wlan[0].mac.dcf packetSentToPeer:vector(packetBytes) ETV
+attr interpolationmode none
+attr title "packets sent, vector(packetBytes)"
+vector 323 IntersectionScenarioInet.node[9].wlan[0].mac.dcf packetSentToPeerMulticast:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211Multicast(packetSentToPeer)
+attr title "packets sent: multicast, vector(packetBytes)"
+vector 324 IntersectionScenarioInet.node[9].wlan[0].mac.dcf packetSentToPeerWithoutRetry:vector(packetBytes) ETV
+attr interpolationmode none
+attr source ieee80211NotRetry(packetSentToPeer)
+attr title "packets sent: without retry, vector(packetBytes)"
+vector 325 IntersectionScenarioInet.node[9].wlan[0].mac.dcf.channelAccess.inProgressFrames queueingTime:vector ETV
+attr interpolationmode none
+attr source queueingTime(packetDequeued)
+attr title "queueing times, vector"
+166	4248618 9528 546 207404 0.8 32.9 412 33 64 21552 1185596
+167	4258146 9528 546 207404 0.8 32.9 412 33 64 21552 1185596
+129	4267674 76910 430 212916 0.700050032618 37.30015837804 2614 69 1500 272712 47079268
+201	4344584 10715 573 207487 0.8 32.900288 412 69 100 36384 3271292
+178	4355299 9528 555 207411 0.8 32.9 412 41 72 24848 1556796
+133	4364827 70319 430 212916 0.700050032618 37.30015837804 2428 41 2308 188329 47505733
+279	4435146 5247 3421 200311 1.100223472459 29.400062090988 180 69 706 16231 1885959
+278	4440393 5247 3421 200311 1.100223472459 29.400062090988 180 69 706 16231 1885959
+200	4445640 13168 573 207487 0.8 32.900288 412 24000000 24000000 9888000000 2.37312e+17
+202	4458808 21041 573 207494 0.8 32.900342 824 0 1 412 412
+132	4479849 71663 430 212916 0.700050032618 37.30015837804 2434 69 1500 256481 45193309
+131	4551512 71663 430 212916 0.700050032618 37.30015837804 2434 69 1500 256481 45193309
+130	4623175 71663 430 212916 0.700050032618 37.30015837804 2434 69 1500 256481 45193309
+214	4694838 11188 599 207494 0.80005 32.900342 412 69 100 36384 3271292
+213	4706026 11188 599 207494 0.80005 32.900342 412 69 100 36384 3271292
+212	4717214 11188 599 207494 0.80005 32.900342 412 69 100 36384 3271292
+198	4728402 10903 573 207453 0.8 32.90014 412 0 0.001135031863 0.054166818861 2.2345428804485e-05
+197	4739305 9594 573 207453 0.8 32.90014 412 69 100 36384 3271292
+179	4748899 9547 555 207411 0.8 32.9 412 69 100 36384 3271292
+180	4758446 18279 555 207453 0.8 32.90014 824 0 5 672 1016
+215	4776725 13722 599 207494 0.80005 32.900342 412 5e-05 0.001166242512 0.055725805485 1.7361736727942e-05
+199	4790447 19920 573 207494 0.8 32.900342 824 0 2 648 884
+182	4810367 37553 555 207486 0.8 32.900288 1430 0 1 715 715
+181	4847920 9622 555 207460 0.8 32.900198 412 0 7 1477 7515
+115	4857542 14 207 207 0.5 0.5 1 7 7 7 49
+113	4857556 14 207 207 0.5 0.5 1 0 0 0 0
+112	4857570 21083 207 207495 0.5 32.900342 827 0 3 2062 5360
+114	4878653 177196 207 212915 0.5 37.30015837804 6412 0 3 11587 27989
+203	5055849 42082 574 207495 0.8 32.900342 1648 0 2 1648 2472
+134	5097931 79655 433 212919 0.700050032618 37.30015837804 2834 13 2634 133657 49036617
+161	5177586 9526 535 207396 0.8 32.9 412 13 44 13312 488316
+135	5187112 84198 433 212919 0.700050032618 37.30015837804 2834 1 2834 4017195 7591159485
+137	5271310 7605 434 212951 0.1 37.4 374 0 1273280 8077520 1881830892800
+136	5278915 69984 434 212920 0.700050032618 37.30015837804 2422 5 2626 100969 46777789
+158	5348899 9417 514 207386 0.8 32.9 412 5 36 10016 301692
+258	5358316 9973 1599 210506 0.821646057796 35 435 33 64 22738 1249682
+259	5368289 9973 1599 210506 0.821646057796 35 435 33 64 22738 1249682
+120	5378262 76667 424 213366 0.700050024752 37.821022299296 2599 69 1500 270578 46437284
+269	5454929 10655 1618 210513 0.821696057796 35 435 69 100 38398 3450578
+260	5465584 9973 1602 210509 0.821646057796 35 435 41 72 26218 1641330
+124	5475557 66042 424 213366 0.700050024752 37.821022299296 2273 41 2308 180142 47046946
+241	5541599 9291 628 204596 0.80005052114 31.460062153743 320 69 134 26624 2282754
+240	5550890 9291 628 204596 0.80005052114 31.460062153743 320 69 134 26624 2282754
+268	5560181 13245 1618 210513 0.821696057796 35 435 24000000 24000000 10440000000 2.5056e+17
+270	5573426 21030 1618 210520 0.821696057796 35.000054 870 0 1 435 435
+123	5594456 67376 424 213366 0.700050024752 37.821022299296 2279 69 1500 243954 44154530
+122	5661832 67376 424 213366 0.700050024752 37.821022299296 2279 69 1500 243954 44154530
+121	5729208 67376 424 213366 0.700050024752 37.821022299296 2279 69 1500 243954 44154530
+274	5796584 11285 1628 210520 0.821750057796 35.000054 435 69 100 38398 3450578
+273	5807869 11285 1628 210520 0.821750057796 35.000054 435 69 100 38398 3450578
+272	5819154 11285 1628 210520 0.821750057796 35.000054 435 69 100 38398 3450578
+266	5830439 11187 1618 210513 0.821696057796 35 435 0 0.001772789172 0.041999566757 1.7889023876415e-05
+265	5841626 10069 1618 210513 0.821696057796 35 435 69 100 38398 3450578
+261	5851695 9993 1602 210509 0.821646057796 35 435 69 100 38398 3450578
+262	5861688 19152 1602 210513 0.821646057796 35 870 0 6 739 1195
+275	5880840 13472 1628 210520 0.821750057796 35.000054 435 5e-05 0.001076110986 0.052856698586 1.316700722207e-05
+267	5894312 20444 1618 210520 0.821696057796 35.000054 870 0 2 697 959
+264	5914756 26959 1602 210512 0.821646057796 35 1100 0 1 550 550
+263	5941715 10114 1602 210509 0.821646057796 35 435 0 7 1553 7811
+119	5951829 14 260 260 0.6 0.6 1 7 7 7 49
+117	5951843 14 260 260 0.6 0.6 1 0 0 0 0
+116	5951857 21072 260 210521 0.6 35.000054 873 0 3 2177 5659
+118	5972929 176946 260 213365 0.6 37.821022299296 6439 0 3 11572 27906
+271	6149875 42060 1619 210521 0.821696057796 35.000054 1740 0 2 1740 2610
+125	6191935 75823 427 213369 0.700050024752 37.821022299296 2702 13 2634 130536 48940628
+257	6267758 9973 1597 210504 0.821646057796 35 435 13 44 14038 514162
+126	6277731 80102 427 213369 0.700050024752 37.821022299296 2702 1 2702 3651753 6579241655
+128	6357833 7586 428 213397 0.1 37.9 379 0 1273280 7868960 1871466918400
+127	6365419 65790 428 213370 0.700050024752 37.821022299296 2267 5 2626 98362 46707586
+256	6431209 9858 1596 210495 0.821646057796 35 435 5 36 10558 317394
+308	6441067 5890 201662 221745 29.92 51.4 304 33 64 16116 893048
+309	6446957 5890 201662 221745 29.92 51.4 304 33 64 16116 893048
+297	6452847 2490 201600 210535 29.900050246686 35.000054141655 83 69 96 6976 597580
+319	6455337 6764 201711 221776 29.92 51.40018 304 69 100 27060 2447384
+310	6462101 5890 201679 221750 29.92 51.4 304 41 72 18548 1170360
+301	6467991 2490 201600 210535 29.900050246686 35.000054141655 83 41 68 4652 271996
+318	6470481 8578 201711 221776 29.92 51.40018 304 24000000 24000000 7296000000 1.75104e+17
+320	6479059 13385 201711 221781 29.92 51.400238 608 0 1 304 304
+300	6492444 2490 201600 210535 29.900050246686 35.000054141655 83 69 96 6976 597580
+299	6494934 2490 201600 210535 29.900050246686 35.000054141655 83 69 96 6976 597580
+298	6497424 2490 201600 210535 29.900050246686 35.000054141655 83 69 96 6976 597580
+324	6499914 7249 201718 221781 29.920062 51.400238 304 69 100 27060 2447384
+323	6507163 7249 201718 221781 29.920062 51.400238 304 69 100 27060 2447384
+322	6514412 7249 201718 221781 29.920062 51.400238 304 69 100 27060 2447384
+316	6521661 6922 201711 221756 29.92 51.4 304 0 0.001420906138 0.062439322506 4.4024636520395e-05
+315	6528583 6403 201711 221756 29.92 51.4 304 69 100 27060 2447384
+311	6534986 5900 201679 221750 29.92 51.4 304 69 100 27060 2447384
+312	6540886 11675 201679 221756 29.92 51.4 608 0 8 1398 5620
+325	6552561 8840 201718 221781 29.920062 51.400238 304 5e-05 0.000498302046 0.055496906138 1.2969447306855e-05
+317	6561401 13024 201711 221781 29.92 51.400238 608 0 2 724 1144
+314	6574425 13158 201679 221775 29.92 51.40018 616 0 1 308 308
+313	6587583 6470 201679 221761 29.92 51.40005 304 0 7 1057 5209
+296	6594053 18 201506 201506 29.8 29.8 1 7 7 7 49
+294	6594071 18 201506 201506 29.8 29.8 1 0 0 0 0
+293	6594089 13439 201506 221782 29.8 51.400238 611 0 3 1522 3956
+295	6607528 18246 201506 221782 29.8 51.400238 776 0 3 639 1139
+321	6625774 26770 201712 221782 29.92 51.400238 1216 0 2 1216 1824
+302	6652544 8380 201603 221752 29.900050246686 51.4 387 13 44 12364 446564
+307	6660924 5890 201646 221740 29.92 51.4 304 13 44 10036 370008
+303	6666814 8659 201603 221752 29.900050246686 51.4 387 1 387 75078 19395150
+305	6675473 9166 201604 221813 0.1 51.5 515 0 14160 133120 1102668800
+304	6684639 2460 201604 210539 29.900050246686 35.000054141655 83 5 32 1664 44620
+306	6687099 5818 201641 221731 29.92 51.4 304 5 36 7604 228888
+0	6692917 28913 2 100454 0.1 13.002228488561 1257 0 3 3137 8155
+1	6721830 10 2 2 0.1 0.1 1 0 0 0 0
+2	6721840 174247 2 221789 0.1 51.40023811397 6778 0 3 11674 27900
+3	6896087 10 2 2 0.1 0.1 1 7 7 7 49
+4	6896097 3706 2 50882 0.1 6.700591064015 169 0 3 417 1083
+5	6899803 10 2 2 0.1 0.1 1 0 0 0 0
+6	6899813 176827 2 221783 0.1 51.400238024545 6791 0 3 13332 32848
+7	7076640 10 2 2 0.1 0.1 1 7 7 7 49
+16	7076650 10549 93 99705 0.4 13 627 5 70 23427 931723
+17	7087199 1632 94 50538 0.4 6.7 83 5 36 2086 65958
+20	7088831 10593 106 99728 0.4 13 627 13 78 28443 1346683
+21	7099424 1656 107 50557 0.4 6.7 83 13 44 2750 104646
+24	7101080 10593 114 99763 0.4 13 627 33 98 40983 2735203
+25	7111673 10593 114 99763 0.4 13 627 33 98 40983 2735203
+26	7122266 1656 116 50583 0.4 6.7 83 33 64 4410 247846
+27	7123922 1656 116 50583 0.4 6.7 83 33 64 4410 247846
+32	7125578 10599 123 99788 0.4 13 627 41 106 45999 3431059
+33	7136177 11148 123 99788 0.4 13 627 69 134 63555 6498571
+34	7147325 23555 123 100397 0.4 13.002030488561 1254 0 9 3865 17267
+35	7170880 14083 123 100428 0.4 13.002104488561 627 0 7 2267 11535
+36	7184963 48675 123 100442 0.4 13.002154488561 2004 0 1 1002 1002
+37	7233638 1656 125 50602 0.4 6.7 83 41 72 5074 323718
+38	7235294 1676 125 50602 0.4 6.7 83 69 100 7398 672934
+39	7236970 3211 125 50706 0.4 6.700100321043 166 0 7 177 439
+40	7240181 1726 125 50716 0.4 6.700162321043 83 0 7 277 1391
+41	7241907 7268 125 50870 0.4 6.700537064015 304 0 1 152 152
+52	7249175 76571 130 221793 0.4 51.40023811397 2955 13 2634 138722 49254360
+53	7325746 81356 130 221793 0.4 51.40023811397 2955 1 2955 4367490 8605411130
+54	7407102 80725 131 221787 0.4 51.400238024545 2892 13 2634 136640 49163672
+55	7487827 85384 131 221787 0.4 51.400238024545 2892 1 2892 4183278 8066754410
+60	7573211 14771 142 100397 0.4 13.002030488561 627 69 134 63555 6498571
+61	7587982 18335 142 100397 0.4 13.002030488561 627 0 0.002454525739 0.314355953634 0.00033569933717341
+62	7606317 28909 142 100453 0.4 13.002228488561 1254 0 2 1639 2651
+63	7635226 19206 142 100443 0.4 13.002154488561 627 24000000 24000000 15048000000 3.61152e+17
+64	7654432 15999 142 100443 0.4 13.002154488561 627 69 134 63555 6498571
+65	7670431 30137 142 100453 0.4 13.002228488561 1254 0 1 627 627
+66	7700568 60274 143 100454 0.4 13.002228488561 2508 0 2 2508 3762
+67	7760842 1741 145 50706 0.4 6.700100321043 83 69 100 7398 672934
+68	7762583 1947 145 50706 0.4 6.700100321043 83 0 0.002882253921 0.018582581892 3.0408238327132e-05
+69	7764530 3607 145 50881 0.4 6.700591064015 166 0 2 139 195
+70	7768137 2454 145 50871 0.4 6.700537064015 83 24000000 24000000 1992000000 4.7808e+16
+71	7770591 1976 145 50871 0.4 6.700537064015 83 69 100 7398 672934
+72	7772567 3842 145 50881 0.4 6.700591064015 166 0 1 83 83
+73	7776409 7684 146 50882 0.4 6.700591064015 332 0 2 332 498
+88	7784093 16502 166 100453 0.40005 13.002228488561 627 69 134 63555 6498571
+89	7800595 16502 166 100453 0.40005 13.002228488561 627 69 134 63555 6498571
+90	7817097 16502 166 100453 0.40005 13.002228488561 627 69 134 63555 6498571
+91	7833599 21375 166 100453 0.40005 13.002228488561 627 5e-05 0.001024444568 0.181883545391 7.1863333218115e-05
+92	7854974 2072 167 50881 0.40005 6.700591064015 83 69 100 7398 672934
+93	7857046 2072 167 50881 0.40005 6.700591064015 83 69 100 7398 672934
+94	7859118 2072 167 50881 0.40005 6.700591064015 83 69 100 7398 672934
+95	7861190 2607 167 50881 0.40005 6.700591064015 83 5e-05 0.001567799683 0.013842374443 6.5026597732668e-06
+223	7863797 76746 610 221790 0.800050034179 51.40023811397 2590 69 1500 263166 45502750
+224	7940543 69350 610 221790 0.800050034179 51.40023811397 2340 69 1500 241151 43130509
+225	8009893 69350 610 221790 0.800050034179 51.40023811397 2340 69 1500 241151 43130509
+226	8079243 69350 610 221790 0.800050034179 51.40023811397 2340 69 1500 241151 43130509
+227	8148593 68493 610 221790 0.800050034179 51.40023811397 2334 41 2308 175631 46227717
+228	8217086 68093 614 221794 0.800050034179 51.40023811397 2328 5 2626 91655 46292205
+229	8285179 56550 614 260749 0.1 300 3000 0 1275840 7332400 1832237344000
+230	8341729 92617 616 221784 0.800050034208 51.400238024545 3134 69 1500 318118 50729790
+231	8434346 83420 616 221784 0.800050034208 51.400238024545 2821 69 1500 291698 48434706
+232	8517766 83420 616 221784 0.800050034208 51.400238024545 2821 69 1500 291698 48434706
+233	8601186 83420 616 221784 0.800050034208 51.400238024545 2821 69 1500 291698 48434706
+234	8684606 82070 616 221784 0.800050034208 51.400238024545 2815 41 2308 212710 49078386
+235	8766676 81674 620 221788 0.800050034208 51.400238024545 2809 5 2626 111418 47096562
+236	8848350 56559 620 260749 0.1 300 3000 0 1275840 8913440 1917340172800
+248	8904909 9197 1248 204589 0.820759364789 31.460062055398 313 69 104 26420 2295084
+249	8914106 9197 1248 204589 0.820759364789 31.460062055398 313 69 104 26420 2295084
+252	8923303 7396 1254 204592 0.82075968866 31.460062106656 250 69 706 22015 2372241
+253	8930699 7396 1254 204592 0.82075968866 31.460062106656 250 69 706 22015 2372241
+

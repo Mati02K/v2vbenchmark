@@ -94,12 +94,15 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
 
     RESULTS_JSON="$ITER_DIR/raft_results.json"
     
-    # RAFT Timing (scaled by vehicle count)
-    ELECTION_TIMEOUT_BASE=$((200 + VEHICLE_COUNT * 25))
-    # Increased timeout to ensure all WAVE responses are collected (500ms base + 150ms per vehicle)
-    STATUS_COLLECTION_TIMEOUT=$((500 + VEHICLE_COUNT * 150))
+    # RAFT Timing (IDENTICAL to UDP for apples-to-apples comparison)
+    ELECTION_TIMEOUT_BASE=$((300 + VEHICLE_COUNT * 25))
+    ELECTION_JITTER=$((150 + VEHICLE_COUNT * 25))
     REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
-    ELECTION_JITTER=$((100 + VEHICLE_COUNT * 50))
+    STATUS_COLLECTION_TIMEOUT=$((500 + VEHICLE_COUNT * 150))
+    
+    # Arrival wait time (wait for vehicles to gather before scheduling)
+    # IDENTICAL to UDP - time for vehicles to physically reach intersection
+    ARRIVAL_WAIT_TIME=$((3000 + VEHICLE_COUNT * 400))
 
 # Run simulation
 echo -e "${GREEN}Running WAVE simulation (iteration $iteration)...${NC}"
@@ -116,6 +119,8 @@ CLI_OVERRIDES=(
     "--**.appl.electionTimeoutJitterMs=$ELECTION_JITTER"
     "--**.appl.requestTimeoutMs=$REQUEST_TIMEOUT"
     "--**.appl.statusCollectionTimeoutMs=$STATUS_COLLECTION_TIMEOUT"
+    "--**.appl.arrivalWaitTimeMs=$ARRIVAL_WAIT_TIME"
+    "--**.appl.intersectionStopDistance=25m"
 )
 
 # Run and capture output

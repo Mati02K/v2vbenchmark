@@ -1,23 +1,25 @@
 version 2
-run General-0-20260222-02:28:12-323854
+run General-0-20260222-21:21:49-79496
 attr configname General
-attr datetime 20260222-02:28:12
+attr datetime 20260222-21:21:49
 attr experiment General
 attr inifile omnetpp_wave.ini
 attr iterationvars ""
 attr iterationvarsf ""
 attr measurement ""
 attr network IntersectionScenarioWave
-attr processid 323854
+attr processid 79496
 attr repetition 0
 attr replication #0
 attr resultdir results
 attr runnumber 0
-attr seedset 2
-param **.appl.electionTimeoutBaseMs 400
-param **.appl.electionTimeoutJitterMs 500
+attr seedset 5
+param **.appl.arrivalWaitTimeMs 6200
+param **.appl.electionTimeoutBaseMs 500
+param **.appl.electionTimeoutJitterMs 350
+param **.appl.intersectionStopDistance 25m
 param **.appl.requestTimeoutMs 140
-param **.appl.resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/final_8v/run_2/raft_results.json\""
+param **.appl.resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/wave_8veh/run_5/raft_results.json\""
 param **.appl.statusCollectionTimeoutMs 1700
 param *.manager.updateInterval 0.1s
 param *.manager.host "\"localhost\""

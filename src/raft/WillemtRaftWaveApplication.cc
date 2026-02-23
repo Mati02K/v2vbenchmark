@@ -3,6 +3,7 @@
 
 #include "raft/WillemtRaftWaveApplication.h"
 #include "raft/RaftWaveMessage_m.h"
+#include "veins/modules/mobility/traci/TraCIScenarioManager.h"
 #include <iostream>
 #include <sstream>
 #include <cstring>
@@ -70,6 +71,8 @@ WillemtRaftWaveApplication::WillemtRaftWaveApplication()
     , fallbackWaitMaxMs_(300)
     , passConfirmationMs_(300)
     , statusCollectionTimeoutMs_(1000)
+    , intersectionStopDistance_(25.0)
+    , arrivalWaitTimeMs_(3000)
     , checkTimer_(nullptr)
     , raftPeriodicTimer_(nullptr)
     , statusTimeoutTimer_(nullptr)
@@ -203,6 +206,10 @@ void WillemtRaftWaveApplication::initialize(int stage)
             int baseTimeout = par("statusCollectionTimeoutMs").intValue();
             statusCollectionTimeoutMs_ = baseTimeout;
             
+            // Distance-based intersection stopping
+            intersectionStopDistance_ = par("intersectionStopDistance").doubleValue();
+            arrivalWaitTimeMs_ = par("arrivalWaitTimeMs").intValue();
+            
             resultsFileName_ = par("resultsFile").stdstringValue();
             
             // Dynamic cluster params
@@ -309,16 +316,26 @@ void WillemtRaftWaveApplication::handleDiscoveryBeacon(int senderId)
 
 double WillemtRaftWaveApplication::getDistanceToJunction() const
 {
-    if (!mobility_) return 999999.0;
+    if (!traciVehicle_) return 999999.0;
     
-    // Use the position from Veins mobility
-    auto pos = mobility_->getPositionAt(simTime());
-    
-    if (!junctionPosKnown_) return 999999.0;
-    
-    double dx = pos.x - junctionX_;
-    double dy = pos.y - junctionY_;
-    return sqrt(dx * dx + dy * dy);
+    try {
+        // Get lane position (distance from start of lane) and lane length
+        double lanePos = traciVehicle_->getLanePosition();
+        std::string laneId = traciVehicle_->getLaneId();
+        
+        // Get lane length via TraCI command manager
+        auto* manager = veins::TraCIScenarioManagerAccess().get();
+        if (!manager) return 999999.0;
+        
+        auto* commandIfc = manager->getCommandInterface();
+        if (!commandIfc) return 999999.0;
+        double laneLength = commandIfc->lane(laneId).getLength();
+        
+        // Distance to end of lane (which is the junction)
+        return laneLength - lanePos;
+    } catch (...) {
+        return 999999.0;
+    }
 }
 
 void WillemtRaftWaveApplication::checkClusterTrigger()
@@ -591,11 +608,32 @@ WillemtRaftWaveApplication::VehicleProposal WillemtRaftWaveApplication::buildMyP
     VehicleProposal proposal;
     memset(&proposal, 0, sizeof(proposal));
     proposal.vehicleId = myId_;
-    strncpy(proposal.laneEdgeId, myLane_.c_str(), sizeof(proposal.laneEdgeId) - 1);
-    proposal.laneIndex = myLaneIndex_;
+    
+    // Get actual lane from TraCI, not from static ID-based assignment
+    std::string actualRoadId = myLane_;
+    if (traciVehicle_) {
+        try {
+            actualRoadId = traciVehicle_->getRoadId();
+        } catch (...) {}
+    }
+    strncpy(proposal.laneEdgeId, actualRoadId.c_str(), sizeof(proposal.laneEdgeId) - 1);
+    
+    // Determine lane index from actual road ID
+    proposal.laneIndex = -1;
+    for (size_t i = 0; i < approachEdgeList_.size(); i++) {
+        if (approachEdgeList_[i] == actualRoadId) {
+            proposal.laneIndex = i;
+            break;
+        }
+    }
+    if (proposal.laneIndex < 0) {
+        // Fallback to ID-based assignment if edge not recognized
+        proposal.laneIndex = myLaneIndex_;
+    }
+    
     proposal.intendedTurn = 0; // STRAIGHT (default for this benchmark)
     
-    // P1: Blocked vehicle detection
+    // P1: Blocked vehicle detection (uses TraCI-based detection now)
     proposal.blockedByVehicleId = detectBlockingVehicle();
     proposal.isFirstInLane = (proposal.blockedByVehicleId == -1);
     
@@ -640,64 +678,62 @@ int WillemtRaftWaveApplication::detectBlockingVehicle()
     try {
         std::string myRoadId = traciVehicle_->getRoadId();
         double myLanePos = traciVehicle_->getLanePosition();
-        double myDistToJunction = calculateDistanceToJunction();
         
         int blockingVehicleId = -1;
-        double closestBlockingDist = myDistToJunction;
+        double closestBlockerPos = 999999.0;  // Position of closest blocker
         
-        // Check all active vehicles to see if any is ahead of me on the same road
-        for (int otherId : activeVehicles_) {
-            if (otherId == myId_) continue;
-            
-            // Check if this vehicle has a proposal with the same lane
-            auto it = collectedProposals_.find(otherId);
-            if (it != collectedProposals_.end()) {
-                if (it->second.laneIndex == myLaneIndex_) {
-                    // Same lane - check if they're ahead of me (closer to junction)
-                    double otherDist = it->second.distanceToJunction;
-                    if (otherDist < closestBlockingDist && otherDist < myDistToJunction) {
-                        closestBlockingDist = otherDist;
-                        blockingVehicleId = otherId;
-                    }
-                }
-            }
-        }
-        
-        // Also check using TraCI for vehicles we don't have proposals for yet
-        if (blockingVehicleId == -1) {
-            // Check vehicles on the same edge
+        // DYNAMIC BLOCKING DETECTION: Check all active vehicles on same edge
+        // using TraCI to get their actual positions
+        auto* manager = veins::TraCIScenarioManagerAccess().get();
+        if (manager) {
             for (int otherId : activeVehicles_) {
                 if (otherId == myId_) continue;
                 
-                // If vehicle is in front of me on the same edge, it's blocking
-                // Use the vehicleInFrontOfMe_ tracking
-                if (otherId == vehicleInFrontOfMe_) {
-                    blockingVehicleId = otherId;
-                    break;
+                std::string otherModuleName = "node[" + std::to_string(otherId) + "]";
+                cModule* otherModule = getSimulation()->getModuleByPath(otherModuleName.c_str());
+                if (!otherModule) continue;
+                
+                cModule* mobilityModule = otherModule->getSubmodule("veinsmobility");
+                if (!mobilityModule) continue;
+                
+                auto* otherMobility = dynamic_cast<veins::TraCIMobility*>(mobilityModule);
+                if (!otherMobility) continue;
+                
+                auto* otherVehicle = otherMobility->getVehicleCommandInterface();
+                if (!otherVehicle) continue;
+                
+                try {
+                    std::string otherRoadId = otherVehicle->getRoadId();
+                    
+                    // Check if on same road
+                    if (otherRoadId == myRoadId) {
+                        double otherLanePos = otherVehicle->getLanePosition();
+                        
+                        // Vehicle is ahead of me if it has larger lane position (closer to end of lane)
+                        // and is the closest one ahead
+                        if (otherLanePos > myLanePos && otherLanePos < closestBlockerPos) {
+                            closestBlockerPos = otherLanePos;
+                            blockingVehicleId = otherId;
+                        }
+                    }
+                } catch (...) {
+                    continue;
                 }
             }
         }
         
-        return blockingVehicleId;
+        return blockingVehicleId;  // Returns -1 if no blocker found
         
     } catch (...) {
         return -1;
     }
 }
 
+
 double WillemtRaftWaveApplication::calculateDistanceToJunction()
 {
-    // Calculate distance from this vehicle to the junction center
-    if (!mobility_ || !junctionPosKnown_) return 999999.0;
-    
-    try {
-        auto pos = mobility_->getPositionAt(simTime());
-        double dx = pos.x - junctionX_;
-        double dy = pos.y - junctionY_;
-        return sqrt(dx * dx + dy * dy);
-    } catch (...) {
-        return 999999.0;
-    }
+    // Use the same lane-based calculation as getDistanceToJunction()
+    return getDistanceToJunction();
 }
 
 void WillemtRaftWaveApplication::updateBlockedStatus()
@@ -1848,7 +1884,16 @@ void WillemtRaftWaveApplication::proposePassOrder()
     }
     std::cout << "]" << std::endl;
     
-    // P1: Fair queue reordering
+    // P1: Fair queue reordering - with proper blocking relationship handling
+    // Build a set of already-scheduled vehicles for blocking dependency checks
+    std::set<int> scheduledVehicles;
+    
+    // Helper lambda to check if a vehicle's blocker has been scheduled
+    auto blockerScheduled = [&](const VehicleProposal& v) -> bool {
+        if (v.blockedByVehicleId < 0) return true;  // Not blocked
+        return scheduledVehicles.count(v.blockedByVehicleId) > 0;
+    };
+    
     // Sort by: 
     // 1) isFirstInLane (must be first - can't pass if blocked)
     // 2) waitingTimeMs (longer waits get priority - fairness)
@@ -1860,7 +1905,6 @@ void WillemtRaftWaveApplication::proposePassOrder()
         
         // For vehicles that are both front-most (or both blocked):
         // Prioritize by waiting time (fairness - longer wait = higher priority)
-        // Use 500ms tolerance to prevent oscillation
         double waitDiff = a.waitingTimeMs - b.waitingTimeMs;
         if (std::abs(waitDiff) > 500.0) return waitDiff > 0;
         
@@ -1872,15 +1916,36 @@ void WillemtRaftWaveApplication::proposePassOrder()
     });
     
     // Group into non-conflicting batches (up to 16 batches for larger vehicle counts)
+    // CRITICAL FIX: Respect blockedByVehicleId relationships
     while (!pool.empty() && schedule.numBatches < 16) {
         PassBatch& currentBatch = schedule.batches[schedule.numBatches];
         
-        VehicleProposal primary = pool[0];
+        // Find the first vehicle whose blocker (if any) has been scheduled
+        auto primaryIt = pool.begin();
+        while (primaryIt != pool.end() && !blockerScheduled(*primaryIt)) {
+            ++primaryIt;
+        }
+        
+        if (primaryIt == pool.end()) {
+            // No eligible vehicle found - circular dependency or all remaining are blocked
+            // Force the first vehicle to break the deadlock
+            primaryIt = pool.begin();
+        }
+        
+        VehicleProposal primary = *primaryIt;
         currentBatch.vehicleIds[currentBatch.numVehicles++] = primary.vehicleId;
-        pool.erase(pool.begin());
+        scheduledVehicles.insert(primary.vehicleId);
+        pool.erase(primaryIt);
         
         for (auto it = pool.begin(); it != pool.end() && currentBatch.numVehicles < 8; ) {
             VehicleProposal candidate = *it;
+            
+            // CRITICAL: Check if candidate's blocker has been scheduled
+            if (!blockerScheduled(candidate)) {
+                ++it;
+                continue;
+            }
+            
             bool conflict = false;
             
             for (int i = 0; i < currentBatch.numVehicles; i++) {
@@ -1898,6 +1963,7 @@ void WillemtRaftWaveApplication::proposePassOrder()
             
             if (!conflict) {
                 currentBatch.vehicleIds[currentBatch.numVehicles++] = candidate.vehicleId;
+                scheduledVehicles.insert(candidate.vehicleId);
                 it = pool.erase(it);
             } else ++it;
         }
@@ -1962,7 +2028,7 @@ void WillemtRaftWaveApplication::executePassOrder()
     if (myBatch_ < 0) {
         // Vehicle was not in the schedule - set fallback timer to move after all scheduled batches
         int totalBatches = committedSchedule_.numBatches;
-        double fallbackDelayMs = (totalBatches + 1) * 2000.0;  // Wait for all batches + 1 extra
+        double fallbackDelayMs = (totalBatches + 1) * 5000.0;  // Wait for all batches + 1 extra (5s per batch)
         
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
@@ -1989,8 +2055,8 @@ void WillemtRaftWaveApplication::executePassOrder()
     } else {
         // FIX #2: Add safety timer for vehicles in later batches
         // If we don't receive vehicle-left messages, we still move after a timeout
-        // Estimate: 2 seconds per batch for vehicles to cross intersection
-        double batchDelayMs = myBatch_ * 2000.0;  // 2 seconds per batch
+        // Estimate: 5 seconds per batch for vehicles to cross intersection (safety margin)
+        double batchDelayMs = myBatch_ * 5000.0;  // 5 seconds per batch
         
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
@@ -2078,15 +2144,26 @@ void WillemtRaftWaveApplication::checkAndStopAtIntersection()
     if (hasStoppedAtIntersection_ || !traciVehicle_) return;
 
     try {
-        if (isAtIntersection() && !hasStoppedAtIntersection_) {
+        // Check if on approach edge
+        std::string roadId = traciVehicle_->getRoadId();
+        bool onApproachEdge = intersectionEdges_.count(roadId) > 0;
+        
+        if (!onApproachEdge) return;  // Not on approach edge yet
+        
+        // Get distance to junction
+        double distToJunction = getDistanceToJunction();
+        
+        // Stop if within stopping distance
+        if (distToJunction >= 0 && distToJunction <= intersectionStopDistance_) {
             hasStoppedAtIntersection_ = true;
             timeStopped_ = simTime();
-            intersectionEdge_ = traciVehicle_->getRoadId();
+            intersectionEdge_ = roadId;
             calculateWayOfSight();
             
             std::cout << std::fixed << std::setprecision(1)
                       << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-                      << " STOPPED at intersection (edge=" << intersectionEdge_ << ")" << std::endl;
+                      << " STOPPED at intersection (dist=" << std::setprecision(1) << distToJunction
+                      << "m, edge=" << intersectionEdge_ << ")" << std::endl;
             
             // Only physically stop the vehicle if it hasn't already been given 
             // the green light to resume movement (e.g. joined cluster early)
@@ -2099,8 +2176,15 @@ void WillemtRaftWaveApplication::checkAndStopAtIntersection()
             if (isLeader_ && !hasCommittedOrder_ && clusterFormed_) {
                 std::cout << std::fixed << std::setprecision(1)
                           << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-                          << " is LEADER and just stopped, starting status collection" << std::endl;
-                collectStatusAndDecide();
+                          << " is LEADER and just stopped, waiting " << arrivalWaitTimeMs_ 
+                          << "ms for vehicles to arrive" << std::endl;
+                
+                // Wait for vehicles to gather before collecting status
+                if (arrivalWaitTimer_) {
+                    cancelAndDelete(arrivalWaitTimer_);
+                }
+                arrivalWaitTimer_ = new cMessage("arrivalWaitTimer");
+                scheduleAt(simTime() + SimTime(arrivalWaitTimeMs_, SIMTIME_MS), arrivalWaitTimer_);
             }
         }
     } catch (...) {}
@@ -2112,10 +2196,17 @@ bool WillemtRaftWaveApplication::isAtIntersection() const
     
     try {
         std::string roadId = traciVehicle_->getRoadId();
-        return intersectionEdges_.count(roadId) > 0;
+        // Must be on an approach edge AND near the junction
+        return intersectionEdges_.count(roadId) > 0 && isNearJunction();
     } catch (...) {
         return false;
     }
+}
+
+bool WillemtRaftWaveApplication::isNearJunction() const
+{
+    double dist = getDistanceToJunction();
+    return dist >= 0 && dist <= intersectionStopDistance_;
 }
 
 bool WillemtRaftWaveApplication::hasPassedIntersectionEdge() const
@@ -2201,14 +2292,20 @@ void WillemtRaftWaveApplication::resumeMovement()
               << " RESUMING movement" << std::endl;
     
     try {
-        // Use SpeedMode 23: Ignore right-of-way rules (bit 3) to prevent junction deadlocks,
-        // but keep collision avoidance (bit 1) and car-following (bit 0 & 2) active.
-        traciVehicle_->setSpeedMode(23);
+        // CRITICAL: Disable ALL SUMO safety checks for coordinated intersection
+        // setSpeedMode(0) = ignore collisions and car-following model
+        traciVehicle_->setSpeedMode(0);
         
-        // Resume at target maximum speed
-        double maxSpeed = traciVehicle_->getMaxSpeed();
-        if (maxSpeed <= 0) maxSpeed = 13.89; // Default 50 km/h fallback
-        traciVehicle_->setSpeed(maxSpeed);
+        // Ignore junction priority rules
+        traciVehicle_->setParameter("jmIgnoreFoeProb", "1.0");
+        traciVehicle_->setParameter("jmIgnoreFoeSpeed", "100.0");
+        traciVehicle_->setParameter("jmTimegapMinor", "0.0");
+        
+        // Set EXPLICIT speed (NOT -1, which re-enables car-following!)
+        // Using 13.89 m/s = 50 km/h as default intersection speed
+        double speed = traciVehicle_->getMaxSpeed();
+        if (speed <= 0) speed = 13.89;
+        traciVehicle_->setSpeed(speed);
         
         timeStartedMoving_ = simTime();
     } catch (...) {

@@ -14,13 +14,12 @@ extern "C" {
 
 /**
  * RAFT-based intersection coordination using willemt/raft library
+ * UDP over WiFi transport version
  * 
- * ALGORITHM WITH QUORUM CONSENSUS:
- * - Leader collects wayOfSight from all vehicles
- * - Leader picks one vehicle with wayOfSight=true to pass
- * - Leader PROPOSES this decision to Raft as a log entry
- * - Only when entry is COMMITTED (replicated to quorum), vehicle passes
- * - If leader fails before commit, new leader won't execute uncommitted entries
+ * DYNAMIC CLUSTER FORMATION PROTOCOL (identical to WAVE):
+ * Phase 1 (DISCOVERY): Broadcast lightweight beacons to discover peers
+ * Phase 2 (FORMATION): First vehicle at intersection triggers cluster formation
+ * Phase 3 (COORDINATION): RAFT leader collects VehicleProposals, schedules fair pass order
  */
 class WillemtRaftApplication : public veins::VeinsInetApplicationBase
 {
@@ -34,6 +33,15 @@ protected:
     virtual void processPacket(std::shared_ptr<inet::Packet> pk) override;
 
 private:
+    // ============ CLUSTER PHASE (matching WAVE) ============
+    enum ClusterPhase {
+        PHASE_DISCOVERY,     // Broadcasting/receiving beacons
+        PHASE_FORMATION,     // Cluster forming, RAFT initializing
+        PHASE_COORDINATION,  // RAFT running, scheduling passes
+        PHASE_PASSED         // Vehicle has exited intersection
+    };
+    ClusterPhase clusterPhase_;
+    
     // ============ RAFT CORE ============
     raft_server_t* raftServer_;
     
@@ -47,6 +55,23 @@ private:
     veins::VeinsInetMobility* mobility_;
     veins::TraCICommandInterface* traci_;
     veins::TraCICommandInterface::Vehicle* traciVehicle_;
+    
+    // ============ DISCOVERY STATE (matching WAVE) ============
+    std::set<int> discoveredPeers_;     // Vehicle IDs discovered via beacons
+    double discoveryBeaconInterval_;
+    double clusterTriggerDistance_;
+    bool clusterFormed_;
+    
+    void sendDiscoveryBeacon();
+    void handleDiscoveryBeacon(int senderId, uint8_t senderPhase);
+    void checkClusterTrigger();
+    
+    void broadcastClusterForm();
+    void handleClusterForm(const std::vector<uint8_t>& data, int senderId);
+    void handleClusterExists(const std::vector<uint8_t>& data, int senderId);
+    void mergeIntoCluster(const std::set<int>& members);
+    void broadcastClusterExists();
+    void formCluster(const std::set<int>& members);
     
     // ============ INTERSECTION STATE ============
     bool isLeader_;
@@ -72,7 +97,8 @@ private:
     enum LogEntryType : uint8_t {
         PASS_COMMAND = 1,      // OLD - will be removed
         STATUS_REPORT = 2,     // NEW - vehicle status consensus
-        PASS_ORDER = 3         // NEW - complete pass order
+        PASS_ORDER = 3,        // NEW - complete pass order (batch-based)
+        VEHICLE_LEFT = 4       // NEW - vehicle departure via RAFT consensus
     };
 
     struct PassCommandEntry {
@@ -85,6 +111,7 @@ private:
         bool wayOfSight;
         char lane[64];
         int positionInLane;
+        int direction; // 0=Straight, 1=Left, 2=Right
     };
     
     struct StatusReportEntry {
@@ -92,19 +119,58 @@ private:
         VehicleStatus statuses[32];  // Max 32 vehicles
     };
     
+    // VehicleProposal: sent by each vehicle to leader for scheduling
+    struct VehicleProposal {
+        int vehicleId;
+        char laneEdgeId[64];     // Approach edge ID
+        double positionOnLane;   // Distance from edge start (meters)
+        double speed;            // Current speed (m/s)
+        int laneIndex;           // Direction: 0=W, 1=S, 2=E, 3=N
+        int intendedTurn;        // 0=STRAIGHT, 1=LEFT, 2=RIGHT
+        bool isFirstInLane;      // Frontmost vehicle on this lane?
+        int blockedByVehicleId;  // ID of vehicle blocking this one (-1 if none)
+        double waitingTimeMs;    // How long this vehicle has been waiting
+        double distanceToJunction; // Distance to junction center (meters)
+    };
+    
+    // Batch-based pass scheduling
+    struct PassBatch {
+        int numVehicles;
+        int vehicleIds[8];   // Vehicles that can pass simultaneously (max 8 per batch)
+    };
+    
+    struct PassScheduleEntry {
+        int numBatches;
+        PassBatch batches[16]; // Up to 16 sequential batches (supports up to 64 vehicles)
+    };
+    
+    struct VehicleLeftEntry {
+        int vehicleId;
+        int batchId;
+    };
+    
+    // Legacy PassOrderEntry (flat order, kept for log compatibility)
     struct PassOrderEntry {
         int numVehicles;
         int order[32];  // Vehicle IDs in pass order
     };
 
-    std::map<raft_index_t, PassCommandEntry> pendingProposals_;
+    std::map<raft_index_t, uint8_t*> pendingProposals_;
     raft_index_t lastAppliedIndex_;
     
     // NEW: Store committed status and pass order
     std::map<int, VehicleStatus> committedStatuses_;
+    std::map<int, VehicleProposal> collectedProposals_;  // Proposals from status collection
     PassOrderEntry committedPassOrder_;
+    PassScheduleEntry committedSchedule_;   // Batch-based schedule
     int waitingForVehicle_;  // Vehicle ID I'm waiting for to leave
     bool hasCommittedOrder_;  // Whether pass order has been committed
+    
+    // Batch execution state
+    int currentBatch_;                   // Which batch is currently passing
+    int myBatch_;                        // The batch this vehicle is assigned to cross in
+    std::set<int> vehiclesLeftInBatch_;  // Track which vehicles left in current batch
+    int myLaneIndex_;                    // Direction: 0=W, 1=S, 2=E, 3=N
 
     // ============ FALLBACK STATE ============
     bool isFallbackMode_;
@@ -116,6 +182,8 @@ private:
     int electionTimeoutBaseMs_;
     int electionTimeoutJitterMs_;
     int requestTimeoutMs_;
+    double intersectionStopDistance_;    // Distance to junction center for stopping (meters)
+    int arrivalWaitTimeMs_;              // Time to wait for vehicles to gather before scheduling
     int maxFailedElections_;
     int fallbackWaitMinMs_;
     int fallbackWaitMaxMs_;
@@ -129,10 +197,14 @@ private:
     // ============ METRICS TRACKING ============
     simtime_t timeArrived_;
     simtime_t timeStopped_;
+    simtime_t timeClusterFormed_;   // When RAFT cluster was formed
     simtime_t timeElected_;
     simtime_t timeOrderCommitted_;  // When PASS_ORDER is committed to quorum
     simtime_t timeStartedMoving_;
     simtime_t timePassed_;
+    
+    // Arrival wait state
+    bool waitingForVehiclesToArrive_;  // Flag for arrival wait state
     int messagesSent_;
     int messagesReceived_;
     int electionRounds_;
@@ -199,25 +271,36 @@ private:
     void proposePassOrder();
     std::vector<int> createDeterministicOrder();
     void executePassOrder();
+    void applyCommittedPassOrder();
     void checkIfPreviousVehicleLeft(int previousVehicleId);
     int findMyPositionInOrder();
     int getLaneIndex(const std::string& lane);
+    
+    // Batch-based scheduling helpers
+    VehicleProposal buildMyProposal();
+    int detectBlockingVehicle();
+    double calculateDistanceToJunction();
+    bool movementsConflict(int laneA, int turnA, int laneB, int turnB);
+    void checkBatchAdvance();
+    void applyVehicleLeftFromRaft(int vehicleId, int batchId);
     
     // OLD: Will be removed
     int selectVehicleToPass();
     void proposePassCommand(int vehicleId);
     void executePassCommand(int vehicleId);
     
-    // NEW: Vehicle-left broadcast handling
+    // NEW: Vehicle-left via RAFT consensus
     void sendVehicleLeft();
     void handleVehicleLeft(int vehicleId);
-    void rebroadcastVehicleLeft(int vehicleId);
+    void proposeVehicleLeft(int vehicleId, int batchId);
     
     void calculateWayOfSight();
     
     // ============ INTERSECTION COORDINATION ============
     void checkAndStopAtIntersection();
     bool isAtIntersection() const;
+    bool isNearJunction() const;           // Distance-based junction detection
+    double getDistanceToJunction() const;  // Get actual distance to junction
     bool hasPassedIntersectionEdge() const;
     void onBecameLeader();
     void onLostLeadership();

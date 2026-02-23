@@ -200,6 +200,8 @@ private:
     int fallbackWaitMaxMs_;
     int passConfirmationMs_;
     int statusCollectionTimeoutMs_;
+    double intersectionStopDistance_;    // Distance to junction center for stopping (meters)
+    int arrivalWaitTimeMs_;              // Time to wait for vehicles to gather before scheduling
     std::string resultsFileName_;
     
     static constexpr double CHECK_INTERVAL = 0.1;
@@ -317,6 +319,8 @@ private:
     // ============ INTERSECTION COORDINATION ============
     void checkAndStopAtIntersection();
     bool isAtIntersection() const;
+    bool isNearJunction() const;           // Distance-based junction detection
+    // Note: getDistanceToJunction() declared earlier in file
     bool hasPassedIntersectionEdge() const;
     void onBecameLeader();
     void onLostLeadership();

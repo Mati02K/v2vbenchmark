@@ -32,12 +32,16 @@ std::string WillemtRaftApplication::resultsFileNameStatic_ = "raft_results.json"
 // ============ CONSTRUCTOR / DESTRUCTOR ============
 
 WillemtRaftApplication::WillemtRaftApplication()
-    : raftServer_(nullptr)
+    : clusterPhase_(PHASE_DISCOVERY)
+    , raftServer_(nullptr)
     , myId_(-1)
     , myRaftNodeId_(-1)
     , mobility_(nullptr)
     , traci_(nullptr)
     , traciVehicle_(nullptr)
+    , discoveryBeaconInterval_(0.3)
+    , clusterTriggerDistance_(100.0)
+    , clusterFormed_(false)
     , isLeader_(false)
     , hasStoppedAtIntersection_(false)
     , hasPassedIntersection_(false)
@@ -48,6 +52,9 @@ WillemtRaftApplication::WillemtRaftApplication()
     , lastAppliedIndex_(0)
     , waitingForVehicle_(-1)
     , hasCommittedOrder_(false)
+    , currentBatch_(0)
+    , myBatch_(-1)
+    , myLaneIndex_(-1)
     , isFallbackMode_(false)
     , failedElectionCount_(0)
     , lastCheckedTerm_(0)
@@ -55,6 +62,8 @@ WillemtRaftApplication::WillemtRaftApplication()
     , electionTimeoutBaseMs_(150)
     , electionTimeoutJitterMs_(50)
     , requestTimeoutMs_(50)
+    , intersectionStopDistance_(25.0)  // Stop within 25m of junction
+    , arrivalWaitTimeMs_(3000)         // Wait 3s for vehicles to gather
     , maxFailedElections_(6)
     , fallbackWaitMinMs_(100)
     , fallbackWaitMaxMs_(300)
@@ -62,10 +71,12 @@ WillemtRaftApplication::WillemtRaftApplication()
     , statusCollectionTimeoutMs_(200)
     , timeArrived_(0)
     , timeStopped_(0)
+    , timeClusterFormed_(SIMTIME_ZERO)
     , timeElected_(0)
     , timeOrderCommitted_(0)
     , timeStartedMoving_(0)
     , timePassed_(0)
+    , waitingForVehiclesToArrive_(false)
     , messagesSent_(0)
     , messagesReceived_(0)
     , electionRounds_(0)
@@ -76,6 +87,7 @@ WillemtRaftApplication::WillemtRaftApplication()
     , metricsWritten_(false)
 {
     memset(&committedPassOrder_, 0, sizeof(committedPassOrder_));
+    memset(&committedSchedule_, 0, sizeof(committedSchedule_));
 }
 
 WillemtRaftApplication::~WillemtRaftApplication()
@@ -175,6 +187,14 @@ bool WillemtRaftApplication::startApplication()
     int baseTimeout = par("statusCollectionTimeoutMs").intValue();
     statusCollectionTimeoutMs_ = baseTimeout + (totalVehicles_ * 12.5);
     
+    // Distance-based intersection stopping
+    intersectionStopDistance_ = par("intersectionStopDistance").doubleValue();
+    arrivalWaitTimeMs_ = par("arrivalWaitTimeMs").intValue();
+    
+    // Dynamic cluster formation parameters (matching WAVE)
+    clusterTriggerDistance_ = par("clusterTriggerDistance").doubleValue();
+    discoveryBeaconInterval_ = par("discoveryBeaconInterval").doubleValue();
+    
     resultsFileName_ = par("resultsFile").stdstringValue();
     
     // Parse dynamic intersection edge configuration
@@ -229,39 +249,13 @@ bool WillemtRaftApplication::startApplication()
         return false;
     }
     
-    // Initialize RAFT server
-    raftServer_ = raft_new();
-    if (!raftServer_) {
-        EV_ERROR << "Vehicle " << myId_ << " ERROR: Could not create RAFT server!" << endl;
-        return false;
-    }
-    
-    // Set up RAFT callbacks
-    raft_cbs_t callbacks;
-    memset(&callbacks, 0, sizeof(callbacks));
-    callbacks.send_requestvote = sendRequestVote;
-    callbacks.send_appendentries = sendAppendEntries;
-    callbacks.log_offer = logOffer;
-    callbacks.applylog = applylog;
-    callbacks.persist_vote = persistVote;
-    
-    raft_set_callbacks(raftServer_, &callbacks, this);
-    
-    // Set timeouts
-    // Task 1: Random Jitter to prevent split-vote deadlocks in UDP
-    int electionTimeout = electionTimeoutBaseMs_ + intuniform(0, electionTimeoutJitterMs_);
-    raft_set_election_timeout(raftServer_, electionTimeout);
-    raft_set_request_timeout(raftServer_, requestTimeoutMs_);
-    
-    // Add all nodes to cluster
-    for (int i = 0; i < totalVehicles_; i++) {
-        int nodeId = i + 1;
-        void* userData = reinterpret_cast<void*>(static_cast<intptr_t>(i));
-        int isSelf = (i == myId_) ? 1 : 0;
-        raft_add_node(raftServer_, userData, nodeId, isSelf);
-    }
-    
     timeArrived_ = simTime();
+    
+    // Determine lane index for scheduling (reuse vehiclesPerSide from above)
+    myLaneIndex_ = (myId_ / vehiclesPerSide) % 4;
+    
+    // Start in DISCOVERY phase — no RAFT server yet (matching WAVE)
+    clusterPhase_ = PHASE_DISCOVERY;
     
     // Schedule periodic checks
     timerManager.create(
@@ -273,9 +267,26 @@ bool WillemtRaftApplication::startApplication()
         }).interval(SimTime(CHECK_INTERVAL))
     );
     
+    // Schedule discovery beacon timer (matching WAVE)
     timerManager.create(
         veins::TimerSpecification([this]() {
-            processRaftPeriodic();
+            if (clusterPhase_ == PHASE_DISCOVERY) {
+                sendDiscoveryBeacon();
+                checkClusterTrigger();
+            } else if (clusterPhase_ == PHASE_COORDINATION && !hasPassedIntersection_) {
+                // Continue beaconing so late joiners can discover and join
+                sendDiscoveryBeacon();
+                broadcastClusterExists();
+            }
+        }).interval(SimTime(discoveryBeaconInterval_))
+    );
+    
+    // Schedule RAFT periodic timer (only active after cluster forms)
+    timerManager.create(
+        veins::TimerSpecification([this]() {
+            if (raftServer_ && !hasPassedIntersection_ && !isFallbackMode_) {
+                processRaftPeriodic();
+            }
         }).interval(SimTime(RAFT_PERIODIC_INTERVAL))
     );
     
@@ -302,6 +313,303 @@ bool WillemtRaftApplication::stopApplication()
         raftServer_ = nullptr;
     }
     return true;
+}
+
+// ============ DYNAMIC CLUSTER DISCOVERY (matching WAVE) ============
+
+void WillemtRaftApplication::sendDiscoveryBeacon()
+{
+    std::ostringstream packetName;
+    packetName << "discovery-beacon-from-" << myId_;
+    
+    // Payload: [vehicleId (4 bytes)][clusterPhase (1 byte)]
+    std::vector<uint8_t> data(sizeof(int) + 1);
+    memcpy(data.data(), &myId_, sizeof(int));
+    data[sizeof(int)] = static_cast<uint8_t>(clusterPhase_);
+    
+    auto payload = makeShared<BytesChunk>(data);
+    auto packet = createPacket(packetName.str());
+    packet->insertAtBack(payload);
+    sendPacket(std::move(packet));
+    
+    messagesSent_++;
+}
+
+void WillemtRaftApplication::handleDiscoveryBeacon(int senderId, uint8_t senderPhase)
+{
+    if (senderId == myId_) return;
+    
+    // Only track peers that are still active and haven't left
+    if (clusterPhase_ == PHASE_DISCOVERY && activeVehicles_.count(senderId) > 0) {
+        discoveredPeers_.insert(senderId);
+    }
+}
+
+void WillemtRaftApplication::checkClusterTrigger()
+{
+    if (clusterPhase_ != PHASE_DISCOVERY) return;
+    if (!traciVehicle_) return;
+    
+    // Trigger cluster formation when approaching intersection AND discovered peers
+    bool atIntersection = false;
+    try {
+        std::string roadId = traciVehicle_->getRoadId();
+        atIntersection = (intersectionEdges_.count(roadId) > 0);
+    } catch (...) {}
+    
+    bool shouldTrigger = false;
+    std::string triggerReason;
+    
+    if (atIntersection && !discoveredPeers_.empty()) {
+        shouldTrigger = true;
+        triggerReason = "at intersection with " + std::to_string(discoveredPeers_.size()) + " peers";
+    } else if (hasStoppedAtIntersection_ && !discoveredPeers_.empty()) {
+        shouldTrigger = true;
+        triggerReason = "stopped with " + std::to_string(discoveredPeers_.size()) + " peers";
+    } else if (hasStoppedAtIntersection_) {
+        double waitTime = (simTime() - timeStopped_).dbl();
+        if (waitTime > 2.0) {  // Fallback after 2 seconds alone
+            shouldTrigger = true;
+            triggerReason = "stopped alone for " + std::to_string(waitTime) + "s";
+        }
+    }
+    
+    if (shouldTrigger) {
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                  << " CLUSTER TRIGGER (" << triggerReason << ")" << std::endl;
+        broadcastClusterForm();
+    }
+}
+
+void WillemtRaftApplication::broadcastClusterForm()
+{
+    if (clusterPhase_ != PHASE_DISCOVERY) return;
+    
+    clusterPhase_ = PHASE_FORMATION;
+    
+    // Collect all members: ourselves + discovered peers + all active vehicles
+    std::set<int> allMembers;
+    allMembers.insert(myId_);
+    for (int peer : discoveredPeers_) {
+        if (activeVehicles_.count(peer) > 0) {
+            allMembers.insert(peer);
+        }
+    }
+    // Add all other active vehicles for complete cluster
+    for (int id : activeVehicles_) {
+        allMembers.insert(id);
+    }
+    
+    // Broadcast CLUSTER_FORM message
+    std::ostringstream packetName;
+    packetName << "cluster-form-from-" << myId_;
+    
+    // Payload: [numMembers (4 bytes)][memberIds... (4 bytes each)]
+    std::vector<uint8_t> data;
+    int numMembers = allMembers.size();
+    data.resize(sizeof(int) + numMembers * sizeof(int));
+    memcpy(data.data(), &numMembers, sizeof(int));
+    int offset = sizeof(int);
+    for (int id : allMembers) {
+        memcpy(data.data() + offset, &id, sizeof(int));
+        offset += sizeof(int);
+    }
+    
+    auto payload = makeShared<BytesChunk>(data);
+    auto packet = createPacket(packetName.str());
+    packet->insertAtBack(payload);
+    sendPacket(std::move(packet));
+    
+    messagesSent_++;
+    
+    // Form cluster locally
+    formCluster(allMembers);
+}
+
+void WillemtRaftApplication::handleClusterForm(const std::vector<uint8_t>& data, int senderId)
+{
+    if (data.size() < sizeof(int)) return;
+    
+    // Parse members
+    int numMembers;
+    memcpy(&numMembers, data.data(), sizeof(int));
+    
+    std::set<int> members;
+    int offset = sizeof(int);
+    for (int i = 0; i < numMembers && offset + sizeof(int) <= data.size(); i++) {
+        int memberId;
+        memcpy(&memberId, data.data() + offset, sizeof(int));
+        members.insert(memberId);
+        offset += sizeof(int);
+    }
+    
+    members.insert(myId_);
+    
+    if (!clusterFormed_) {
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                  << " received CLUSTER_FORM from " << senderId
+                  << " with " << members.size() << " members" << std::endl;
+        formCluster(members);
+    } else {
+        // Already in cluster - merge late joiners
+        mergeIntoCluster(members);
+    }
+}
+
+void WillemtRaftApplication::handleClusterExists(const std::vector<uint8_t>& data, int senderId)
+{
+    // Format: [numMembers][memberIds...][clusterSize]
+    if (data.size() < sizeof(int)) return;
+    
+    int numMembers;
+    memcpy(&numMembers, data.data(), sizeof(int));
+    
+    std::set<int> members;
+    int offset = sizeof(int);
+    for (int i = 0; i < numMembers && offset + sizeof(int) <= data.size(); i++) {
+        int memberId;
+        memcpy(&memberId, data.data() + offset, sizeof(int));
+        members.insert(memberId);
+        offset += sizeof(int);
+    }
+    
+    members.insert(myId_);
+    
+    if (!clusterFormed_) {
+        // Join the existing cluster
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                  << " joining EXISTING cluster from " << senderId
+                  << " with " << members.size() << " members" << std::endl;
+        formCluster(members);
+    } else if (raftServer_) {
+        // Already in a cluster - check if we need to merge
+        int ourClusterSize = raft_get_num_nodes(raftServer_);
+        int theirClusterSize = numMembers;
+        
+        if (theirClusterSize > ourClusterSize) {
+            std::cout << std::fixed << std::setprecision(1)
+                      << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                      << " MERGING into larger cluster (ours=" << ourClusterSize 
+                      << ", theirs=" << theirClusterSize << ")" << std::endl;
+            mergeIntoCluster(members);
+        }
+    }
+}
+
+void WillemtRaftApplication::mergeIntoCluster(const std::set<int>& members)
+{
+    if (!raftServer_) return;
+    
+    for (int id : members) {
+        int nodeId = id + 1;
+        if (activeVehicles_.find(id) != activeVehicles_.end() && raft_get_node(raftServer_, nodeId) == nullptr) {
+            raft_add_node(raftServer_, reinterpret_cast<void*>(static_cast<intptr_t>(id)), nodeId, id == myId_);
+            
+            std::cout << std::fixed << std::setprecision(1)
+                      << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                      << " dynamically merged vehicle " << id << " into RAFT cluster" << std::endl;
+        }
+    }
+}
+
+void WillemtRaftApplication::broadcastClusterExists()
+{
+    if (!clusterFormed_ || !raftServer_) return;
+    
+    // Broadcast CLUSTER_EXISTS so late joiners can discover and join
+    std::ostringstream packetName;
+    packetName << "cluster-exists-from-" << myId_;
+    
+    // Build list of current cluster members
+    std::vector<int> memberList;
+    for (int id : activeVehicles_) {
+        if (raft_get_node(raftServer_, id + 1) != nullptr) {
+            memberList.push_back(id);
+        }
+    }
+    
+    // Payload: [numMembers][memberIds...]
+    std::vector<uint8_t> data;
+    int numMembers = memberList.size();
+    data.resize(sizeof(int) + numMembers * sizeof(int));
+    memcpy(data.data(), &numMembers, sizeof(int));
+    int offset = sizeof(int);
+    for (int id : memberList) {
+        memcpy(data.data() + offset, &id, sizeof(int));
+        offset += sizeof(int);
+    }
+    
+    auto payload = makeShared<BytesChunk>(data);
+    auto packet = createPacket(packetName.str());
+    packet->insertAtBack(payload);
+    sendPacket(std::move(packet));
+    
+    messagesSent_++;
+}
+
+void WillemtRaftApplication::formCluster(const std::set<int>& members)
+{
+    if (clusterFormed_) return;
+    
+    clusterPhase_ = PHASE_COORDINATION;
+    clusterFormed_ = true;
+    
+    // Ensure myId_ is included
+    std::set<int> allMembers = members;
+    allMembers.insert(myId_);
+    
+    // Add all active vehicles to ensure consistent cluster membership
+    for (int id : activeVehicles_) {
+        allMembers.insert(id);
+    }
+    
+    std::cout << std::fixed << std::setprecision(1)
+              << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+              << " FORMING CLUSTER with " << allMembers.size() << " members: [";
+    bool first = true;
+    for (int id : allMembers) {
+        if (!first) std::cout << ",";
+        std::cout << id;
+        first = false;
+    }
+    std::cout << "]" << std::endl;
+    
+    // Create RAFT server
+    raftServer_ = raft_new();
+    if (!raftServer_) {
+        EV_ERROR << "Vehicle " << myId_ << " ERROR: Could not create RAFT server!" << endl;
+        return;
+    }
+    
+    // Set up RAFT callbacks
+    raft_cbs_t callbacks;
+    memset(&callbacks, 0, sizeof(callbacks));
+    callbacks.send_requestvote = sendRequestVote;
+    callbacks.send_appendentries = sendAppendEntries;
+    callbacks.log_offer = logOffer;
+    callbacks.applylog = applylog;
+    callbacks.persist_vote = persistVote;
+    
+    raft_set_callbacks(raftServer_, &callbacks, this);
+    
+    // Set timeouts with jitter
+    int electionTimeout = electionTimeoutBaseMs_ + intuniform(0, electionTimeoutJitterMs_);
+    raft_set_election_timeout(raftServer_, electionTimeout);
+    raft_set_request_timeout(raftServer_, requestTimeoutMs_);
+    
+    // Add ALL active vehicles to ensure consistent cluster membership
+    for (int id : allMembers) {
+        int nodeId = id + 1;
+        void* userData = reinterpret_cast<void*>(static_cast<intptr_t>(id));
+        int isSelf = (id == myId_) ? 1 : 0;
+        raft_add_node(raftServer_, userData, nodeId, isSelf);
+    }
+    
+    // Track cluster formation time
+    timeClusterFormed_ = simTime();
 }
 
 // Continue to Part 2...
@@ -355,10 +663,12 @@ void WillemtRaftApplication::processRaftPeriodic()
         }
         
         // TIMEOUT-BASED FALLBACK: If we've been waiting too long without PASS_ORDER
+        // Use a longer timeout to account for vehicles arriving at different times
         if (hasStoppedAtIntersection_ && !hasCommittedOrder_ && !isFallbackMode_) {
             simtime_t waitTime = now - timeStopped_;
-            double timeoutThreshold = (double)totalVehiclesStatic_;
-            if (waitTime.dbl() > timeoutThreshold) {  // Dynamic timeout based on scale
+            // Timeout: base 15s + 0.5s per vehicle (accounts for staggered arrivals)
+            double timeoutThreshold = 15.0 + (double)totalVehiclesStatic_ * 0.5;
+            if (waitTime.dbl() > timeoutThreshold) {
                 std::cout << std::fixed << std::setprecision(1)
                           << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
                           << " TIMEOUT: No PASS_ORDER after " << (waitTime.dbl() * 1000.0) 
@@ -482,32 +792,52 @@ int WillemtRaftApplication::doApplyLog(raft_entry_t* entry, raft_index_t entry_i
         return 0;
     }
 
-    // Handle PASS_ORDER
-    if (type == PASS_ORDER && entry->data.len >= sizeof(PassOrderEntry) + 1) {
-        PassOrderEntry* passOrder = reinterpret_cast<PassOrderEntry*>(data + 1);
+    // Handle PASS_ORDER (batch-based schedule)
+    if (type == PASS_ORDER && entry->data.len >= sizeof(PassScheduleEntry) + 1) {
+        PassScheduleEntry* schedule = reinterpret_cast<PassScheduleEntry*>(data + 1);
 
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-                  << " APPLYING committed PASS_ORDER entry #" << entry_idx << " [";
-        for (int i = 0; i < passOrder->numVehicles; i++) {
-            std::cout << passOrder->order[i];
-            if (i < passOrder->numVehicles - 1) std::cout << ",";
-        }
-        std::cout << "]" << std::endl;
+                  << " APPLYING committed PASS_SCHEDULE entry #" << entry_idx 
+                  << " with " << schedule->numBatches << " batches" << std::endl;
 
-        // Store committed pass order
-        memcpy(&committedPassOrder_, passOrder, sizeof(PassOrderEntry));
+        // Store committed schedule
+        memcpy(&committedSchedule_, schedule, sizeof(PassScheduleEntry));
         hasCommittedOrder_ = true;
         
-        // Record when PASS_ORDER was committed (end of RAFT decision)
+        // Record when schedule was committed (end of RAFT decision)
         timeOrderCommitted_ = simTime();
 
         logEntriesCommitted_++;
         lastAppliedIndex_ = entry_idx;
 
-        // Execute pass order
-        executePassOrder();
+        // Execute batch-based pass order
+        applyCommittedPassOrder();
 
+        return 0;
+    }
+
+    // Handle VEHICLE_LEFT via RAFT consensus
+    if (type == VEHICLE_LEFT && entry->data.len >= sizeof(VehicleLeftEntry) + 1) {
+        VehicleLeftEntry* leftEntry = reinterpret_cast<VehicleLeftEntry*>(data + 1);
+        
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                  << " APPLYING VEHICLE_LEFT entry #" << entry_idx
+                  << " - vehicle " << leftEntry->vehicleId << " left batch " << leftEntry->batchId << std::endl;
+        
+        logEntriesCommitted_++;
+        lastAppliedIndex_ = entry_idx;
+        
+        applyVehicleLeftFromRaft(leftEntry->vehicleId, leftEntry->batchId);
+        
+        // Clean up pending proposals
+        auto it = pendingProposals_.find(entry_idx);
+        if (it != pendingProposals_.end()) {
+            delete[] it->second;
+            pendingProposals_.erase(it);
+        }
+        
         return 0;
     }
 
@@ -527,8 +857,7 @@ int WillemtRaftApplication::doApplyLog(raft_entry_t* entry, raft_index_t entry_i
         // Execute the pass command (safe because quorum committed it)
         executePassCommand(vehicleId);
 
-        // Clean up pending proposals
-        pendingProposals_.erase(entry_idx);
+        // Clean up pending proposals - old style didn't use uint8_t*
     }
 
     return 0;
@@ -680,6 +1009,27 @@ void WillemtRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             int vehicleId = static_cast<int>(bytes[0]);
             handleVehicleLeft(vehicleId);
         }
+    }
+    // Handle discovery and cluster messages (matching WAVE)
+    else if (packetName.find("discovery-beacon") != std::string::npos) {
+        int senderId = extractSenderFromPacketName(packetName);
+        if (senderId != myId_ && bytes.size() >= sizeof(int) + 1) {
+            uint8_t senderPhase = bytes[sizeof(int)];
+            if (senderPhase == PHASE_DISCOVERY) {
+                handleDiscoveryBeacon(senderId, senderPhase);
+            } else {
+                // Sender is already in a cluster — remove from our discoveredPeers
+                discoveredPeers_.erase(senderId);
+            }
+        }
+    }
+    else if (packetName.find("cluster-form") != std::string::npos) {
+        int senderId = extractSenderFromPacketName(packetName);
+        handleClusterForm(bytes, senderId);
+    }
+    else if (packetName.find("cluster-exists") != std::string::npos) {
+        int senderId = extractSenderFromPacketName(packetName);
+        handleClusterExists(bytes, senderId);
     }
 }
 
@@ -1100,6 +1450,31 @@ void WillemtRaftApplication::proposeStatusReport()
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
                   << " submitted STATUS_REPORT entry #" << response.idx << std::endl;
+        
+        // Leader must explicitly apply its own entry and trigger proposePassOrder
+        timerManager.create(
+            veins::TimerSpecification([this, idx = response.idx, statusReport]() {
+                if (raftServer_ && raft_get_commit_idx(raftServer_) >= idx && !hasCommittedOrder_) {
+                    std::cout << std::fixed << std::setprecision(1)
+                              << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
+                              << " applying committed STATUS_REPORT #" << idx << std::endl;
+                    
+                    // Store committed statuses
+                    committedStatuses_.clear();
+                    for (int i = 0; i < statusReport.numVehicles; i++) {
+                        committedStatuses_[statusReport.statuses[i].vehicleId] = statusReport.statuses[i];
+                    }
+                    
+                    logEntriesCommitted_++;
+                    lastAppliedIndex_ = idx;
+                    
+                    // Phase 2: Propose pass order
+                    if (isLeader_ && !hasPassedIntersection_ && !hasCommittedOrder_) {
+                        proposePassOrder();
+                    }
+                }
+            }).oneshotIn(SimTime(0.1))
+        );
     } else {
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
@@ -1123,7 +1498,9 @@ std::vector<int> WillemtRaftApplication::createDeterministicOrder()
     std::vector<int> blockedVehicles;
 
     // 1. Separate vehicles by wayOfSight
-    for (const auto& [vid, status] : committedStatuses_) {
+    for (const auto& kv : committedStatuses_) {
+        int vid = kv.first;
+        const VehicleStatus& status = kv.second;
         if (status.wayOfSight) {
             frontVehicles.push_back(vid);
         } else {
@@ -1164,30 +1541,125 @@ void WillemtRaftApplication::proposePassOrder()
 {
     if (!raftServer_ || !isLeader_) return;
 
-    // Create deterministic order
-    std::vector<int> order = createDeterministicOrder();
-
+    // Build schedule from committed statuses (converted to proposals)
+    std::vector<VehicleProposal> pool;
+    for (auto& kv : committedStatuses_) {
+        VehicleProposal prop;
+        memset(&prop, 0, sizeof(prop));
+        prop.vehicleId = kv.second.vehicleId;
+        strncpy(prop.laneEdgeId, kv.second.lane, sizeof(prop.laneEdgeId) - 1);
+        prop.laneIndex = getLaneIndex(kv.second.lane);
+        prop.intendedTurn = 0;  // STRAIGHT for this benchmark
+        prop.isFirstInLane = kv.second.wayOfSight;
+        prop.blockedByVehicleId = kv.second.wayOfSight ? -1 : (kv.second.vehicleId - 1);
+        pool.push_back(prop);
+    }
+    
+    // Sort by priority: isFirstInLane DESC, laneIndex ASC, vehicleId ASC
+    std::sort(pool.begin(), pool.end(), [](const VehicleProposal& a, const VehicleProposal& b) {
+        if (a.isFirstInLane != b.isFirstInLane) return a.isFirstInLane > b.isFirstInLane;
+        if (a.laneIndex != b.laneIndex) return a.laneIndex < b.laneIndex;
+        return a.vehicleId < b.vehicleId;
+    });
+    
+    // Create batch-based schedule
+    PassScheduleEntry schedule;
+    memset(&schedule, 0, sizeof(schedule));
+    
+    while (!pool.empty() && schedule.numBatches < 16) {
+        PassBatch& currentBatch = schedule.batches[schedule.numBatches];
+        currentBatch.numVehicles = 0;
+        
+        std::vector<VehicleProposal> remaining;
+        for (auto& prop : pool) {
+            bool canAdd = true;
+            
+            // Check conflict with vehicles already in this batch
+            for (int i = 0; i < currentBatch.numVehicles; i++) {
+                // Find the proposal for the vehicle in batch
+                int batchVid = currentBatch.vehicleIds[i];
+                int batchLane = -1;
+                int batchTurn = 0;
+                for (auto& p : committedStatuses_) {
+                    if (p.second.vehicleId == batchVid) {
+                        batchLane = getLaneIndex(p.second.lane);
+                        break;
+                    }
+                }
+                
+                if (movementsConflict(prop.laneIndex, prop.intendedTurn, batchLane, batchTurn)) {
+                    canAdd = false;
+                    break;
+                }
+            }
+            
+            // Check if blocked by vehicle not yet passed
+            if (canAdd && prop.blockedByVehicleId >= 0) {
+                bool blockerInPreviousBatch = false;
+                for (int b = 0; b < schedule.numBatches; b++) {
+                    for (int v = 0; v < schedule.batches[b].numVehicles; v++) {
+                        if (schedule.batches[b].vehicleIds[v] == prop.blockedByVehicleId) {
+                            blockerInPreviousBatch = true;
+                            break;
+                        }
+                    }
+                    if (blockerInPreviousBatch) break;
+                }
+                // Also check current batch
+                for (int v = 0; v < currentBatch.numVehicles; v++) {
+                    if (currentBatch.vehicleIds[v] == prop.blockedByVehicleId) {
+                        blockerInPreviousBatch = true;
+                        break;
+                    }
+                }
+                if (!blockerInPreviousBatch) {
+                    canAdd = false;  // Blocker hasn't been scheduled yet
+                }
+            }
+            
+            if (canAdd && currentBatch.numVehicles < 8) {
+                currentBatch.vehicleIds[currentBatch.numVehicles++] = prop.vehicleId;
+            } else {
+                remaining.push_back(prop);
+            }
+        }
+        
+        if (currentBatch.numVehicles > 0) {
+            schedule.numBatches++;
+        }
+        pool = remaining;
+        
+        // Safety: prevent infinite loop
+        if (remaining.size() == pool.size() && !pool.empty()) {
+            // Force add one vehicle to break deadlock
+            if (schedule.numBatches < 16) {
+                PassBatch& forceBatch = schedule.batches[schedule.numBatches];
+                forceBatch.numVehicles = 1;
+                forceBatch.vehicleIds[0] = pool[0].vehicleId;
+                schedule.numBatches++;
+                pool.erase(pool.begin());
+            }
+        }
+    }
+    
+    // Log the schedule
     std::cout << std::fixed << std::setprecision(1)
               << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
-              << " PROPOSING PASS_ORDER [";
-    for (size_t i = 0; i < order.size(); i++) {
-        std::cout << order[i];
-        if (i < order.size() - 1) std::cout << ",";
-    }
-    std::cout << "] to quorum" << std::endl;
-
-    // Create pass order entry
-    PassOrderEntry passOrder;
-    passOrder.numVehicles = std::min((int)order.size(), 32);
-    for (int i = 0; i < passOrder.numVehicles; i++) {
-        passOrder.order[i] = order[i];
+              << " PROPOSING PASS_SCHEDULE with " << schedule.numBatches << " batches:" << std::endl;
+    for (int b = 0; b < schedule.numBatches; b++) {
+        std::cout << "  Batch " << b << ": [";
+        for (int v = 0; v < schedule.batches[b].numVehicles; v++) {
+            std::cout << schedule.batches[b].vehicleIds[v];
+            if (v < schedule.batches[b].numVehicles - 1) std::cout << ",";
+        }
+        std::cout << "]" << std::endl;
     }
 
-    // Prepare entry buffer: [type byte][pass order data]
-    size_t entrySize = 1 + sizeof(PassOrderEntry);
-    std::vector<uint8_t> entryBuffer(entrySize);
-    entryBuffer[0] = static_cast<uint8_t>(PASS_ORDER);
-    memcpy(entryBuffer.data() + 1, &passOrder, sizeof(PassOrderEntry));
+    // Prepare entry buffer: [type byte][schedule data]
+    size_t entrySize = 1 + sizeof(PassScheduleEntry);
+    uint8_t* data = new uint8_t[entrySize];
+    data[0] = static_cast<uint8_t>(PASS_ORDER);
+    memcpy(data + 1, &schedule, sizeof(PassScheduleEntry));
 
     // Create Raft entry
     raft_entry_t entry;
@@ -1195,7 +1667,7 @@ void WillemtRaftApplication::proposePassOrder()
     entry.term = raft_get_current_term(raftServer_);
     entry.id = 0;
     entry.type = RAFT_LOGTYPE_NORMAL;
-    entry.data.buf = entryBuffer.data();
+    entry.data.buf = data;
     entry.data.len = entrySize;
 
     // Submit to Raft for replication
@@ -1204,40 +1676,35 @@ void WillemtRaftApplication::proposePassOrder()
 
     if (result == 0) {
         logEntriesProposed_++;
+        pendingProposals_[response.idx] = data;
+        
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
-                  << " submitted PASS_ORDER entry #" << response.idx << std::endl;
+                  << " submitted PASS_SCHEDULE entry #" << response.idx << std::endl;
         
-        // CRITICAL: Leader must apply its own committed entry
-        // Instead of retrieving from RAFT log (which has corruption issues),
-        // directly apply the pass order data we just created
+        // Apply schedule after commit
         timerManager.create(
-            veins::TimerSpecification([this, idx = response.idx, passOrder]() {
-                if (raftServer_ && raft_get_commit_idx(raftServer_) >= idx) {
+            veins::TimerSpecification([this, idx = response.idx, schedule]() {
+                if (raftServer_ && raft_get_commit_idx(raftServer_) >= idx && !hasCommittedOrder_) {
                     std::cout << std::fixed << std::setprecision(1)
                               << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
-                              << " APPLYING committed PASS_ORDER entry #" << idx << " [";
-                    for (int i = 0; i < passOrder.numVehicles; i++) {
-                        std::cout << passOrder.order[i];
-                        if (i < passOrder.numVehicles - 1) std::cout << ",";
-                    }
-                    std::cout << "]" << std::endl;
+                              << " APPLYING committed PASS_SCHEDULE #" << idx << std::endl;
                     
-                    // Store committed pass order
-                    memcpy(&committedPassOrder_, &passOrder, sizeof(PassOrderEntry));
+                    memcpy(&committedSchedule_, &schedule, sizeof(PassScheduleEntry));
                     hasCommittedOrder_ = true;
+                    timeOrderCommitted_ = simTime();
                     logEntriesCommitted_++;
                     lastAppliedIndex_ = idx;
                     
-                    // Execute pass order
-                    executePassOrder();
+                    applyCommittedPassOrder();
                 }
-            }).oneshotIn(SimTime(0.05))  // Check after 50ms
+            }).oneshotIn(SimTime(0.1))
         );
     } else {
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
-                  << " FAILED to propose PASS_ORDER (error " << result << ")" << std::endl;
+                  << " FAILED to propose PASS_SCHEDULE (error " << result << ")" << std::endl;
+        delete[] data;
     }
 }
 
@@ -1255,60 +1722,222 @@ int WillemtRaftApplication::findMyPositionInOrder()
 
 void WillemtRaftApplication::executePassOrder()
 {
+    // Legacy function - redirect to batch-based execution
+    applyCommittedPassOrder();
+}
+
+void WillemtRaftApplication::applyCommittedPassOrder()
+{
     if (hasPassedIntersection_) return;
-
-    int myPosition = findMyPositionInOrder();
     
-    if (myPosition < 0) {
-        std::cout << std::fixed << std::setprecision(1)
-                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-                  << " NOT FOUND in pass order!" << std::endl;
-        return;
-    }
-
-    std::cout << std::fixed << std::setprecision(1)
-              << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-              << " is at position " << myPosition << " in pass order" << std::endl;
-
-    if (myPosition == 0) {
-        // I'm first, start immediately
-        std::cout << std::fixed << std::setprecision(1)
-                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-                  << " is FIRST in order, starting immediately" << std::endl;
-        resumeMovement();
-    } else {
-        // Task 2: Parallel Phase Strategy
-        int totalDelayMs = 0;
-        auto hasConflict = [this](int otherVid) {
-            int vPS = totalVehicles_ / 4;
-            if (vPS == 0) vPS = 1;
-            int otherSide = otherVid / vPS;
-            int mySide = myId_ / vPS;
-            if ((mySide == 0 || mySide == 1) && (otherSide == 0 || otherSide == 1)) return false;
-            if ((mySide == 2 || mySide == 3) && (otherSide == 2 || otherSide == 3)) return false;
-            return true;
-        };
-        for (int i = 0; i < myPosition; i++) {
-            if (hasConflict(committedPassOrder_.order[i])) totalDelayMs += 150;
+    // Find which batch I'm in
+    myBatch_ = -1;
+    for (int b = 0; b < committedSchedule_.numBatches; b++) {
+        for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
+            if (committedSchedule_.batches[b].vehicleIds[v] == myId_) {
+                myBatch_ = b;
+                break;
+            }
         }
-        int delayMs = totalDelayMs;
-        
+        if (myBatch_ >= 0) break;
+    }
+    
+    if (myBatch_ < 0) {
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-                  << " at position " << myPosition << ", waiting " << delayMs << "ms for turn" << std::endl;
+                  << " NOT SCHEDULED - using fallback in " << (committedSchedule_.numBatches * 2000.0) << "ms" << std::endl;
         
-        // Wait for calculated delay, then move
+        // Fallback: schedule to move after all batches complete
+        int fallbackDelayMs = committedSchedule_.numBatches * 2000;
         timerManager.create(
-            veins::TimerSpecification([this, delayMs]() {
+            veins::TimerSpecification([this]() {
                 if (!hasPassedIntersection_) {
                     std::cout << std::fixed << std::setprecision(1)
                               << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-                              << " starting movement (after " << delayMs << "ms delay)" << std::endl;
+                              << " FALLBACK movement starting" << std::endl;
+                    isFallbackMode_ = true;
+                    coordinationMethod_ = "fallback";
                     resumeMovement();
                 }
-            }).oneshotIn(SimTime(delayMs / 1000.0))
+            }).oneshotIn(SimTime(fallbackDelayMs / 1000.0))
         );
+        return;
     }
+    
+    std::cout << std::fixed << std::setprecision(1)
+              << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+              << " assigned to batch " << myBatch_ << " (current batch: " << currentBatch_ << ")" << std::endl;
+    
+    if (myBatch_ == 0) {
+        // I'm in first batch, start immediately
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                  << " in BATCH 0, starting immediately" << std::endl;
+        resumeMovement();
+    } else {
+        // Schedule safety timer to force movement if batch doesn't advance
+        int safetyDelayMs = myBatch_ * 2000;  // 2 seconds per batch
+        timerManager.create(
+            veins::TimerSpecification([this, expectedBatch = myBatch_]() {
+                if (!hasPassedIntersection_ && currentBatch_ < expectedBatch) {
+                    std::cout << std::fixed << std::setprecision(1)
+                              << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                              << " BATCH SAFETY TIMEOUT - forcing movement for batch " << expectedBatch << std::endl;
+                    currentBatch_ = expectedBatch;
+                    resumeMovement();
+                }
+            }).oneshotIn(SimTime(safetyDelayMs / 1000.0))
+        );
+        
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                  << " waiting for batch " << myBatch_ << " (safety timer: " << safetyDelayMs << "ms)" << std::endl;
+    }
+}
+
+bool WillemtRaftApplication::movementsConflict(int laneA, int turnA, int laneB, int turnB)
+{
+    // Conflict matrix for intersection movements
+    // Lanes: 0=W, 1=S, 2=E, 3=N
+    // Turns: 0=STRAIGHT, 1=LEFT, 2=RIGHT
+    
+    if (laneA == laneB) return true;  // Same direction always conflicts
+    
+    // Opposing straight movements don't conflict: W(0)↔E(2), N(3)↔S(1)
+    bool opposing = (laneA + laneB == 2) || (laneA + laneB == 4);
+    
+    if (opposing && turnA == 0 && turnB == 0) return false;  // Opposing straight = OK
+    if (opposing && turnA == 1 && turnB == 1) return false;  // Opposing left = OK
+    
+    // All other combinations conflict (conservative)
+    return true;
+}
+
+void WillemtRaftApplication::applyVehicleLeftFromRaft(int vehicleId, int batchId)
+{
+    std::cout << std::fixed << std::setprecision(1)
+              << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+              << " RAFT-confirmed: vehicle " << vehicleId << " left batch " << batchId << std::endl;
+    
+    // Remove from active vehicles
+    activeVehicles_.erase(vehicleId);
+    vehiclesLeftInBatch_.insert(vehicleId);
+    
+    // Check if batch is complete
+    checkBatchAdvance();
+}
+
+void WillemtRaftApplication::checkBatchAdvance()
+{
+    if (hasPassedIntersection_ || !hasCommittedOrder_) return;
+    if (currentBatch_ >= committedSchedule_.numBatches) return;
+    
+    // Check if all vehicles in current batch have left
+    PassBatch& batch = committedSchedule_.batches[currentBatch_];
+    bool allLeft = true;
+    for (int v = 0; v < batch.numVehicles; v++) {
+        if (vehiclesLeftInBatch_.find(batch.vehicleIds[v]) == vehiclesLeftInBatch_.end()) {
+            allLeft = false;
+            break;
+        }
+    }
+    
+    if (allLeft) {
+        currentBatch_++;
+        vehiclesLeftInBatch_.clear();
+        
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                  << " BATCH ADVANCE: now on batch " << currentBatch_ << std::endl;
+        
+        // If it's my turn, start moving
+        if (myBatch_ == currentBatch_ && !hasPassedIntersection_) {
+            std::cout << std::fixed << std::setprecision(1)
+                      << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                      << " MY BATCH - starting movement" << std::endl;
+            resumeMovement();
+        }
+    }
+}
+
+void WillemtRaftApplication::proposeVehicleLeft(int vehicleId, int batchId)
+{
+    if (!raftServer_ || !isLeader_ || hasPassedIntersection_) return;
+    
+    VehicleLeftEntry entryData;
+    entryData.vehicleId = vehicleId;
+    entryData.batchId = batchId;
+    
+    size_t entrySize = 1 + sizeof(VehicleLeftEntry);
+    uint8_t* data = new uint8_t[entrySize];
+    data[0] = VEHICLE_LEFT;
+    memcpy(data + 1, &entryData, sizeof(VehicleLeftEntry));
+    
+    raft_entry_t entry;
+    memset(&entry, 0, sizeof(entry));
+    entry.term = raft_get_current_term(raftServer_);
+    entry.id = 0;
+    entry.type = RAFT_LOGTYPE_NORMAL;
+    entry.data.buf = data;
+    entry.data.len = entrySize;
+    
+    msg_entry_response_t response;
+    int result = raft_recv_entry(raftServer_, &entry, &response);
+    
+    if (result == 0) {
+        logEntriesProposed_++;
+        pendingProposals_[response.idx] = data;
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
+                  << " proposed VEHICLE_LEFT for " << vehicleId << " batch " << batchId << std::endl;
+    } else {
+        EV_WARN << "Vehicle " << myId_ << " failed to propose VEHICLE_LEFT: " << result << endl;
+        delete[] data;
+    }
+}
+
+WillemtRaftApplication::VehicleProposal WillemtRaftApplication::buildMyProposal()
+{
+    VehicleProposal proposal;
+    memset(&proposal, 0, sizeof(proposal));
+    proposal.vehicleId = myId_;
+    strncpy(proposal.laneEdgeId, myLane_.c_str(), sizeof(proposal.laneEdgeId) - 1);
+    proposal.laneIndex = myLaneIndex_;
+    proposal.intendedTurn = 0;  // STRAIGHT for this benchmark
+    proposal.blockedByVehicleId = detectBlockingVehicle();
+    proposal.isFirstInLane = (proposal.blockedByVehicleId == -1);
+    
+    if (timeStopped_ > SIMTIME_ZERO) {
+        proposal.waitingTimeMs = (simTime() - timeStopped_).dbl() * 1000.0;
+    } else {
+        proposal.waitingTimeMs = 0.0;
+    }
+    
+    proposal.distanceToJunction = calculateDistanceToJunction();
+    
+    if (traciVehicle_) {
+        try {
+            proposal.positionOnLane = traciVehicle_->getLanePosition();
+            proposal.speed = traciVehicle_->getSpeed();
+        } catch (...) {
+            proposal.positionOnLane = 0;
+            proposal.speed = 0;
+        }
+    }
+    
+    return proposal;
+}
+
+int WillemtRaftApplication::detectBlockingVehicle()
+{
+    // Simple detection: use vehicle in front from lane calculation
+    return vehicleInFrontOfMe_;
+}
+
+double WillemtRaftApplication::calculateDistanceToJunction()
+{
+    // Use the same calculation as getDistanceToJunction()
+    return getDistanceToJunction();
 }
 
 void WillemtRaftApplication::checkIfPreviousVehicleLeft(int previousVehicleId)
@@ -1363,58 +1992,61 @@ void WillemtRaftApplication::sendVehicleLeft()
 {
     std::cout << std::fixed << std::setprecision(1)
               << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-              << " BROADCASTING vehicle-left message" << std::endl;
+              << " sending vehicle-left (isLeader=" << isLeader_ << ", myBatch=" << myBatch_ << ")" << std::endl;
 
-    std::ostringstream packetName;
-    packetName << "coord-vehicle-left-from-" << myId_ << "-broadcast";
+    if (isLeader_) {
+        // Leader: propose via RAFT consensus
+        proposeVehicleLeft(myId_, myBatch_);
+    } else {
+        // Follower: broadcast to leader (who will propose to RAFT)
+        std::ostringstream packetName;
+        packetName << "coord-vehicle-left-from-" << myId_ << "-batch-" << myBatch_;
 
-    std::vector<uint8_t> data = {static_cast<uint8_t>(myId_)};
-    auto payload = makeShared<BytesChunk>(data);
-    auto packet = createPacket(packetName.str());
-    packet->insertAtBack(payload);
-    sendPacket(std::move(packet));
+        std::vector<uint8_t> data(sizeof(int) * 2);
+        memcpy(data.data(), &myId_, sizeof(int));
+        memcpy(data.data() + sizeof(int), &myBatch_, sizeof(int));
+        
+        auto payload = makeShared<BytesChunk>(data);
+        auto packet = createPacket(packetName.str());
+        packet->insertAtBack(payload);
+        sendPacket(std::move(packet));
 
-    messagesSent_++;
-}
-
-void WillemtRaftApplication::rebroadcastVehicleLeft(int vehicleId)
-{
-    std::ostringstream packetName;
-    packetName << "coord-vehicle-left-rebroadcast-from-" << myId_ << "-for-" << vehicleId;
-
-    std::vector<uint8_t> data = {static_cast<uint8_t>(vehicleId)};
-    auto payload = makeShared<BytesChunk>(data);
-    auto packet = createPacket(packetName.str());
-    packet->insertAtBack(payload);
-    sendPacket(std::move(packet));
-
-    messagesSent_++;
+        messagesSent_++;
+    }
 }
 
 void WillemtRaftApplication::handleVehicleLeft(int vehicleId)
 {
+    // This is called when we receive a VEHICLE_LEFT broadcast (not via RAFT)
+    // If we're the leader, propose it to RAFT for consensus
+    // If not, just update locally (but RAFT will provide authoritative update)
+    
     std::cout << std::fixed << std::setprecision(1)
               << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
               << " RECEIVED vehicle-left from vehicle " << vehicleId << std::endl;
 
-    // Remove from active set
-    activeVehicles_.erase(vehicleId);
-    
-    // OPTIMIZATION: Check if it's my turn FIRST, then move immediately
-    bool isMyTurn = (vehicleId == waitingForVehicle_);
-    
-    if (isMyTurn) {
-        std::cout << std::fixed << std::setprecision(1)
-                  << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
-                  << " previous vehicle left, MY TURN - starting immediately!" << std::endl;
+    if (isLeader_) {
+        // Find the batch for this vehicle
+        int batchId = -1;
+        for (int b = 0; b < committedSchedule_.numBatches; b++) {
+            for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
+                if (committedSchedule_.batches[b].vehicleIds[v] == vehicleId) {
+                    batchId = b;
+                    break;
+                }
+            }
+            if (batchId >= 0) break;
+        }
         
-        // Start moving immediately
-        resumeMovement();
-        waitingForVehicle_ = -1;
+        if (batchId >= 0) {
+            proposeVehicleLeft(vehicleId, batchId);
+        }
     }
     
-    // NOTE: Removed rebroadcast - it was causing broadcast storm
-    // The original broadcast from the vehicle is sufficient
+    // Local optimistic update (RAFT will confirm)
+    activeVehicles_.erase(vehicleId);
+    vehiclesLeftInBatch_.insert(vehicleId);
+    checkBatchAdvance();
 }
 
 // ============ OLD FUNCTIONS (WILL BE REMOVED) ============
@@ -1529,7 +2161,7 @@ void WillemtRaftApplication::proposePassCommand(int vehicleId)
 
     if (result == 0) {
         logEntriesProposed_++;
-        pendingProposals_[response.idx] = cmdData;
+        // Note: legacy function - not storing in pendingProposals_
 
         std::cout << std::fixed << std::setprecision(1)
                   << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
@@ -1669,12 +2301,47 @@ void WillemtRaftApplication::checkAndStopAtIntersection()
     if (hasStoppedAtIntersection_ || !traciVehicle_) return;
 
     try {
-        if (isAtIntersection() && !hasStoppedAtIntersection_) {
+        // Check if on approach edge
+        std::string roadId = traciVehicle_->getRoadId();
+        bool onApproachEdge = intersectionEdges_.count(roadId) > 0;
+        
+        if (!onApproachEdge) return;  // Not on approach edge yet
+        
+        // Get distance to junction
+        double distToJunction = getDistanceToJunction();
+        
+        // Stop if within stopping distance
+        if (distToJunction >= 0 && distToJunction <= intersectionStopDistance_) {
             stopVehicle();
             hasStoppedAtIntersection_ = true;
             timeStopped_ = simTime();
-            intersectionEdge_ = traciVehicle_->getRoadId();
+            intersectionEdge_ = roadId;
             calculateWayOfSight();
+            
+            std::cout << std::fixed << std::setprecision(1)
+                      << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                      << " STOPPED at intersection (dist=" << std::setprecision(1) << distToJunction 
+                      << "m, edge=" << roadId << ", isLeader=" << isLeader_ 
+                      << ", hasCommittedOrder=" << hasCommittedOrder_ << ")" << std::endl;
+            
+            // If we're already the leader, wait for more vehicles then start collection
+            if (isLeader_ && !hasCommittedOrder_) {
+                std::cout << std::fixed << std::setprecision(1)
+                          << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                          << " is LEADER - waiting " << arrivalWaitTimeMs_ << "ms for vehicles to arrive" << std::endl;
+                
+                // Wait for vehicles to gather before collecting status
+                timerManager.create(
+                    veins::TimerSpecification([this]() {
+                        if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_) {
+                            std::cout << std::fixed << std::setprecision(1)
+                                      << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
+                                      << " arrival wait complete - starting status collection" << std::endl;
+                            collectStatusAndDecide();
+                        }
+                    }).oneshotIn(SimTime(arrivalWaitTimeMs_, SIMTIME_MS))
+                );
+            }
         }
     } catch (...) {}
 }
@@ -1709,9 +2376,37 @@ bool WillemtRaftApplication::isAtIntersection() const
     if (!traciVehicle_) return false;
     try {
         std::string roadId = traciVehicle_->getRoadId();
-        return intersectionEdges_.count(roadId) > 0;
+        // Must be on an approach edge AND near the junction
+        return intersectionEdges_.count(roadId) > 0 && isNearJunction();
     } catch (...) {
         return false;
+    }
+}
+
+bool WillemtRaftApplication::isNearJunction() const
+{
+    double dist = getDistanceToJunction();
+    return dist >= 0 && dist <= intersectionStopDistance_;
+}
+
+double WillemtRaftApplication::getDistanceToJunction() const
+{
+    if (!traciVehicle_) return -1;
+    
+    try {
+        // Get lane length and current position on lane
+        double lanePos = traciVehicle_->getLanePosition();
+        std::string laneId = traciVehicle_->getLaneId();
+        
+        // Get lane length via TraCI
+        double laneLength = traci_->lane(laneId).getLength();
+        
+        // Distance to end of lane (junction) = laneLength - currentPosition
+        double distToEnd = laneLength - lanePos;
+        
+        return distToEnd;
+    } catch (...) {
+        return -1;
     }
 }
 
@@ -1739,8 +2434,19 @@ void WillemtRaftApplication::onBecameLeader()
               << (simTime().dbl() * 1000.0) << "ms Vehicle " << myId_
               << " ELECTED LEADER (election took " << electionTimeMs << "ms)" << std::endl;
 
-    if (hasStoppedAtIntersection_ && !hasPassedIntersection_) {
-        sendStatusRequest();
+    if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && !hasCommittedOrder_) {
+        // Wait for more vehicles to arrive before scheduling
+        std::cout << std::fixed << std::setprecision(1)
+                  << (simTime().dbl() * 1000.0) << "ms Leader " << myId_
+                  << " waiting " << arrivalWaitTimeMs_ << "ms for vehicles to arrive" << std::endl;
+        
+        timerManager.create(
+            veins::TimerSpecification([this]() {
+                if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_) {
+                    collectStatusAndDecide();
+                }
+            }).oneshotIn(SimTime(arrivalWaitTimeMs_, SIMTIME_MS))
+        );
     }
 }
 
@@ -1761,15 +2467,19 @@ void WillemtRaftApplication::resumeMovement()
     if (!traciVehicle_ || hasPassedIntersection_) return;
 
     try {
-        // Task 3: God Mode (Safety Overrides)
-        // Match WAVE implementation and disable SUMO's defensive driving
-        traciVehicle_->setSpeedMode(0); // Ignore SUMO collisions/safety
-        traciVehicle_->setSpeed(-1);   // Resume speed
+        // CRITICAL: Disable ALL SUMO safety checks for coordinated intersection
+        // setSpeedMode(0) = ignore collisions and car-following model
+        traciVehicle_->setSpeedMode(0);
         
-        // Ignore priority junction rules
+        // Ignore junction priority rules
         traciVehicle_->setParameter("jmIgnoreFoeProb", "1.0");
         traciVehicle_->setParameter("jmIgnoreFoeSpeed", "100.0");
         traciVehicle_->setParameter("jmTimegapMinor", "0.0");
+        
+        // Set EXPLICIT speed (NOT -1, which re-enables car-following!)
+        double speed = traciVehicle_->getMaxSpeed();
+        if (speed <= 0) speed = 13.89;  // 50 km/h default
+        traciVehicle_->setSpeed(speed);
         
         timeStartedMoving_ = simTime();
 
@@ -1923,12 +2633,29 @@ void WillemtRaftApplication::outputMetricsJSON()
 {
     if (!resultsFileOpened_) return;
 
-    double stoppedTimeMs = (timeStopped_ - timeArrived_).dbl() * 1000.0;
-    double electionTimeMs = wasElectedLeader_ ? (timeElected_ - timeStopped_).dbl() * 1000.0 : 0;
-    double raftDecisionTimeMs = (timeOrderCommitted_ - timeStopped_).dbl() * 1000.0;  // RAFT consensus time
-    double totalWaitTimeMs = (timeStartedMoving_ - timeStopped_).dbl() * 1000.0;
-    double transitTimeMs = (timePassed_ - timeStartedMoving_).dbl() * 1000.0;
-    double throughputVehPerSec = 1.0 / ((timePassed_ - timeStopped_).dbl());
+    // Calculate timestamps in ms
+    double arrivedMs = timeArrived_.dbl() * 1000.0;
+    double stoppedMs = timeStopped_.dbl() * 1000.0;
+    double clusterFormedMs = timeClusterFormed_.dbl() * 1000.0;
+    double electedMs = timeElected_.dbl() * 1000.0;
+    double orderCommittedMs = timeOrderCommitted_.dbl() * 1000.0;
+    double startedMovingMs = timeStartedMoving_.dbl() * 1000.0;
+    double passedMs = timePassed_.dbl() * 1000.0;
+    
+    // Calculate durations
+    double approachTimeMs = stoppedMs - arrivedMs;
+    double electionTimeMs = wasElectedLeader_ ? (electedMs - stoppedMs) : 0;
+    
+    // RAFT decision time: from max(stopped, cluster_formed) to order_committed
+    double raftStartMs = std::max(stoppedMs, clusterFormedMs);
+    double raftDecisionTimeMs = 0;
+    if (orderCommittedMs > 0 && raftStartMs > 0 && orderCommittedMs >= raftStartMs) {
+        raftDecisionTimeMs = orderCommittedMs - raftStartMs;
+    }
+    
+    double totalWaitTimeMs = startedMovingMs - stoppedMs;
+    double transitTimeMs = passedMs - startedMovingMs;
+    double throughputVehPerSec = (passedMs > stoppedMs) ? 1.0 / ((passedMs - stoppedMs) / 1000.0) : 0;
 
     if (vehiclesCompleted_ > 0) {
         resultsFile_ << ",\n";
@@ -1941,18 +2668,20 @@ void WillemtRaftApplication::outputMetricsJSON()
                  << "    \"was_leader\": " << (wasElectedLeader_ ? "true" : "false") << ",\n"
                  << "    \"way_of_sight\": " << (wayOfSight_ ? "true" : "false") << ",\n"
                  << "    \"lane\": \"" << myLane_ << "\",\n"
+                 << "    \"batch_assigned\": " << myBatch_ << ",\n"
                  << "    \"log_entries_proposed\": " << logEntriesProposed_ << ",\n"
                  << "    \"log_entries_committed\": " << logEntriesCommitted_ << ",\n"
                  << "    \"timestamps_ms\": {\n"
-                 << "      \"arrived\": " << std::fixed << std::setprecision(2) << (timeArrived_.dbl() * 1000.0) << ",\n"
-                 << "      \"stopped\": " << (timeStopped_.dbl() * 1000.0) << ",\n"
-                 << "      \"elected\": " << (timeElected_.dbl() * 1000.0) << ",\n"
-                 << "      \"order_committed\": " << (timeOrderCommitted_.dbl() * 1000.0) << ",\n"
-                 << "      \"started_moving\": " << (timeStartedMoving_.dbl() * 1000.0) << ",\n"
-                 << "      \"passed\": " << (timePassed_.dbl() * 1000.0) << "\n"
+                 << "      \"arrived\": " << std::fixed << std::setprecision(2) << arrivedMs << ",\n"
+                 << "      \"stopped\": " << stoppedMs << ",\n"
+                 << "      \"cluster_formed\": " << clusterFormedMs << ",\n"
+                 << "      \"elected\": " << electedMs << ",\n"
+                 << "      \"order_committed\": " << orderCommittedMs << ",\n"
+                 << "      \"started_moving\": " << startedMovingMs << ",\n"
+                 << "      \"passed\": " << passedMs << "\n"
                  << "    },\n"
                  << "    \"durations_ms\": {\n"
-                 << "      \"approach_time\": " << stoppedTimeMs << ",\n"
+                 << "      \"approach_time\": " << approachTimeMs << ",\n"
                  << "      \"election_time\": " << electionTimeMs << ",\n"
                  << "      \"raft_decision_time\": " << raftDecisionTimeMs << ",\n"
                  << "      \"total_wait_time\": " << totalWaitTimeMs << ",\n"

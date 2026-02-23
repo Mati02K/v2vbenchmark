@@ -27,6 +27,10 @@ simple WillemtRaftWaveApplication extends DemoBaseApplLayer
         // Status collection timeout (milliseconds) - increased for WAVE wireless delays
         int statusCollectionTimeoutMs = default(1000);
         
+        // Distance-based intersection stopping
+        double intersectionStopDistance @unit(m) = default(25m);  // Stop within this distance of junction
+        int arrivalWaitTimeMs = default(3000);  // Wait time for vehicles to gather before scheduling
+        
         // Dynamic cluster formation
         double clusterTriggerDistance = default(100.0);  // meters from junction center
         double discoveryBeaconInterval = default(0.3);   // seconds between beacons

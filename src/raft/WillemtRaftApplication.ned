@@ -26,6 +26,14 @@ simple WillemtRaftApplication extends VeinsInetApplicationBase
         // Status collection timeout (milliseconds)
         int statusCollectionTimeoutMs = default(200);
         
+        // Distance-based intersection stopping
+        double intersectionStopDistance @unit(m) = default(25m);  // Stop within this distance of junction
+        int arrivalWaitTimeMs = default(3000);  // Wait time for vehicles to gather before scheduling
+        
+        // Dynamic cluster formation (matching WAVE)
+        double clusterTriggerDistance = default(100.0);  // meters from junction center
+        double discoveryBeaconInterval = default(0.3);   // seconds between beacons
+        
         // Intersection edge configuration (comma-separated edge IDs)
         // Approach edges: edges leading INTO the intersection (one per direction W,S,E,N)
         string approachEdges = default("W2C,S2C,E2C,N2C");

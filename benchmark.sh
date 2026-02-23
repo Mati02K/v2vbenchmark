@@ -94,11 +94,15 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
 
     RESULTS_JSON="$ITER_DIR/raft_results.json"
 
-    # RAFT Timing (scaled by vehicle count)
-    ELECTION_TIMEOUT_BASE=$((500 + VEHICLE_COUNT * 25))
-    ELECTION_JITTER=$((100 + VEHICLE_COUNT * 50))
+    # RAFT Timing (IDENTICAL to WAVE for apples-to-apples comparison)
+    ELECTION_TIMEOUT_BASE=$((300 + VEHICLE_COUNT * 25))
+    ELECTION_JITTER=$((150 + VEHICLE_COUNT * 25))
     REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
-    STATUS_COLLECTION_TIMEOUT=$((300 + VEHICLE_COUNT * 20))
+    STATUS_COLLECTION_TIMEOUT=$((500 + VEHICLE_COUNT * 150))
+    
+    # Arrival wait time (wait for vehicles to gather before scheduling)
+    # IDENTICAL to WAVE - time for vehicles to physically reach intersection
+    ARRIVAL_WAIT_TIME=$((3000 + VEHICLE_COUNT * 400))
 
 # Run simulation
 echo -e "${GREEN}Running simulation (iteration $iteration)...${NC}"
@@ -115,6 +119,8 @@ CLI_OVERRIDES=(
     "--**.app[0].electionTimeoutJitterMs=$ELECTION_JITTER"
     "--**.app[0].requestTimeoutMs=$REQUEST_TIMEOUT"
     "--**.app[0].statusCollectionTimeoutMs=$STATUS_COLLECTION_TIMEOUT"
+    "--**.app[0].arrivalWaitTimeMs=$ARRIVAL_WAIT_TIME"
+    "--**.app[0].intersectionStopDistance=25m"
 )
 
 # Run and capture output (use release build to avoid library conflicts)
