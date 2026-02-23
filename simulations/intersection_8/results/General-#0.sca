@@ -1,25 +1,25 @@
 version 2
-run General-0-20260222-21:21:49-79496
+run General-0-20260222-23:01:55-119917
 attr configname General
-attr datetime 20260222-21:21:49
+attr datetime 20260222-23:01:55
 attr experiment General
 attr inifile omnetpp_wave.ini
 attr iterationvars ""
 attr iterationvarsf ""
 attr measurement ""
 attr network IntersectionScenarioWave
-attr processid 79496
+attr processid 119917
 attr repetition 0
 attr replication #0
 attr resultdir results
 attr runnumber 0
-attr seedset 5
+attr seedset 10
 param **.appl.arrivalWaitTimeMs 6200
 param **.appl.electionTimeoutBaseMs 500
 param **.appl.electionTimeoutJitterMs 350
 param **.appl.intersectionStopDistance 25m
 param **.appl.requestTimeoutMs 140
-param **.appl.resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/wave_8veh/run_5/raft_results.json\""
+param **.appl.resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/raftwave_8veh/run_10/raft_results.json\""
 param **.appl.statusCollectionTimeoutMs 1700
 param *.manager.updateInterval 0.1s
 param *.manager.host "\"localhost\""
@@ -44,7 +44,7 @@ param *.connectionManager.sendDirect true
 param *.connectionManager.maxInterfDist 2600m
 param *.connectionManager.drawMaxIntfDist false
 param *.**.nic.mac1609_4.useServiceChannel false
-param *.**.nic.mac1609_4.txPower 100mW
+param *.**.nic.mac1609_4.txPower 20mW
 param *.**.nic.mac1609_4.bitrate 6Mbps
 param *.node[*].applType "\"benchmark.raft.WillemtRaftWaveApplication\""
 param *.node[*].appl.totalVehicles 8
@@ -61,13 +61,13 @@ param *.node[*].appl.passConfirmationMs 300
 param *.node[*].appl.statusCollectionTimeoutMs 800
 param *.node[*].nic.phy80211p.analogueModels "xmldoc(\"config.xml\", \"//AnalogueModel\")"
 param *.node[*].nic.phy80211p.decider "xmldoc(\"config.xml\", \"//Decider\")"
-param *.node[*].nic.phy80211p.sensitivity -85dBm
-param *.node[*].nic.phy80211p.maxTXPower 200mW
+param *.node[*].nic.phy80211p.sensitivity -92dBm
+param *.node[*].nic.phy80211p.maxTXPower 20mW
 param *.node[*].nic.phy80211p.useThermalNoise true
-param *.node[*].nic.phy80211p.thermalNoise -110dBm
+param *.node[*].nic.phy80211p.thermalNoise -94dBm
 param *.node[*].nic.phy80211p.useNoiseFloor true
-param *.node[*].nic.phy80211p.noiseFloor -98dBm
+param *.node[*].nic.phy80211p.noiseFloor -94dBm
 param *.node[*].nic.phy80211p.usePropagationDelay true
-param *.node[*].nic.phy80211p.minPowerLevel -110dBm
+param *.node[*].nic.phy80211p.minPowerLevel -94dBm
 
 

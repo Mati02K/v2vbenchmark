@@ -96,24 +96,49 @@ def calculate_metrics_from_runs(runs_data):
     return result
 
 def main():
-    vehicle_counts = [4, 8, 16]
+    vehicle_counts = [4, 8, 16, 32]
     protocols = ['wave', 'udp']
-    
+
+    # Folder-name prefix: results are stored as raftwave_Nveh / raft_Nveh
+    folder_prefix = {'wave': 'raftwave', 'udp': 'raft'}
+
     # Colors for each protocol
     colors = {'wave': '#9b59b6', 'udp': '#3498db'}  # Purple for WAVE, Blue for UDP
-    labels = {'wave': 'WAVE (802.11p)', 'udp': 'UDP (WiFi)'}
+    labels = {'wave': 'WAVE (IEEE 802.11p / ITS-G5)', 'udp': 'UDP (IEEE 802.11a)'}
     
     # Collect data
     data = {protocol: {} for protocol in protocols}
     
     for protocol in protocols:
+        prefix = folder_prefix[protocol]
         for vc in vehicle_counts:
-            runs = load_raw_runs(protocol, vc)
+            # Override result_name used inside helpers by patching the folder directly
+            result_name = f"{prefix}_{vc}veh"
+            # Load raw runs directly (bypass helper that uses wrong prefix)
+            result_dir = os.path.join(RESULTS_DIR, result_name)
+            runs = []
+            run_num = 1
+            while True:
+                json_file = os.path.join(result_dir, f'run_{run_num}', 'raft_results.json')
+                if not os.path.exists(json_file):
+                    break
+                try:
+                    with open(json_file, 'r') as f:
+                        d = json.load(f)
+                        if d:
+                            runs.append(d)
+                except Exception:
+                    pass
+                run_num += 1
+
             if runs:
                 data[protocol][vc] = calculate_metrics_from_runs(runs)
             else:
-                stats = load_aggregate_stats(protocol, vc)
-                if stats:
+                # Fallback: aggregate_stats.json
+                stats_file = os.path.join(result_dir, 'aggregate_stats.json')
+                if os.path.exists(stats_file):
+                    with open(stats_file, 'r') as f:
+                        stats = json.load(f)
                     data[protocol][vc] = {
                         'raft_decision_time': stats.get('raft_decision_time', {'mean': 0, 'std': 0}),
                         'total_intersection_time': stats.get('total_intersection_time', {'mean': 0, 'std': 0}),
@@ -124,8 +149,12 @@ def main():
                     }
     
     # Create figure with 2 rows x 3 columns
-    fig, axes = plt.subplots(2, 3, figsize=(15, 10))
-    fig.suptitle('RAFT Intersection Coordination: WAVE vs UDP Comparison', fontsize=16, fontweight='bold')
+    fig, axes = plt.subplots(2, 3, figsize=(18, 11))
+    fig.suptitle(
+        'RAFT Intersection Coordination: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)\n'
+        'Industry-Realistic PHY: α=2.75 NLOS, LogNormal Shadowing σ=4dB, Tx=20mW, 6 Mbps',
+        fontsize=14, fontweight='bold'
+    )
     
     # Metrics to plot
     plot_configs = [
@@ -174,7 +203,7 @@ def main():
         ax.set_ylabel(ylabel, fontsize=11, fontweight='bold')
         ax.set_title(title, fontsize=12, fontweight='bold')
         ax.set_xticks(x)
-        ax.set_xticklabels(vehicle_counts)
+        ax.set_xticklabels([f'{vc} veh' for vc in vehicle_counts])
         ax.legend(loc='upper left')
         ax.grid(True, alpha=0.3, axis='y')
         ax.set_ylim(bottom=0)
@@ -194,22 +223,23 @@ def main():
     plt.close()
     
     # Print summary table
-    print("\n" + "="*80)
-    print("SUMMARY TABLE: WAVE vs UDP Performance")
-    print("="*80)
-    print(f"{'Vehicles':<10} {'Protocol':<12} {'RAFT (ms)':<15} {'Total (ms)':<15} {'Throughput':<12} {'Wait (ms)':<12}")
-    print("-"*80)
-    
+    print("\n" + "="*90)
+    print("SUMMARY TABLE: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a) — Industry-Realistic PHY")
+    print("="*90)
+    print(f"{'Vehicles':<10} {'Protocol':<22} {'RAFT (ms)':<18} {'Total (ms)':<18} {'Throughput':<14} {'Wait (ms)':<12}")
+    print("-"*90)
+
     for vc in vehicle_counts:
         for protocol in protocols:
             if vc in data[protocol]:
                 d = data[protocol][vc]
+                proto_label = labels[protocol]
                 raft = d.get('raft_decision_time', {}).get('mean', 0)
                 total = d.get('total_intersection_time', {}).get('mean', 0)
                 tp = d.get('throughput', {}).get('mean', 0)
                 wait = d.get('wait_time', {}).get('mean', 0)
-                print(f"{vc:<10} {protocol.upper():<12} {raft:<15.1f} {total:<15.1f} {tp:<12.3f} {wait:<12.1f}")
-        print("-"*80)
+                print(f"{vc:<10} {proto_label:<22} {raft:<18.1f} {total:<18.1f} {tp:<14.3f} {wait:<12.1f}")
+        print("-"*90)
 
 if __name__ == '__main__':
     main()
