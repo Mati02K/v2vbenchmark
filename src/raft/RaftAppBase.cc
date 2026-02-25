@@ -200,6 +200,16 @@ void RaftAppBase::formCluster(const std::set<int>& members)
 
     // Broadcast cluster formation to peers
     broadcastClusterForm();
+
+    // Re-broadcast CLUSTER_FORM several times so vehicles that missed the first
+    // packet due to NLOS shadowing can still merge.  Four retries spread over
+    // ~1.8 s — well within the new fallback timeout (3 + 0.5*N seconds).
+    for (int delayMs : {300, 700, 1200, 1800}) {
+        scheduleOneshotMs(delayMs, [this]() {
+            if (clusterPhase_ == PHASE_COORDINATION && !hasPassedIntersection_)
+                broadcastClusterExists();
+        });
+    }
 }
 
 void RaftAppBase::mergeIntoCluster(const std::set<int>& members)
@@ -333,14 +343,37 @@ void RaftAppBase::processRaftPeriodic()
     if (isLeader_ && !wasLeader)       onBecameLeader();
     else if (!isLeader_ && wasLeader)  onLostLeadership();
 
-    // Global timeout fallback
+    // Global timeout fallback — two-phase:
+    //
+    // Phase 1 (pre-cluster): if the cluster hasn't formed within
+    //   (5 + N seconds) of stopping, something is wrong with discovery → fallback.
+    //   This covers WAVE cluster-splitting: vehicles stuck in DISCOVERY forever.
+    //
+    // Phase 2 (post-cluster): once the cluster is formed, RAFT must converge within
+    //   (arrivalWait + statusCollection + 4×electionTimeout + 3 s) of cluster
+    //   formation.  Measuring from cluster formation avoids punishing vehicles that
+    //   stopped long before the cluster could form.
     if (hasStoppedAtIntersection_ && !hasCommittedOrder_ && !isFallbackMode_) {
-        simtime_t waitTime = now - timeStopped_;
-        double    timeoutThreshold = 10.0 + 1.5 * totalVehicles_;
-        if (waitTime.dbl() > timeoutThreshold) {
-            RAFT_LOG("TIMEOUT: No PASS_ORDER after " << waitTime.dbl()*1000.0
-                     << "ms (threshold=" << timeoutThreshold*1000.0 << "ms), triggering fallback");
-            handleFallback();
+        if (timeClusterFormed_ > SIMTIME_ZERO) {
+            // Post-cluster: time RAFT window from cluster formation
+            simtime_t raftWait   = now - timeClusterFormed_;
+            double    raftTimeout = (arrivalWaitTimeMs_ + statusCollectionTimeoutMs_ +
+                                     electionTimeoutBaseMs_ * 4 + electionTimeoutJitterMs_ * 2 +
+                                     3000) / 1000.0;
+            if (raftWait.dbl() > raftTimeout) {
+                RAFT_LOG("RAFT TIMEOUT: " << raftWait.dbl()*1000.0
+                         << "ms since cluster formed (threshold=" << raftTimeout*1000.0 << "ms)");
+                handleFallback();
+            }
+        } else {
+            // Pre-cluster: time discovery window from first stop
+            simtime_t discWait     = now - timeStopped_;
+            double    discTimeout  = 5.0 + totalVehicles_ * 1.0;
+            if (discWait.dbl() > discTimeout) {
+                RAFT_LOG("DISCOVERY TIMEOUT: " << discWait.dbl()*1000.0
+                         << "ms stopped, no cluster yet (threshold=" << discTimeout*1000.0 << "ms)");
+                handleFallback();
+            }
         }
     }
 }

@@ -1,0 +1,1888 @@
+OMNeT++ Discrete Event Simulation  (C) 1992-2019 Andras Varga, OpenSim Ltd.
+Version: 5.6.2, build: 200518-aa79d0918f, edition: Academic Public License -- NOT FOR COMMERCIAL USE
+See the license for distribution terms and warranty disclaimer
+
+Setting up Cmdenv...
+
+Loading NED files from ..:  9
+Loading NED files from ../../src:  11
+Loading NED files from ../../../inet/src:  831
+Loading NED files from ../../../inet/examples:  174
+Loading NED files from ../../../inet/tutorials:  10
+Loading NED files from ../../../inet/showcases:  46
+Loading NED files from ../../../../veins/examples/veins:  1
+Loading NED files from ../../../../veins/src/veins:  44
+
+Preparing for running configuration General, run #0...
+Assigned runID=General-0-20260225-00:19:13-465566
+Setting up network "IntersectionScenarioWave"...
+Initializing...
+
+Running simulation...
+** Event #0   t=0   Elapsed: 1e-05s (0m 00s)  0% completed  (0% total)
+     Speed:     ev/sec=0   simsec/sec=0   ev/simsec=0
+     Messages:  created: 2   present: 2   in FES: 3
+Vehicle 0 edge config: 4 approach, 4 exit edges
+Opened results file: /home/mathesh/omnetpp-workspace/benchmark/results/raftwave_8veh_report/run_2/raft_results.json
+Vehicle 1 edge config: 4 approach, 4 exit edges
+Vehicle 2 edge config: 4 approach, 4 exit edges
+Vehicle 3 edge config: 4 approach, 4 exit edges
+Vehicle 4 edge config: 4 approach, 4 exit edges
+Vehicle 5 edge config: 4 approach, 4 exit edges
+Vehicle 6 edge config: 4 approach, 4 exit edges
+Vehicle 7 edge config: 4 approach, 4 exit edges
+2300.0ms Vehicle 2 STOPPED (front) at dist=24.9m
+Vehicle 8 edge config: 4 approach, 4 exit edges
+3500.0ms Vehicle 1 STOPPED (front) at dist=24.9m
+Vehicle 9 edge config: 4 approach, 4 exit edges
+5600.0ms Vehicle 3 STOPPED (front) at dist=24.5m
+7800.0ms Vehicle 7 QUEUED at dist=33.0m speed=1.4m/s
+9711.6ms Vehicle 2 CLUSTER FORMATION (all 8 vehicles discovered)
+9711.6ms Vehicle 2 FORMING CLUSTER with 8 members: [
+0 1 2 3 4 5 6 7 ]
+9711.6ms Vehicle 2 scheduling oneshot IN 300.0ms
+9711.6ms Vehicle 2 scheduling oneshot IN 700.0ms
+9711.6ms Vehicle 2 scheduling oneshot IN 1200.0ms
+9711.6ms Vehicle 2 scheduling oneshot IN 1800.0ms
+9716.9ms Vehicle 1 FORMING CLUSTER with 8 members: [
+0 1 2 3 4 5 6 7 ]
+9716.9ms Vehicle 1 scheduling oneshot IN 300.0ms
+9716.9ms Vehicle 1 scheduling oneshot IN 700.0ms
+9716.9ms Vehicle 1 scheduling oneshot IN 1200.0ms
+9716.9ms Vehicle 1 scheduling oneshot IN 1800.0ms
+9716.9ms Vehicle 0 FORMING CLUSTER with 8 members: [
+0 1 2 3 4 5 6 7 ]
+9716.9ms Vehicle 0 scheduling oneshot IN 300.0ms
+9716.9ms Vehicle 0 scheduling oneshot IN 700.0ms
+9716.9ms Vehicle 0 scheduling oneshot IN 1200.0ms
+9716.9ms Vehicle 0 scheduling oneshot IN 1800.0ms
+9716.9ms Vehicle 3 FORMING CLUSTER with 8 members: [
+0 1 2 3 4 5 6 7 ]
+9716.9ms Vehicle 3 scheduling oneshot IN 300.0ms
+9716.9ms Vehicle 3 scheduling oneshot IN 700.0ms
+9716.9ms Vehicle 3 scheduling oneshot IN 1200.0ms
+9716.9ms Vehicle 3 scheduling oneshot IN 1800.0ms
+9716.9ms Vehicle 4 FORMING CLUSTER with 8 members: [
+0 1 2 3 4 5 6 7 ]
+9716.9ms Vehicle 4 scheduling oneshot IN 300.0ms
+9716.9ms Vehicle 4 scheduling oneshot IN 700.0ms
+9716.9ms Vehicle 4 scheduling oneshot IN 1200.0ms
+9716.9ms Vehicle 4 scheduling oneshot IN 1800.0ms
+9716.9ms Vehicle 7 FORMING CLUSTER with 8 members: [
+0 1 2 3 4 5 6 7 ]
+9716.9ms Vehicle 7 scheduling oneshot IN 300.0ms
+9716.9ms Vehicle 7 scheduling oneshot IN 700.0ms
+9716.9ms Vehicle 7 scheduling oneshot IN 1200.0ms
+9716.9ms Vehicle 7 scheduling oneshot IN 1800.0ms
+9716.9ms Vehicle 9 FORMING CLUSTER with 9 members: [
+0 1 2 3 4 5 6 7 9 ]
+9716.9ms Vehicle 9 scheduling oneshot IN 300.0ms
+9716.9ms Vehicle 9 scheduling oneshot IN 700.0ms
+9716.9ms Vehicle 9 scheduling oneshot IN 1200.0ms
+9716.9ms Vehicle 9 scheduling oneshot IN 1800.0ms
+9751.6ms Vehicle 2 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9756.9ms Vehicle 1 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9756.9ms Vehicle 0 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9756.9ms Vehicle 3 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9756.9ms Vehicle 4 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9756.9ms Vehicle 7 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9756.9ms Vehicle 9 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9771.6ms Vehicle 2 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9776.9ms Vehicle 1 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9776.9ms Vehicle 0 processRaftPeriodic executes! delta=0.02, msecElapsed=20
+9900.0ms Vehicle 0 STOPPED (front) at dist=23.9m
+10011.6ms Vehicle 2 EXECUTING oneshot cb
+10016.9ms Vehicle 1 EXECUTING oneshot cb
+10016.9ms Vehicle 0 EXECUTING oneshot cb
+10016.9ms Vehicle 3 EXECUTING oneshot cb
+10016.9ms Vehicle 4 EXECUTING oneshot cb
+10016.9ms Vehicle 7 EXECUTING oneshot cb
+10016.9ms Vehicle 9 EXECUTING oneshot cb
+10411.6ms Vehicle 2 EXECUTING oneshot cb
+10416.9ms Vehicle 1 EXECUTING oneshot cb
+10416.9ms Vehicle 0 EXECUTING oneshot cb
+10416.9ms Vehicle 3 EXECUTING oneshot cb
+10416.9ms Vehicle 4 EXECUTING oneshot cb
+10416.9ms Vehicle 7 EXECUTING oneshot cb
+10416.9ms Vehicle 9 EXECUTING oneshot cb
+10496.9ms Vehicle 4 sendRequestVote called for node 1
+10496.9ms Vehicle 4 sendRequestVote called for node 2
+10496.9ms Vehicle 4 sendRequestVote called for node 3
+10496.9ms Vehicle 4 sendRequestVote called for node 4
+10496.9ms Vehicle 4 sendRequestVote called for node 6
+10496.9ms Vehicle 4 sendRequestVote called for node 7
+10496.9ms Vehicle 4 sendRequestVote called for node 8
+10496.9ms Vehicle 4 RAFT STATE CHANGED from 1 to 2
+10496.9ms Vehicle 4 I am a candidate now! Starting election...
+10506.5ms Leader 4 SENDING AppendEntries to vehicle 0 (n_entries=0, leader_commit=0)
+10506.5ms Leader 4 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+10506.5ms Leader 4 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+10506.5ms Leader 4 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+10506.5ms Leader 4 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+10506.5ms Leader 4 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+10506.5ms Leader 4 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+10508.7ms Vehicle 2 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10510.6ms Vehicle 7 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10511.3ms Vehicle 0 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10511.6ms Vehicle 3 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10516.9ms Vehicle 4 BECAME LEADER (term=1)
+10636.9ms Leader 4 SENDING AppendEntries to vehicle 0 (n_entries=0, leader_commit=0)
+10636.9ms Leader 4 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+10636.9ms Leader 4 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+10636.9ms Leader 4 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+10636.9ms Leader 4 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+10636.9ms Leader 4 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+10636.9ms Leader 4 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+10638.9ms Vehicle 0 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10639.9ms Vehicle 3 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10641.6ms Vehicle 7 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10642.2ms Vehicle 2 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10756.9ms Vehicle 9 sendRequestVote called for node 1
+10756.9ms Vehicle 9 sendRequestVote called for node 2
+10756.9ms Vehicle 9 sendRequestVote called for node 3
+10756.9ms Vehicle 9 sendRequestVote called for node 4
+10756.9ms Vehicle 9 sendRequestVote called for node 5
+10756.9ms Vehicle 9 sendRequestVote called for node 6
+10756.9ms Vehicle 9 sendRequestVote called for node 7
+10756.9ms Vehicle 9 sendRequestVote called for node 8
+10756.9ms Vehicle 9 RAFT STATE CHANGED from 1 to 2
+10756.9ms Vehicle 9 I am a candidate now! Starting election...
+10776.9ms Leader 4 SENDING AppendEntries to vehicle 0 (n_entries=0, leader_commit=0)
+10776.9ms Leader 4 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+10776.9ms Leader 4 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+10776.9ms Leader 4 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+10776.9ms Leader 4 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+10776.9ms Leader 4 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+10776.9ms Leader 4 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+10778.5ms Vehicle 1 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10779.0ms Vehicle 3 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10779.2ms Vehicle 7 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10780.5ms Vehicle 2 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10782.0ms Vehicle 0 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10911.6ms Vehicle 2 EXECUTING oneshot cb
+10916.9ms Vehicle 1 EXECUTING oneshot cb
+10916.9ms Vehicle 0 EXECUTING oneshot cb
+10916.9ms Vehicle 3 EXECUTING oneshot cb
+10916.9ms Vehicle 4 EXECUTING oneshot cb
+10916.9ms Leader 4 SENDING AppendEntries to vehicle 0 (n_entries=0, leader_commit=0)
+10916.9ms Leader 4 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+10916.9ms Leader 4 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+10916.9ms Leader 4 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+10916.9ms Leader 4 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+10916.9ms Leader 4 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+10916.9ms Leader 4 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+10916.9ms Vehicle 7 EXECUTING oneshot cb
+10916.9ms Vehicle 9 EXECUTING oneshot cb
+10918.6ms Vehicle 2 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10919.2ms Vehicle 7 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10919.5ms Vehicle 0 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+10920.4ms Vehicle 1 RECEIVED AppendEntries from 4 (n_entries=0, leader_commit=0)
+Vehicle 10 edge config: 4 approach, 4 exit edges
+11024.2ms Vehicle 10 FORMING CLUSTER with 9 members: [
+0 1 2 3 4 5 6 7 10 ]
+11024.2ms Vehicle 10 scheduling oneshot IN 300.0ms
+11024.2ms Vehicle 10 scheduling oneshot IN 700.0ms
+11024.2ms Vehicle 10 scheduling oneshot IN 1200.0ms
+11024.2ms Vehicle 10 scheduling oneshot IN 1800.0ms
+11324.2ms Vehicle 10 EXECUTING oneshot cb
+11511.6ms Vehicle 2 EXECUTING oneshot cb
+11516.9ms Vehicle 1 EXECUTING oneshot cb
+11516.9ms Vehicle 0 EXECUTING oneshot cb
+11516.9ms Vehicle 3 EXECUTING oneshot cb
+11516.9ms Vehicle 7 EXECUTING oneshot cb
+11516.9ms Vehicle 9 EXECUTING oneshot cb
+11696.9ms Vehicle 0 sendRequestVote called for node 2
+11696.9ms Vehicle 0 sendRequestVote called for node 3
+11696.9ms Vehicle 0 sendRequestVote called for node 4
+11696.9ms Vehicle 0 sendRequestVote called for node 5
+11696.9ms Vehicle 0 sendRequestVote called for node 6
+11696.9ms Vehicle 0 sendRequestVote called for node 7
+11696.9ms Vehicle 0 sendRequestVote called for node 8
+11696.9ms Vehicle 0 RAFT STATE CHANGED from 1 to 2
+11696.9ms Vehicle 0 I am a candidate now! Starting election...
+11696.9ms Vehicle 7 sendRequestVote called for node 1
+11696.9ms Vehicle 7 sendRequestVote called for node 2
+11696.9ms Vehicle 7 sendRequestVote called for node 3
+11696.9ms Vehicle 7 sendRequestVote called for node 4
+11696.9ms Vehicle 7 sendRequestVote called for node 5
+11696.9ms Vehicle 7 sendRequestVote called for node 6
+11696.9ms Vehicle 7 sendRequestVote called for node 7
+11696.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+11696.9ms Vehicle 7 I am a candidate now! Starting election...
+11724.2ms Vehicle 10 EXECUTING oneshot cb
+11736.9ms Vehicle 9 sendRequestVote called for node 1
+11736.9ms Vehicle 9 sendRequestVote called for node 2
+11736.9ms Vehicle 9 sendRequestVote called for node 3
+11736.9ms Vehicle 9 sendRequestVote called for node 4
+11736.9ms Vehicle 9 sendRequestVote called for node 5
+11736.9ms Vehicle 9 sendRequestVote called for node 6
+11736.9ms Vehicle 9 sendRequestVote called for node 7
+11736.9ms Vehicle 9 sendRequestVote called for node 8
+12144.2ms Vehicle 10 sendRequestVote called for node 1
+12144.2ms Vehicle 10 sendRequestVote called for node 2
+12144.2ms Vehicle 10 sendRequestVote called for node 3
+12144.2ms Vehicle 10 sendRequestVote called for node 4
+12144.2ms Vehicle 10 sendRequestVote called for node 5
+12144.2ms Vehicle 10 sendRequestVote called for node 6
+12144.2ms Vehicle 10 sendRequestVote called for node 7
+12144.2ms Vehicle 10 sendRequestVote called for node 8
+12144.2ms Vehicle 10 RAFT STATE CHANGED from 1 to 2
+12144.2ms Vehicle 10 I am a candidate now! Starting election...
+12224.2ms Vehicle 10 EXECUTING oneshot cb
+12556.9ms Vehicle 0 sendRequestVote called for node 2
+12556.9ms Vehicle 0 sendRequestVote called for node 3
+12556.9ms Vehicle 0 sendRequestVote called for node 4
+12556.9ms Vehicle 0 sendRequestVote called for node 5
+12556.9ms Vehicle 0 sendRequestVote called for node 6
+12556.9ms Vehicle 0 sendRequestVote called for node 7
+12556.9ms Vehicle 0 sendRequestVote called for node 8
+12565.0ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+12565.0ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+12565.0ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+12565.0ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+12565.0ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+12565.0ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+12565.0ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+12566.7ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12567.1ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12567.4ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12569.4ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12576.9ms Vehicle 0 BECAME LEADER (term=3)
+12576.9ms Leader 0 sending STATUS_REQUEST (timeout=1700ms)
+12576.9ms Vehicle 0 scheduling oneshot IN 1700.0ms
+12696.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+12696.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+12696.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+12696.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+12696.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+12696.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+12696.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+12696.9ms Vehicle 9 sendRequestVote called for node 1
+12696.9ms Vehicle 9 sendRequestVote called for node 2
+12696.9ms Vehicle 9 sendRequestVote called for node 3
+12696.9ms Vehicle 9 sendRequestVote called for node 4
+12696.9ms Vehicle 9 sendRequestVote called for node 5
+12696.9ms Vehicle 9 sendRequestVote called for node 6
+12696.9ms Vehicle 9 sendRequestVote called for node 7
+12696.9ms Vehicle 9 sendRequestVote called for node 8
+12698.8ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12699.7ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12824.2ms Vehicle 10 EXECUTING oneshot cb
+12836.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+12836.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+12836.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+12836.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+12836.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+12836.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+12836.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+12838.6ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12839.9ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12841.3ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12842.5ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12976.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+12976.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+12976.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+12976.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+12976.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+12976.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+12976.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+12979.8ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12980.5ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12980.8ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+12981.7ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13024.2ms Vehicle 10 sendRequestVote called for node 1
+13024.2ms Vehicle 10 sendRequestVote called for node 2
+13024.2ms Vehicle 10 sendRequestVote called for node 3
+13024.2ms Vehicle 10 sendRequestVote called for node 4
+13024.2ms Vehicle 10 sendRequestVote called for node 5
+13024.2ms Vehicle 10 sendRequestVote called for node 6
+13024.2ms Vehicle 10 sendRequestVote called for node 7
+13024.2ms Vehicle 10 sendRequestVote called for node 8
+13024.2ms Vehicle 10 RAFT STATE CHANGED from 1 to 2
+13024.2ms Vehicle 10 I am a candidate now! Starting election...
+13116.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+13116.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+13116.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+13116.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+13116.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+13116.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+13116.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+13118.4ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13119.2ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13120.3ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13120.9ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13256.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+13256.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+13256.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+13256.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+13256.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+13256.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+13256.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+13258.4ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13258.7ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13259.8ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13261.1ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13276.9ms Vehicle 9 sendRequestVote called for node 1
+13276.9ms Vehicle 9 sendRequestVote called for node 2
+13276.9ms Vehicle 9 sendRequestVote called for node 3
+13276.9ms Vehicle 9 sendRequestVote called for node 4
+13276.9ms Vehicle 9 sendRequestVote called for node 5
+13276.9ms Vehicle 9 sendRequestVote called for node 6
+13276.9ms Vehicle 9 sendRequestVote called for node 7
+13276.9ms Vehicle 9 sendRequestVote called for node 8
+13396.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+13396.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+13396.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+13396.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+13396.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+13396.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+13396.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+13399.6ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13400.5ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13401.2ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13402.0ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13536.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+13536.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+13536.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+13536.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+13536.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+13536.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+13536.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+13539.4ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13540.4ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13541.0ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13542.0ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13676.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+13676.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+13676.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+13676.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+13676.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+13676.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+13676.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+13678.9ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13679.6ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13680.0ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13816.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+13816.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+13816.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+13816.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+13816.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+13816.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+13816.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+13819.9ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13820.7ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13821.3ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13821.7ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13956.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+13956.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+13956.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+13956.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+13956.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+13956.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+13956.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+13956.9ms Vehicle 9 sendRequestVote called for node 1
+13956.9ms Vehicle 9 sendRequestVote called for node 2
+13956.9ms Vehicle 9 sendRequestVote called for node 3
+13956.9ms Vehicle 9 sendRequestVote called for node 4
+13956.9ms Vehicle 9 sendRequestVote called for node 5
+13956.9ms Vehicle 9 sendRequestVote called for node 6
+13956.9ms Vehicle 9 sendRequestVote called for node 7
+13956.9ms Vehicle 9 sendRequestVote called for node 8
+13958.2ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13958.8ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13961.1ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+13984.2ms Vehicle 10 sendRequestVote called for node 1
+13984.2ms Vehicle 10 sendRequestVote called for node 2
+13984.2ms Vehicle 10 sendRequestVote called for node 3
+13984.2ms Vehicle 10 sendRequestVote called for node 4
+13984.2ms Vehicle 10 sendRequestVote called for node 5
+13984.2ms Vehicle 10 sendRequestVote called for node 6
+13984.2ms Vehicle 10 sendRequestVote called for node 7
+13984.2ms Vehicle 10 sendRequestVote called for node 8
+14096.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+14096.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+14096.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+14096.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+14096.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+14096.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+14096.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+14099.1ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+14099.5ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+14101.8ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+14102.1ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+14236.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=0)
+14236.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=0)
+14236.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=0)
+14236.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=0, leader_commit=0)
+14236.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=0, leader_commit=0)
+14236.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=0, leader_commit=0)
+14236.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=0)
+14238.4ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+14238.7ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+14239.2ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+14242.7ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=0)
+14276.9ms Vehicle 0 EXECUTING oneshot cb
+14276.9ms Leader 0 collected status from 6 vehicles
+14276.9ms Leader 0 PROPOSING STATUS_REPORT to quorum
+14276.9ms Vehicle 0 doLogOffer entry #1 (len=2565)
+14276.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=1, leader_commit=0)
+14276.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=1, leader_commit=0)
+14276.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=1, leader_commit=0)
+14276.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=1, leader_commit=0)
+14276.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=1, leader_commit=0)
+14276.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=1, leader_commit=0)
+14276.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=1, leader_commit=0)
+14276.9ms Leader 0 submitted STATUS_REPORT entry #1
+14276.9ms Vehicle 0 scheduling oneshot IN 100.0ms
+14278.7ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=0)
+14278.7ms Vehicle 7 doLogOffer entry #1 (len=2565)
+14280.5ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=0)
+14280.5ms Vehicle 3 doLogOffer entry #1 (len=2565)
+14281.5ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=0)
+14281.5ms Vehicle 1 doLogOffer entry #1 (len=2565)
+14281.9ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=0)
+14281.9ms Vehicle 2 doLogOffer entry #1 (len=2565)
+14296.9ms Vehicle 0 doApplyLog entry #1 (lastApplied=0, len=2565)
+14376.9ms Vehicle 0 EXECUTING oneshot cb
+14376.9ms Leader 0 vehicle 4 response lost — using default proposal
+14376.9ms Leader 0 vehicle 5 response lost — using default proposal
+14376.9ms Leader 0 vehicle 6 response lost — using default proposal
+14376.9ms Leader 0 PROPOSING PASS_SCHEDULE with 5 batches:
+  Batch 0: [4,0]
+  Batch 1: [5,9]
+  Batch 2: [6,2]
+  Batch 3: [1]
+  Batch 4: [3,7]
+14376.9ms Vehicle 0 doLogOffer entry #2 (len=581)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=1, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=1, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=1, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=1, leader_commit=1)
+14376.9ms Leader 0 submitted PASS_SCHEDULE entry #2
+14376.9ms Vehicle 0 scheduling oneshot IN 100.0ms
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=1, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=1, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=1, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=1)
+14376.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=1, leader_commit=1)
+14379.6ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=1)
+14379.6ms Vehicle 3 doLogOffer entry #2 (len=581)
+14379.9ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=1)
+14379.9ms Vehicle 7 doLogOffer entry #2 (len=581)
+14380.3ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=1)
+14380.6ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=1)
+14381.0ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=1)
+14381.0ms Vehicle 1 doLogOffer entry #2 (len=581)
+14381.2ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=1)
+14381.2ms Vehicle 2 doLogOffer entry #2 (len=581)
+14382.3ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=1, leader_commit=1)
+14391.6ms Vehicle 2 doApplyLog entry #1 (lastApplied=0, len=2565)
+14391.6ms Vehicle 2 APPLYING STATUS_REPORT entry #1 (8 vehicles)
+14396.9ms Vehicle 1 doApplyLog entry #1 (lastApplied=0, len=2565)
+14396.9ms Vehicle 1 APPLYING STATUS_REPORT entry #1 (8 vehicles)
+14396.9ms Vehicle 0 doApplyLog entry #2 (lastApplied=0, len=581)
+14396.9ms Vehicle 0 APPLYING PASS_ORDER entry #2 (5 batches)
+14396.9ms Vehicle 0 assigned to batch 0 (current batch: 0)
+14396.9ms Vehicle 0 RESUMING movement
+14396.9ms Vehicle 3 doApplyLog entry #1 (lastApplied=0, len=2565)
+14396.9ms Vehicle 3 APPLYING STATUS_REPORT entry #1 (8 vehicles)
+14396.9ms Vehicle 7 doApplyLog entry #1 (lastApplied=0, len=2565)
+14396.9ms Vehicle 7 APPLYING STATUS_REPORT entry #1 (8 vehicles)
+14476.9ms Vehicle 0 EXECUTING oneshot cb
+14516.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+14516.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+14516.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+14516.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+14516.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+14516.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+14516.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+14519.1ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14520.2ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14521.0ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14521.4ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14531.6ms Vehicle 2 doApplyLog entry #2 (lastApplied=1, len=581)
+14531.6ms Vehicle 2 APPLYING PASS_ORDER entry #2 (5 batches)
+14531.6ms Vehicle 2 assigned to batch 2 (current batch: 0)
+14531.6ms Vehicle 2 scheduling oneshot IN 60000.0ms
+14531.6ms Vehicle 2 waiting for batch 2 via checkBatchAdvance
+14536.9ms Vehicle 1 doApplyLog entry #2 (lastApplied=1, len=581)
+14536.9ms Vehicle 1 APPLYING PASS_ORDER entry #2 (5 batches)
+14536.9ms Vehicle 1 assigned to batch 3 (current batch: 0)
+14536.9ms Vehicle 1 scheduling oneshot IN 90000.0ms
+14536.9ms Vehicle 1 waiting for batch 3 via checkBatchAdvance
+14536.9ms Vehicle 3 doApplyLog entry #2 (lastApplied=1, len=581)
+14536.9ms Vehicle 3 APPLYING PASS_ORDER entry #2 (5 batches)
+14536.9ms Vehicle 3 assigned to batch 4 (current batch: 0)
+14536.9ms Vehicle 3 scheduling oneshot IN 120000.0ms
+14536.9ms Vehicle 3 waiting for batch 4 via checkBatchAdvance
+14536.9ms Vehicle 7 doApplyLog entry #2 (lastApplied=1, len=581)
+14536.9ms Vehicle 7 APPLYING PASS_ORDER entry #2 (5 batches)
+14536.9ms Vehicle 7 assigned to batch 4 (current batch: 0)
+14536.9ms Vehicle 7 scheduling oneshot IN 120000.0ms
+14536.9ms Vehicle 7 waiting for batch 4 via checkBatchAdvance
+14656.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+14656.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+14656.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+14656.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+14656.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+14656.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+14656.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+14660.0ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14660.2ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14660.6ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14662.0ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14796.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+14796.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+14796.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+14796.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+14796.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+14796.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+14796.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+14800.6ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14801.3ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14801.6ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14802.5ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14816.9ms Vehicle 9 sendRequestVote called for node 1
+14816.9ms Vehicle 9 sendRequestVote called for node 2
+14816.9ms Vehicle 9 sendRequestVote called for node 3
+14816.9ms Vehicle 9 sendRequestVote called for node 4
+14816.9ms Vehicle 9 sendRequestVote called for node 5
+14816.9ms Vehicle 9 sendRequestVote called for node 6
+14816.9ms Vehicle 9 sendRequestVote called for node 7
+14816.9ms Vehicle 9 sendRequestVote called for node 8
+14936.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+14936.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+14936.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+14936.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+14936.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+14936.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+14936.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+14938.8ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14939.4ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14940.0ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+14940.8ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15076.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+15076.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+15076.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+15076.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+15076.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+15076.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+15076.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+15079.8ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15080.4ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15080.7ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15081.8ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15164.2ms Vehicle 10 sendRequestVote called for node 1
+15164.2ms Vehicle 10 sendRequestVote called for node 2
+15164.2ms Vehicle 10 sendRequestVote called for node 3
+15164.2ms Vehicle 10 sendRequestVote called for node 4
+15164.2ms Vehicle 10 sendRequestVote called for node 5
+15164.2ms Vehicle 10 sendRequestVote called for node 6
+15164.2ms Vehicle 10 sendRequestVote called for node 7
+15164.2ms Vehicle 10 sendRequestVote called for node 8
+15216.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+15216.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+15216.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+15216.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+15216.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+15216.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+15216.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+15219.0ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15221.8ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15222.1ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15222.4ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15356.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+15356.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+15356.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+15356.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+15356.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+15356.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+15356.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+15358.8ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15359.4ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15360.0ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15361.4ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15496.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+15496.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+15496.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+15496.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+15496.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+15496.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+15496.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+15499.3ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15499.6ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15500.0ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15502.3ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15516.9ms Vehicle 9 sendRequestVote called for node 1
+15516.9ms Vehicle 9 sendRequestVote called for node 2
+15516.9ms Vehicle 9 sendRequestVote called for node 3
+15516.9ms Vehicle 9 sendRequestVote called for node 4
+15516.9ms Vehicle 9 sendRequestVote called for node 5
+15516.9ms Vehicle 9 sendRequestVote called for node 6
+15516.9ms Vehicle 9 sendRequestVote called for node 7
+15516.9ms Vehicle 9 sendRequestVote called for node 8
+15636.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+15636.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+15636.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+15636.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+15636.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+15636.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+15636.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+15640.7ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15641.0ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15641.2ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15641.5ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15776.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+15776.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+15776.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+15776.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+15776.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+15776.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+15776.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+15778.4ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15779.6ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15780.5ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15781.2ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15904.2ms Vehicle 10 sendRequestVote called for node 1
+15904.2ms Vehicle 10 sendRequestVote called for node 2
+15904.2ms Vehicle 10 sendRequestVote called for node 3
+15904.2ms Vehicle 10 sendRequestVote called for node 4
+15904.2ms Vehicle 10 sendRequestVote called for node 5
+15904.2ms Vehicle 10 sendRequestVote called for node 6
+15904.2ms Vehicle 10 sendRequestVote called for node 7
+15904.2ms Vehicle 10 sendRequestVote called for node 8
+15916.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+15916.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+15916.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+15916.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+15916.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+15916.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+15916.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+15918.7ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15919.1ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15919.4ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+15920.6ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16056.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+16056.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+16056.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+16056.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+16056.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+16056.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+16056.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+16060.3ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16061.0ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16062.0ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16196.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+16196.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+16196.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+16196.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+16196.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+16196.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+16196.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+16198.2ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16198.5ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16198.8ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16199.2ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16336.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+16336.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+16336.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+16336.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+16336.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+16336.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+16336.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+16338.5ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16338.8ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16339.2ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16340.6ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16396.9ms Vehicle 9 sendRequestVote called for node 1
+16396.9ms Vehicle 9 sendRequestVote called for node 2
+16396.9ms Vehicle 9 sendRequestVote called for node 3
+16396.9ms Vehicle 9 sendRequestVote called for node 4
+16396.9ms Vehicle 9 sendRequestVote called for node 5
+16396.9ms Vehicle 9 sendRequestVote called for node 6
+16396.9ms Vehicle 9 sendRequestVote called for node 7
+16396.9ms Vehicle 9 sendRequestVote called for node 8
+16400.0ms Vehicle 9 STOPPED (front) at dist=24.1m
+16476.9ms Leader 0 SENDING AppendEntries to vehicle 1 (n_entries=0, leader_commit=2)
+16476.9ms Leader 0 SENDING AppendEntries to vehicle 2 (n_entries=0, leader_commit=2)
+16476.9ms Leader 0 SENDING AppendEntries to vehicle 3 (n_entries=0, leader_commit=2)
+16476.9ms Leader 0 SENDING AppendEntries to vehicle 4 (n_entries=2, leader_commit=2)
+16476.9ms Leader 0 SENDING AppendEntries to vehicle 5 (n_entries=2, leader_commit=2)
+16476.9ms Leader 0 SENDING AppendEntries to vehicle 6 (n_entries=2, leader_commit=2)
+16476.9ms Leader 0 SENDING AppendEntries to vehicle 7 (n_entries=0, leader_commit=2)
+16480.5ms Vehicle 3 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16480.8ms Vehicle 1 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16481.2ms Vehicle 2 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16482.1ms Vehicle 7 RECEIVED AppendEntries from 0 (n_entries=0, leader_commit=2)
+16.5 Vehicle 0 hasPassed=true (on exit edge -34894202#10)
+16500.0ms Vehicle 0 LEFT intersection
+16500.0ms Vehicle 0 BROADCASTING vehicle-passed
+16500.0ms Vehicle 0 sending vehicle-left (isLeader=1, myBatch=0)
+16502.4ms Vehicle 1 RECEIVED vehicle-passed from vehicle 0
+16502.4ms Vehicle 1 front vehicle passed — advancing to stop position (chain)
+16502.4ms Vehicle 3 RECEIVED vehicle-passed from vehicle 0
+16502.4ms Vehicle 2 RECEIVED vehicle-passed from vehicle 0
+16502.4ms Vehicle 7 RECEIVED vehicle-passed from vehicle 0
+16502.4ms Vehicle 9 RECEIVED vehicle-passed from vehicle 0
+17376.9ms Vehicle 9 sendRequestVote called for node 1
+17376.9ms Vehicle 9 sendRequestVote called for node 2
+17376.9ms Vehicle 9 sendRequestVote called for node 3
+17376.9ms Vehicle 9 sendRequestVote called for node 4
+17376.9ms Vehicle 9 sendRequestVote called for node 5
+17376.9ms Vehicle 9 sendRequestVote called for node 6
+17376.9ms Vehicle 9 sendRequestVote called for node 7
+17376.9ms Vehicle 9 sendRequestVote called for node 8
+17916.9ms Vehicle 9 sendRequestVote called for node 1
+17916.9ms Vehicle 9 sendRequestVote called for node 2
+17916.9ms Vehicle 9 sendRequestVote called for node 3
+17916.9ms Vehicle 9 sendRequestVote called for node 4
+17916.9ms Vehicle 9 sendRequestVote called for node 5
+17916.9ms Vehicle 9 sendRequestVote called for node 6
+17916.9ms Vehicle 9 sendRequestVote called for node 7
+17916.9ms Vehicle 9 sendRequestVote called for node 8
+18436.9ms Vehicle 9 RAFT TIMEOUT: 8720.0ms since cluster formed (threshold=8700.0ms)
+18436.9ms Vehicle 9 FALLBACK MODE activated
+18436.9ms Vehicle 9 RESUMING movement
+18816.9ms Vehicle 3 sendRequestVote called for node 1
+18816.9ms Vehicle 3 sendRequestVote called for node 2
+18816.9ms Vehicle 3 sendRequestVote called for node 3
+18816.9ms Vehicle 3 sendRequestVote called for node 5
+18816.9ms Vehicle 3 sendRequestVote called for node 6
+18816.9ms Vehicle 3 sendRequestVote called for node 7
+18816.9ms Vehicle 3 sendRequestVote called for node 8
+18816.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+18816.9ms Vehicle 3 I am a candidate now! Starting election...
+19691.6ms Vehicle 2 sendRequestVote called for node 1
+19691.6ms Vehicle 2 sendRequestVote called for node 2
+19691.6ms Vehicle 2 sendRequestVote called for node 4
+19691.6ms Vehicle 2 sendRequestVote called for node 5
+19691.6ms Vehicle 2 sendRequestVote called for node 6
+19691.6ms Vehicle 2 sendRequestVote called for node 7
+19691.6ms Vehicle 2 sendRequestVote called for node 8
+19691.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+19691.6ms Vehicle 2 I am a candidate now! Starting election...
+20456.9ms Vehicle 1 sendRequestVote called for node 1
+20456.9ms Vehicle 1 sendRequestVote called for node 3
+20456.9ms Vehicle 1 sendRequestVote called for node 4
+20456.9ms Vehicle 1 sendRequestVote called for node 5
+20456.9ms Vehicle 1 sendRequestVote called for node 6
+20456.9ms Vehicle 1 sendRequestVote called for node 7
+20456.9ms Vehicle 1 sendRequestVote called for node 8
+20456.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+20456.9ms Vehicle 1 I am a candidate now! Starting election...
+21176.9ms Vehicle 7 sendRequestVote called for node 1
+21176.9ms Vehicle 7 sendRequestVote called for node 2
+21176.9ms Vehicle 7 sendRequestVote called for node 3
+21176.9ms Vehicle 7 sendRequestVote called for node 4
+21176.9ms Vehicle 7 sendRequestVote called for node 5
+21176.9ms Vehicle 7 sendRequestVote called for node 6
+21176.9ms Vehicle 7 sendRequestVote called for node 7
+21176.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+21176.9ms Vehicle 7 I am a candidate now! Starting election...
+22096.9ms Vehicle 7 sendRequestVote called for node 1
+22096.9ms Vehicle 7 sendRequestVote called for node 2
+22096.9ms Vehicle 7 sendRequestVote called for node 3
+22096.9ms Vehicle 7 sendRequestVote called for node 4
+22096.9ms Vehicle 7 sendRequestVote called for node 5
+22096.9ms Vehicle 7 sendRequestVote called for node 6
+22096.9ms Vehicle 7 sendRequestVote called for node 7
+22976.9ms Vehicle 1 sendRequestVote called for node 1
+22976.9ms Vehicle 1 sendRequestVote called for node 3
+22976.9ms Vehicle 1 sendRequestVote called for node 4
+22976.9ms Vehicle 1 sendRequestVote called for node 5
+22976.9ms Vehicle 1 sendRequestVote called for node 6
+22976.9ms Vehicle 1 sendRequestVote called for node 7
+22976.9ms Vehicle 1 sendRequestVote called for node 8
+22976.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+22976.9ms Vehicle 1 I am a candidate now! Starting election...
+23916.9ms Vehicle 3 sendRequestVote called for node 1
+23916.9ms Vehicle 3 sendRequestVote called for node 2
+23916.9ms Vehicle 3 sendRequestVote called for node 3
+23916.9ms Vehicle 3 sendRequestVote called for node 5
+23916.9ms Vehicle 3 sendRequestVote called for node 6
+23916.9ms Vehicle 3 sendRequestVote called for node 7
+23916.9ms Vehicle 3 sendRequestVote called for node 8
+23916.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+23916.9ms Vehicle 3 I am a candidate now! Starting election...
+24831.6ms Vehicle 2 sendRequestVote called for node 1
+24831.6ms Vehicle 2 sendRequestVote called for node 2
+24831.6ms Vehicle 2 sendRequestVote called for node 4
+24831.6ms Vehicle 2 sendRequestVote called for node 5
+24831.6ms Vehicle 2 sendRequestVote called for node 6
+24831.6ms Vehicle 2 sendRequestVote called for node 7
+24831.6ms Vehicle 2 sendRequestVote called for node 8
+24831.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+24831.6ms Vehicle 2 I am a candidate now! Starting election...
+25576.9ms Vehicle 7 sendRequestVote called for node 1
+25576.9ms Vehicle 7 sendRequestVote called for node 2
+25576.9ms Vehicle 7 sendRequestVote called for node 3
+25576.9ms Vehicle 7 sendRequestVote called for node 4
+25576.9ms Vehicle 7 sendRequestVote called for node 5
+25576.9ms Vehicle 7 sendRequestVote called for node 6
+25576.9ms Vehicle 7 sendRequestVote called for node 7
+25576.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+25576.9ms Vehicle 7 I am a candidate now! Starting election...
+26391.6ms Vehicle 2 sendRequestVote called for node 1
+26391.6ms Vehicle 2 sendRequestVote called for node 2
+26391.6ms Vehicle 2 sendRequestVote called for node 4
+26391.6ms Vehicle 2 sendRequestVote called for node 5
+26391.6ms Vehicle 2 sendRequestVote called for node 6
+26391.6ms Vehicle 2 sendRequestVote called for node 7
+26391.6ms Vehicle 2 sendRequestVote called for node 8
+26391.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+26391.6ms Vehicle 2 I am a candidate now! Starting election...
+27391.6ms Vehicle 2 sendRequestVote called for node 1
+27391.6ms Vehicle 2 sendRequestVote called for node 2
+27391.6ms Vehicle 2 sendRequestVote called for node 4
+27391.6ms Vehicle 2 sendRequestVote called for node 5
+27391.6ms Vehicle 2 sendRequestVote called for node 6
+27391.6ms Vehicle 2 sendRequestVote called for node 7
+27391.6ms Vehicle 2 sendRequestVote called for node 8
+28296.9ms Vehicle 1 sendRequestVote called for node 1
+28296.9ms Vehicle 1 sendRequestVote called for node 3
+28296.9ms Vehicle 1 sendRequestVote called for node 4
+28296.9ms Vehicle 1 sendRequestVote called for node 5
+28296.9ms Vehicle 1 sendRequestVote called for node 6
+28296.9ms Vehicle 1 sendRequestVote called for node 7
+28296.9ms Vehicle 1 sendRequestVote called for node 8
+28296.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+28296.9ms Vehicle 1 I am a candidate now! Starting election...
+29116.9ms Vehicle 1 sendRequestVote called for node 1
+29116.9ms Vehicle 1 sendRequestVote called for node 3
+29116.9ms Vehicle 1 sendRequestVote called for node 4
+29116.9ms Vehicle 1 sendRequestVote called for node 5
+29116.9ms Vehicle 1 sendRequestVote called for node 6
+29116.9ms Vehicle 1 sendRequestVote called for node 7
+29116.9ms Vehicle 1 sendRequestVote called for node 8
+30156.9ms Vehicle 1 sendRequestVote called for node 1
+30156.9ms Vehicle 1 sendRequestVote called for node 3
+30156.9ms Vehicle 1 sendRequestVote called for node 4
+30156.9ms Vehicle 1 sendRequestVote called for node 5
+30156.9ms Vehicle 1 sendRequestVote called for node 6
+30156.9ms Vehicle 1 sendRequestVote called for node 7
+30156.9ms Vehicle 1 sendRequestVote called for node 8
+31156.9ms Vehicle 1 sendRequestVote called for node 1
+31156.9ms Vehicle 1 sendRequestVote called for node 3
+31156.9ms Vehicle 1 sendRequestVote called for node 4
+31156.9ms Vehicle 1 sendRequestVote called for node 5
+31156.9ms Vehicle 1 sendRequestVote called for node 6
+31156.9ms Vehicle 1 sendRequestVote called for node 7
+31156.9ms Vehicle 1 sendRequestVote called for node 8
+31916.9ms Vehicle 7 sendRequestVote called for node 1
+31916.9ms Vehicle 7 sendRequestVote called for node 2
+31916.9ms Vehicle 7 sendRequestVote called for node 3
+31916.9ms Vehicle 7 sendRequestVote called for node 4
+31916.9ms Vehicle 7 sendRequestVote called for node 5
+31916.9ms Vehicle 7 sendRequestVote called for node 6
+31916.9ms Vehicle 7 sendRequestVote called for node 7
+31916.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+31916.9ms Vehicle 7 I am a candidate now! Starting election...
+32896.9ms Vehicle 1 sendRequestVote called for node 1
+32896.9ms Vehicle 1 sendRequestVote called for node 3
+32896.9ms Vehicle 1 sendRequestVote called for node 4
+32896.9ms Vehicle 1 sendRequestVote called for node 5
+32896.9ms Vehicle 1 sendRequestVote called for node 6
+32896.9ms Vehicle 1 sendRequestVote called for node 7
+32896.9ms Vehicle 1 sendRequestVote called for node 8
+32896.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+32896.9ms Vehicle 1 I am a candidate now! Starting election...
+33736.9ms Vehicle 7 sendRequestVote called for node 1
+33736.9ms Vehicle 7 sendRequestVote called for node 2
+33736.9ms Vehicle 7 sendRequestVote called for node 3
+33736.9ms Vehicle 7 sendRequestVote called for node 4
+33736.9ms Vehicle 7 sendRequestVote called for node 5
+33736.9ms Vehicle 7 sendRequestVote called for node 6
+33736.9ms Vehicle 7 sendRequestVote called for node 7
+33736.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+33736.9ms Vehicle 7 I am a candidate now! Starting election...
+34476.9ms Vehicle 1 sendRequestVote called for node 1
+34476.9ms Vehicle 1 sendRequestVote called for node 3
+34476.9ms Vehicle 1 sendRequestVote called for node 4
+34476.9ms Vehicle 1 sendRequestVote called for node 5
+34476.9ms Vehicle 1 sendRequestVote called for node 6
+34476.9ms Vehicle 1 sendRequestVote called for node 7
+34476.9ms Vehicle 1 sendRequestVote called for node 8
+34476.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+34476.9ms Vehicle 1 I am a candidate now! Starting election...
+35356.9ms Vehicle 1 sendRequestVote called for node 1
+35356.9ms Vehicle 1 sendRequestVote called for node 3
+35356.9ms Vehicle 1 sendRequestVote called for node 4
+35356.9ms Vehicle 1 sendRequestVote called for node 5
+35356.9ms Vehicle 1 sendRequestVote called for node 6
+35356.9ms Vehicle 1 sendRequestVote called for node 7
+35356.9ms Vehicle 1 sendRequestVote called for node 8
+36156.9ms Vehicle 1 sendRequestVote called for node 1
+36156.9ms Vehicle 1 sendRequestVote called for node 3
+36156.9ms Vehicle 1 sendRequestVote called for node 4
+36156.9ms Vehicle 1 sendRequestVote called for node 5
+36156.9ms Vehicle 1 sendRequestVote called for node 6
+36156.9ms Vehicle 1 sendRequestVote called for node 7
+36156.9ms Vehicle 1 sendRequestVote called for node 8
+36996.9ms Vehicle 7 sendRequestVote called for node 1
+36996.9ms Vehicle 7 sendRequestVote called for node 2
+36996.9ms Vehicle 7 sendRequestVote called for node 3
+36996.9ms Vehicle 7 sendRequestVote called for node 4
+36996.9ms Vehicle 7 sendRequestVote called for node 5
+36996.9ms Vehicle 7 sendRequestVote called for node 6
+36996.9ms Vehicle 7 sendRequestVote called for node 7
+36996.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+36996.9ms Vehicle 7 I am a candidate now! Starting election...
+37736.9ms Vehicle 7 sendRequestVote called for node 1
+37736.9ms Vehicle 7 sendRequestVote called for node 2
+37736.9ms Vehicle 7 sendRequestVote called for node 3
+37736.9ms Vehicle 7 sendRequestVote called for node 4
+37736.9ms Vehicle 7 sendRequestVote called for node 5
+37736.9ms Vehicle 7 sendRequestVote called for node 6
+37736.9ms Vehicle 7 sendRequestVote called for node 7
+38456.9ms Vehicle 7 sendRequestVote called for node 1
+38456.9ms Vehicle 7 sendRequestVote called for node 2
+38456.9ms Vehicle 7 sendRequestVote called for node 3
+38456.9ms Vehicle 7 sendRequestVote called for node 4
+38456.9ms Vehicle 7 sendRequestVote called for node 5
+38456.9ms Vehicle 7 sendRequestVote called for node 6
+38456.9ms Vehicle 7 sendRequestVote called for node 7
+39276.9ms Vehicle 7 sendRequestVote called for node 1
+39276.9ms Vehicle 7 sendRequestVote called for node 2
+39276.9ms Vehicle 7 sendRequestVote called for node 3
+39276.9ms Vehicle 7 sendRequestVote called for node 4
+39276.9ms Vehicle 7 sendRequestVote called for node 5
+39276.9ms Vehicle 7 sendRequestVote called for node 6
+39276.9ms Vehicle 7 sendRequestVote called for node 7
+40076.9ms Vehicle 1 sendRequestVote called for node 1
+40076.9ms Vehicle 1 sendRequestVote called for node 3
+40076.9ms Vehicle 1 sendRequestVote called for node 4
+40076.9ms Vehicle 1 sendRequestVote called for node 5
+40076.9ms Vehicle 1 sendRequestVote called for node 6
+40076.9ms Vehicle 1 sendRequestVote called for node 7
+40076.9ms Vehicle 1 sendRequestVote called for node 8
+40076.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+40076.9ms Vehicle 1 I am a candidate now! Starting election...
+41076.9ms Vehicle 3 sendRequestVote called for node 1
+41076.9ms Vehicle 3 sendRequestVote called for node 2
+41076.9ms Vehicle 3 sendRequestVote called for node 3
+41076.9ms Vehicle 3 sendRequestVote called for node 5
+41076.9ms Vehicle 3 sendRequestVote called for node 6
+41076.9ms Vehicle 3 sendRequestVote called for node 7
+41076.9ms Vehicle 3 sendRequestVote called for node 8
+41076.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+41076.9ms Vehicle 3 I am a candidate now! Starting election...
+41816.9ms Vehicle 7 sendRequestVote called for node 1
+41816.9ms Vehicle 7 sendRequestVote called for node 2
+41816.9ms Vehicle 7 sendRequestVote called for node 3
+41816.9ms Vehicle 7 sendRequestVote called for node 4
+41816.9ms Vehicle 7 sendRequestVote called for node 5
+41816.9ms Vehicle 7 sendRequestVote called for node 6
+41816.9ms Vehicle 7 sendRequestVote called for node 7
+41816.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+41816.9ms Vehicle 7 I am a candidate now! Starting election...
+42576.9ms Vehicle 7 sendRequestVote called for node 1
+42576.9ms Vehicle 7 sendRequestVote called for node 2
+42576.9ms Vehicle 7 sendRequestVote called for node 3
+42576.9ms Vehicle 7 sendRequestVote called for node 4
+42576.9ms Vehicle 7 sendRequestVote called for node 5
+42576.9ms Vehicle 7 sendRequestVote called for node 6
+42576.9ms Vehicle 7 sendRequestVote called for node 7
+43536.9ms Vehicle 3 sendRequestVote called for node 1
+43536.9ms Vehicle 3 sendRequestVote called for node 2
+43536.9ms Vehicle 3 sendRequestVote called for node 3
+43536.9ms Vehicle 3 sendRequestVote called for node 5
+43536.9ms Vehicle 3 sendRequestVote called for node 6
+43536.9ms Vehicle 3 sendRequestVote called for node 7
+43536.9ms Vehicle 3 sendRequestVote called for node 8
+43536.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+43536.9ms Vehicle 3 I am a candidate now! Starting election...
+44256.9ms Vehicle 1 sendRequestVote called for node 1
+44256.9ms Vehicle 1 sendRequestVote called for node 3
+44256.9ms Vehicle 1 sendRequestVote called for node 4
+44256.9ms Vehicle 1 sendRequestVote called for node 5
+44256.9ms Vehicle 1 sendRequestVote called for node 6
+44256.9ms Vehicle 1 sendRequestVote called for node 7
+44256.9ms Vehicle 1 sendRequestVote called for node 8
+44256.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+44256.9ms Vehicle 1 I am a candidate now! Starting election...
+45296.9ms Vehicle 7 sendRequestVote called for node 1
+45296.9ms Vehicle 7 sendRequestVote called for node 2
+45296.9ms Vehicle 7 sendRequestVote called for node 3
+45296.9ms Vehicle 7 sendRequestVote called for node 4
+45296.9ms Vehicle 7 sendRequestVote called for node 5
+45296.9ms Vehicle 7 sendRequestVote called for node 6
+45296.9ms Vehicle 7 sendRequestVote called for node 7
+45296.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+45296.9ms Vehicle 7 I am a candidate now! Starting election...
+46116.9ms Vehicle 1 sendRequestVote called for node 1
+46116.9ms Vehicle 1 sendRequestVote called for node 3
+46116.9ms Vehicle 1 sendRequestVote called for node 4
+46116.9ms Vehicle 1 sendRequestVote called for node 5
+46116.9ms Vehicle 1 sendRequestVote called for node 6
+46116.9ms Vehicle 1 sendRequestVote called for node 7
+46116.9ms Vehicle 1 sendRequestVote called for node 8
+46116.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+46116.9ms Vehicle 1 I am a candidate now! Starting election...
+46936.9ms Vehicle 7 sendRequestVote called for node 1
+46936.9ms Vehicle 7 sendRequestVote called for node 2
+46936.9ms Vehicle 7 sendRequestVote called for node 3
+46936.9ms Vehicle 7 sendRequestVote called for node 4
+46936.9ms Vehicle 7 sendRequestVote called for node 5
+46936.9ms Vehicle 7 sendRequestVote called for node 6
+46936.9ms Vehicle 7 sendRequestVote called for node 7
+46936.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+46936.9ms Vehicle 7 I am a candidate now! Starting election...
+48071.6ms Vehicle 2 sendRequestVote called for node 1
+48071.6ms Vehicle 2 sendRequestVote called for node 2
+48071.6ms Vehicle 2 sendRequestVote called for node 4
+48071.6ms Vehicle 2 sendRequestVote called for node 5
+48071.6ms Vehicle 2 sendRequestVote called for node 6
+48071.6ms Vehicle 2 sendRequestVote called for node 7
+48071.6ms Vehicle 2 sendRequestVote called for node 8
+48071.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+48071.6ms Vehicle 2 I am a candidate now! Starting election...
+49151.6ms Vehicle 2 sendRequestVote called for node 1
+49151.6ms Vehicle 2 sendRequestVote called for node 2
+49151.6ms Vehicle 2 sendRequestVote called for node 4
+49151.6ms Vehicle 2 sendRequestVote called for node 5
+49151.6ms Vehicle 2 sendRequestVote called for node 6
+49151.6ms Vehicle 2 sendRequestVote called for node 7
+49151.6ms Vehicle 2 sendRequestVote called for node 8
+49836.9ms Vehicle 1 sendRequestVote called for node 1
+49836.9ms Vehicle 1 sendRequestVote called for node 3
+49836.9ms Vehicle 1 sendRequestVote called for node 4
+49836.9ms Vehicle 1 sendRequestVote called for node 5
+49836.9ms Vehicle 1 sendRequestVote called for node 6
+49836.9ms Vehicle 1 sendRequestVote called for node 7
+49836.9ms Vehicle 1 sendRequestVote called for node 8
+49836.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+49836.9ms Vehicle 1 I am a candidate now! Starting election...
+50656.9ms Vehicle 7 sendRequestVote called for node 1
+50656.9ms Vehicle 7 sendRequestVote called for node 2
+50656.9ms Vehicle 7 sendRequestVote called for node 3
+50656.9ms Vehicle 7 sendRequestVote called for node 4
+50656.9ms Vehicle 7 sendRequestVote called for node 5
+50656.9ms Vehicle 7 sendRequestVote called for node 6
+50656.9ms Vehicle 7 sendRequestVote called for node 7
+50656.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+50656.9ms Vehicle 7 I am a candidate now! Starting election...
+51376.9ms Vehicle 7 sendRequestVote called for node 1
+51376.9ms Vehicle 7 sendRequestVote called for node 2
+51376.9ms Vehicle 7 sendRequestVote called for node 3
+51376.9ms Vehicle 7 sendRequestVote called for node 4
+51376.9ms Vehicle 7 sendRequestVote called for node 5
+51376.9ms Vehicle 7 sendRequestVote called for node 6
+51376.9ms Vehicle 7 sendRequestVote called for node 7
+52096.9ms Vehicle 7 sendRequestVote called for node 1
+52096.9ms Vehicle 7 sendRequestVote called for node 2
+52096.9ms Vehicle 7 sendRequestVote called for node 3
+52096.9ms Vehicle 7 sendRequestVote called for node 4
+52096.9ms Vehicle 7 sendRequestVote called for node 5
+52096.9ms Vehicle 7 sendRequestVote called for node 6
+52096.9ms Vehicle 7 sendRequestVote called for node 7
+52876.9ms Vehicle 7 sendRequestVote called for node 1
+52876.9ms Vehicle 7 sendRequestVote called for node 2
+52876.9ms Vehicle 7 sendRequestVote called for node 3
+52876.9ms Vehicle 7 sendRequestVote called for node 4
+52876.9ms Vehicle 7 sendRequestVote called for node 5
+52876.9ms Vehicle 7 sendRequestVote called for node 6
+52876.9ms Vehicle 7 sendRequestVote called for node 7
+53816.9ms Vehicle 7 sendRequestVote called for node 1
+53816.9ms Vehicle 7 sendRequestVote called for node 2
+53816.9ms Vehicle 7 sendRequestVote called for node 3
+53816.9ms Vehicle 7 sendRequestVote called for node 4
+53816.9ms Vehicle 7 sendRequestVote called for node 5
+53816.9ms Vehicle 7 sendRequestVote called for node 6
+53816.9ms Vehicle 7 sendRequestVote called for node 7
+54731.6ms Vehicle 2 sendRequestVote called for node 1
+54731.6ms Vehicle 2 sendRequestVote called for node 2
+54731.6ms Vehicle 2 sendRequestVote called for node 4
+54731.6ms Vehicle 2 sendRequestVote called for node 5
+54731.6ms Vehicle 2 sendRequestVote called for node 6
+54731.6ms Vehicle 2 sendRequestVote called for node 7
+54731.6ms Vehicle 2 sendRequestVote called for node 8
+54731.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+54731.6ms Vehicle 2 I am a candidate now! Starting election...
+55611.6ms Vehicle 2 sendRequestVote called for node 1
+55611.6ms Vehicle 2 sendRequestVote called for node 2
+55611.6ms Vehicle 2 sendRequestVote called for node 4
+55611.6ms Vehicle 2 sendRequestVote called for node 5
+55611.6ms Vehicle 2 sendRequestVote called for node 6
+55611.6ms Vehicle 2 sendRequestVote called for node 7
+55611.6ms Vehicle 2 sendRequestVote called for node 8
+** Event #169472   t=55.692748375256   Elapsed: 2.00075s (0m 02s)  18% completed  (18% total)
+     Speed:     ev/sec=84704.9   simsec/sec=27.836   ev/simsec=3043
+     Messages:  created: 132285   present: 86   in FES: 24
+56496.9ms Vehicle 1 sendRequestVote called for node 1
+56496.9ms Vehicle 1 sendRequestVote called for node 3
+56496.9ms Vehicle 1 sendRequestVote called for node 4
+56496.9ms Vehicle 1 sendRequestVote called for node 5
+56496.9ms Vehicle 1 sendRequestVote called for node 6
+56496.9ms Vehicle 1 sendRequestVote called for node 7
+56496.9ms Vehicle 1 sendRequestVote called for node 8
+56496.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+56496.9ms Vehicle 1 I am a candidate now! Starting election...
+57216.9ms Vehicle 1 sendRequestVote called for node 1
+57216.9ms Vehicle 1 sendRequestVote called for node 3
+57216.9ms Vehicle 1 sendRequestVote called for node 4
+57216.9ms Vehicle 1 sendRequestVote called for node 5
+57216.9ms Vehicle 1 sendRequestVote called for node 6
+57216.9ms Vehicle 1 sendRequestVote called for node 7
+57216.9ms Vehicle 1 sendRequestVote called for node 8
+58351.6ms Vehicle 2 sendRequestVote called for node 1
+58351.6ms Vehicle 2 sendRequestVote called for node 2
+58351.6ms Vehicle 2 sendRequestVote called for node 4
+58351.6ms Vehicle 2 sendRequestVote called for node 5
+58351.6ms Vehicle 2 sendRequestVote called for node 6
+58351.6ms Vehicle 2 sendRequestVote called for node 7
+58351.6ms Vehicle 2 sendRequestVote called for node 8
+58351.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+58351.6ms Vehicle 2 I am a candidate now! Starting election...
+59176.9ms Vehicle 3 sendRequestVote called for node 1
+59176.9ms Vehicle 3 sendRequestVote called for node 2
+59176.9ms Vehicle 3 sendRequestVote called for node 3
+59176.9ms Vehicle 3 sendRequestVote called for node 5
+59176.9ms Vehicle 3 sendRequestVote called for node 6
+59176.9ms Vehicle 3 sendRequestVote called for node 7
+59176.9ms Vehicle 3 sendRequestVote called for node 8
+59176.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+59176.9ms Vehicle 3 I am a candidate now! Starting election...
+60056.9ms Vehicle 1 sendRequestVote called for node 1
+60056.9ms Vehicle 1 sendRequestVote called for node 3
+60056.9ms Vehicle 1 sendRequestVote called for node 4
+60056.9ms Vehicle 1 sendRequestVote called for node 5
+60056.9ms Vehicle 1 sendRequestVote called for node 6
+60056.9ms Vehicle 1 sendRequestVote called for node 7
+60056.9ms Vehicle 1 sendRequestVote called for node 8
+60056.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+60056.9ms Vehicle 1 I am a candidate now! Starting election...
+60951.6ms Vehicle 2 sendRequestVote called for node 1
+60951.6ms Vehicle 2 sendRequestVote called for node 2
+60951.6ms Vehicle 2 sendRequestVote called for node 4
+60951.6ms Vehicle 2 sendRequestVote called for node 5
+60951.6ms Vehicle 2 sendRequestVote called for node 6
+60951.6ms Vehicle 2 sendRequestVote called for node 7
+60951.6ms Vehicle 2 sendRequestVote called for node 8
+60951.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+60951.6ms Vehicle 2 I am a candidate now! Starting election...
+61676.9ms Vehicle 1 sendRequestVote called for node 1
+61676.9ms Vehicle 1 sendRequestVote called for node 3
+61676.9ms Vehicle 1 sendRequestVote called for node 4
+61676.9ms Vehicle 1 sendRequestVote called for node 5
+61676.9ms Vehicle 1 sendRequestVote called for node 6
+61676.9ms Vehicle 1 sendRequestVote called for node 7
+61676.9ms Vehicle 1 sendRequestVote called for node 8
+61676.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+61676.9ms Vehicle 1 I am a candidate now! Starting election...
+62436.9ms Vehicle 7 sendRequestVote called for node 1
+62436.9ms Vehicle 7 sendRequestVote called for node 2
+62436.9ms Vehicle 7 sendRequestVote called for node 3
+62436.9ms Vehicle 7 sendRequestVote called for node 4
+62436.9ms Vehicle 7 sendRequestVote called for node 5
+62436.9ms Vehicle 7 sendRequestVote called for node 6
+62436.9ms Vehicle 7 sendRequestVote called for node 7
+62436.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+62436.9ms Vehicle 7 I am a candidate now! Starting election...
+63276.9ms Vehicle 7 sendRequestVote called for node 1
+63276.9ms Vehicle 7 sendRequestVote called for node 2
+63276.9ms Vehicle 7 sendRequestVote called for node 3
+63276.9ms Vehicle 7 sendRequestVote called for node 4
+63276.9ms Vehicle 7 sendRequestVote called for node 5
+63276.9ms Vehicle 7 sendRequestVote called for node 6
+63276.9ms Vehicle 7 sendRequestVote called for node 7
+64036.9ms Vehicle 1 sendRequestVote called for node 1
+64036.9ms Vehicle 1 sendRequestVote called for node 3
+64036.9ms Vehicle 1 sendRequestVote called for node 4
+64036.9ms Vehicle 1 sendRequestVote called for node 5
+64036.9ms Vehicle 1 sendRequestVote called for node 6
+64036.9ms Vehicle 1 sendRequestVote called for node 7
+64036.9ms Vehicle 1 sendRequestVote called for node 8
+64036.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+64036.9ms Vehicle 1 I am a candidate now! Starting election...
+65076.9ms Vehicle 7 sendRequestVote called for node 1
+65076.9ms Vehicle 7 sendRequestVote called for node 2
+65076.9ms Vehicle 7 sendRequestVote called for node 3
+65076.9ms Vehicle 7 sendRequestVote called for node 4
+65076.9ms Vehicle 7 sendRequestVote called for node 5
+65076.9ms Vehicle 7 sendRequestVote called for node 6
+65076.9ms Vehicle 7 sendRequestVote called for node 7
+65076.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+65076.9ms Vehicle 7 I am a candidate now! Starting election...
+66236.9ms Vehicle 3 sendRequestVote called for node 1
+66236.9ms Vehicle 3 sendRequestVote called for node 2
+66236.9ms Vehicle 3 sendRequestVote called for node 3
+66236.9ms Vehicle 3 sendRequestVote called for node 5
+66236.9ms Vehicle 3 sendRequestVote called for node 6
+66236.9ms Vehicle 3 sendRequestVote called for node 7
+66236.9ms Vehicle 3 sendRequestVote called for node 8
+66236.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+66236.9ms Vehicle 3 I am a candidate now! Starting election...
+66236.9ms Vehicle 7 sendRequestVote called for node 1
+66236.9ms Vehicle 7 sendRequestVote called for node 2
+66236.9ms Vehicle 7 sendRequestVote called for node 3
+66236.9ms Vehicle 7 sendRequestVote called for node 4
+66236.9ms Vehicle 7 sendRequestVote called for node 5
+66236.9ms Vehicle 7 sendRequestVote called for node 6
+66236.9ms Vehicle 7 sendRequestVote called for node 7
+67016.9ms Vehicle 7 sendRequestVote called for node 1
+67016.9ms Vehicle 7 sendRequestVote called for node 2
+67016.9ms Vehicle 7 sendRequestVote called for node 3
+67016.9ms Vehicle 7 sendRequestVote called for node 4
+67016.9ms Vehicle 7 sendRequestVote called for node 5
+67016.9ms Vehicle 7 sendRequestVote called for node 6
+67016.9ms Vehicle 7 sendRequestVote called for node 7
+68216.9ms Vehicle 1 sendRequestVote called for node 1
+68216.9ms Vehicle 1 sendRequestVote called for node 3
+68216.9ms Vehicle 1 sendRequestVote called for node 4
+68216.9ms Vehicle 1 sendRequestVote called for node 5
+68216.9ms Vehicle 1 sendRequestVote called for node 6
+68216.9ms Vehicle 1 sendRequestVote called for node 7
+68216.9ms Vehicle 1 sendRequestVote called for node 8
+68216.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+68216.9ms Vehicle 1 I am a candidate now! Starting election...
+68216.9ms Vehicle 7 sendRequestVote called for node 1
+68216.9ms Vehicle 7 sendRequestVote called for node 2
+68216.9ms Vehicle 7 sendRequestVote called for node 3
+68216.9ms Vehicle 7 sendRequestVote called for node 4
+68216.9ms Vehicle 7 sendRequestVote called for node 5
+68216.9ms Vehicle 7 sendRequestVote called for node 6
+68216.9ms Vehicle 7 sendRequestVote called for node 7
+68311.6ms Vehicle 2 sendRequestVote called for node 1
+68311.6ms Vehicle 2 sendRequestVote called for node 2
+68311.6ms Vehicle 2 sendRequestVote called for node 4
+68311.6ms Vehicle 2 sendRequestVote called for node 5
+68311.6ms Vehicle 2 sendRequestVote called for node 6
+68311.6ms Vehicle 2 sendRequestVote called for node 7
+68311.6ms Vehicle 2 sendRequestVote called for node 8
+68311.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+68311.6ms Vehicle 2 I am a candidate now! Starting election...
+69096.9ms Vehicle 7 sendRequestVote called for node 1
+69096.9ms Vehicle 7 sendRequestVote called for node 2
+69096.9ms Vehicle 7 sendRequestVote called for node 3
+69096.9ms Vehicle 7 sendRequestVote called for node 4
+69096.9ms Vehicle 7 sendRequestVote called for node 5
+69096.9ms Vehicle 7 sendRequestVote called for node 6
+69096.9ms Vehicle 7 sendRequestVote called for node 7
+70096.9ms Vehicle 7 sendRequestVote called for node 1
+70096.9ms Vehicle 7 sendRequestVote called for node 2
+70096.9ms Vehicle 7 sendRequestVote called for node 3
+70096.9ms Vehicle 7 sendRequestVote called for node 4
+70096.9ms Vehicle 7 sendRequestVote called for node 5
+70096.9ms Vehicle 7 sendRequestVote called for node 6
+70096.9ms Vehicle 7 sendRequestVote called for node 7
+70976.9ms Vehicle 1 sendRequestVote called for node 1
+70976.9ms Vehicle 1 sendRequestVote called for node 3
+70976.9ms Vehicle 1 sendRequestVote called for node 4
+70976.9ms Vehicle 1 sendRequestVote called for node 5
+70976.9ms Vehicle 1 sendRequestVote called for node 6
+70976.9ms Vehicle 1 sendRequestVote called for node 7
+70976.9ms Vehicle 1 sendRequestVote called for node 8
+70976.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+70976.9ms Vehicle 1 I am a candidate now! Starting election...
+71916.9ms Vehicle 1 sendRequestVote called for node 1
+71916.9ms Vehicle 1 sendRequestVote called for node 3
+71916.9ms Vehicle 1 sendRequestVote called for node 4
+71916.9ms Vehicle 1 sendRequestVote called for node 5
+71916.9ms Vehicle 1 sendRequestVote called for node 6
+71916.9ms Vehicle 1 sendRequestVote called for node 7
+71916.9ms Vehicle 1 sendRequestVote called for node 8
+72796.9ms Vehicle 3 sendRequestVote called for node 1
+72796.9ms Vehicle 3 sendRequestVote called for node 2
+72796.9ms Vehicle 3 sendRequestVote called for node 3
+72796.9ms Vehicle 3 sendRequestVote called for node 5
+72796.9ms Vehicle 3 sendRequestVote called for node 6
+72796.9ms Vehicle 3 sendRequestVote called for node 7
+72796.9ms Vehicle 3 sendRequestVote called for node 8
+72796.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+72796.9ms Vehicle 3 I am a candidate now! Starting election...
+73956.9ms Vehicle 3 sendRequestVote called for node 1
+73956.9ms Vehicle 3 sendRequestVote called for node 2
+73956.9ms Vehicle 3 sendRequestVote called for node 3
+73956.9ms Vehicle 3 sendRequestVote called for node 5
+73956.9ms Vehicle 3 sendRequestVote called for node 6
+73956.9ms Vehicle 3 sendRequestVote called for node 7
+73956.9ms Vehicle 3 sendRequestVote called for node 8
+74531.6ms Vehicle 2 EXECUTING oneshot cb
+74531.6ms Vehicle 2 BATCH SAFETY FALLBACK (lost VEHICLE_LEFT?) for batch 2
+74531.6ms Vehicle 2 RESUMING movement
+74911.6ms Vehicle 2 sendRequestVote called for node 1
+74911.6ms Vehicle 2 sendRequestVote called for node 2
+74911.6ms Vehicle 2 sendRequestVote called for node 4
+74911.6ms Vehicle 2 sendRequestVote called for node 5
+74911.6ms Vehicle 2 sendRequestVote called for node 6
+74911.6ms Vehicle 2 sendRequestVote called for node 7
+74911.6ms Vehicle 2 sendRequestVote called for node 8
+74911.6ms Vehicle 2 RAFT STATE CHANGED from 1 to 2
+74911.6ms Vehicle 2 I am a candidate now! Starting election...
+75676.9ms Vehicle 7 sendRequestVote called for node 1
+75676.9ms Vehicle 7 sendRequestVote called for node 2
+75676.9ms Vehicle 7 sendRequestVote called for node 3
+75676.9ms Vehicle 7 sendRequestVote called for node 4
+75676.9ms Vehicle 7 sendRequestVote called for node 5
+75676.9ms Vehicle 7 sendRequestVote called for node 6
+75676.9ms Vehicle 7 sendRequestVote called for node 7
+75676.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+75676.9ms Vehicle 7 I am a candidate now! Starting election...
+76536.9ms Vehicle 1 sendRequestVote called for node 1
+76536.9ms Vehicle 1 sendRequestVote called for node 3
+76536.9ms Vehicle 1 sendRequestVote called for node 4
+76536.9ms Vehicle 1 sendRequestVote called for node 5
+76536.9ms Vehicle 1 sendRequestVote called for node 6
+76536.9ms Vehicle 1 sendRequestVote called for node 7
+76536.9ms Vehicle 1 sendRequestVote called for node 8
+76536.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+76536.9ms Vehicle 1 I am a candidate now! Starting election...
+76.6 Vehicle 2 hasPassed=true (on exit edge -37551802#8)
+76600.0ms Vehicle 2 LEFT intersection
+76600.0ms Vehicle 2 BROADCASTING vehicle-passed
+76600.0ms Vehicle 2 sending vehicle-left (isLeader=0, myBatch=2)
+76601.3ms Vehicle 3 RECEIVED vehicle-left from vehicle 2
+76601.3ms Vehicle 7 RECEIVED vehicle-left from vehicle 2
+76601.3ms Vehicle 1 RECEIVED vehicle-left from vehicle 2
+76601.8ms Vehicle 3 RECEIVED vehicle-passed from vehicle 2
+76601.8ms Vehicle 3 front vehicle passed — advancing to stop position (chain)
+76601.8ms Vehicle 7 RECEIVED vehicle-passed from vehicle 2
+76601.8ms Vehicle 1 RECEIVED vehicle-passed from vehicle 2
+77336.9ms Vehicle 1 sendRequestVote called for node 1
+77336.9ms Vehicle 1 sendRequestVote called for node 3
+77336.9ms Vehicle 1 sendRequestVote called for node 4
+77336.9ms Vehicle 1 sendRequestVote called for node 5
+77336.9ms Vehicle 1 sendRequestVote called for node 6
+77336.9ms Vehicle 1 sendRequestVote called for node 7
+77336.9ms Vehicle 1 sendRequestVote called for node 8
+78076.9ms Vehicle 1 sendRequestVote called for node 1
+78076.9ms Vehicle 1 sendRequestVote called for node 3
+78076.9ms Vehicle 1 sendRequestVote called for node 4
+78076.9ms Vehicle 1 sendRequestVote called for node 5
+78076.9ms Vehicle 1 sendRequestVote called for node 6
+78076.9ms Vehicle 1 sendRequestVote called for node 7
+78076.9ms Vehicle 1 sendRequestVote called for node 8
+78996.9ms Vehicle 1 sendRequestVote called for node 1
+78996.9ms Vehicle 1 sendRequestVote called for node 3
+78996.9ms Vehicle 1 sendRequestVote called for node 4
+78996.9ms Vehicle 1 sendRequestVote called for node 5
+78996.9ms Vehicle 1 sendRequestVote called for node 6
+78996.9ms Vehicle 1 sendRequestVote called for node 7
+78996.9ms Vehicle 1 sendRequestVote called for node 8
+80016.9ms Vehicle 7 sendRequestVote called for node 1
+80016.9ms Vehicle 7 sendRequestVote called for node 2
+80016.9ms Vehicle 7 sendRequestVote called for node 3
+80016.9ms Vehicle 7 sendRequestVote called for node 4
+80016.9ms Vehicle 7 sendRequestVote called for node 5
+80016.9ms Vehicle 7 sendRequestVote called for node 6
+80016.9ms Vehicle 7 sendRequestVote called for node 7
+80016.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+80016.9ms Vehicle 7 I am a candidate now! Starting election...
+81096.9ms Vehicle 7 sendRequestVote called for node 1
+81096.9ms Vehicle 7 sendRequestVote called for node 2
+81096.9ms Vehicle 7 sendRequestVote called for node 3
+81096.9ms Vehicle 7 sendRequestVote called for node 4
+81096.9ms Vehicle 7 sendRequestVote called for node 5
+81096.9ms Vehicle 7 sendRequestVote called for node 6
+81096.9ms Vehicle 7 sendRequestVote called for node 7
+81936.9ms Vehicle 7 sendRequestVote called for node 1
+81936.9ms Vehicle 7 sendRequestVote called for node 2
+81936.9ms Vehicle 7 sendRequestVote called for node 3
+81936.9ms Vehicle 7 sendRequestVote called for node 4
+81936.9ms Vehicle 7 sendRequestVote called for node 5
+81936.9ms Vehicle 7 sendRequestVote called for node 6
+81936.9ms Vehicle 7 sendRequestVote called for node 7
+82756.9ms Vehicle 3 sendRequestVote called for node 1
+82756.9ms Vehicle 3 sendRequestVote called for node 2
+82756.9ms Vehicle 3 sendRequestVote called for node 3
+82756.9ms Vehicle 3 sendRequestVote called for node 5
+82756.9ms Vehicle 3 sendRequestVote called for node 6
+82756.9ms Vehicle 3 sendRequestVote called for node 7
+82756.9ms Vehicle 3 sendRequestVote called for node 8
+82756.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+82756.9ms Vehicle 3 I am a candidate now! Starting election...
+83836.9ms Vehicle 1 sendRequestVote called for node 1
+83836.9ms Vehicle 1 sendRequestVote called for node 3
+83836.9ms Vehicle 1 sendRequestVote called for node 4
+83836.9ms Vehicle 1 sendRequestVote called for node 5
+83836.9ms Vehicle 1 sendRequestVote called for node 6
+83836.9ms Vehicle 1 sendRequestVote called for node 7
+83836.9ms Vehicle 1 sendRequestVote called for node 8
+83836.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+83836.9ms Vehicle 1 I am a candidate now! Starting election...
+84856.9ms Vehicle 1 sendRequestVote called for node 1
+84856.9ms Vehicle 1 sendRequestVote called for node 3
+84856.9ms Vehicle 1 sendRequestVote called for node 4
+84856.9ms Vehicle 1 sendRequestVote called for node 5
+84856.9ms Vehicle 1 sendRequestVote called for node 6
+84856.9ms Vehicle 1 sendRequestVote called for node 7
+84856.9ms Vehicle 1 sendRequestVote called for node 8
+85756.9ms Vehicle 1 sendRequestVote called for node 1
+85756.9ms Vehicle 1 sendRequestVote called for node 3
+85756.9ms Vehicle 1 sendRequestVote called for node 4
+85756.9ms Vehicle 1 sendRequestVote called for node 5
+85756.9ms Vehicle 1 sendRequestVote called for node 6
+85756.9ms Vehicle 1 sendRequestVote called for node 7
+85756.9ms Vehicle 1 sendRequestVote called for node 8
+86696.9ms Vehicle 1 sendRequestVote called for node 1
+86696.9ms Vehicle 1 sendRequestVote called for node 3
+86696.9ms Vehicle 1 sendRequestVote called for node 4
+86696.9ms Vehicle 1 sendRequestVote called for node 5
+86696.9ms Vehicle 1 sendRequestVote called for node 6
+86696.9ms Vehicle 1 sendRequestVote called for node 7
+86696.9ms Vehicle 1 sendRequestVote called for node 8
+87676.9ms Vehicle 3 sendRequestVote called for node 1
+87676.9ms Vehicle 3 sendRequestVote called for node 2
+87676.9ms Vehicle 3 sendRequestVote called for node 3
+87676.9ms Vehicle 3 sendRequestVote called for node 5
+87676.9ms Vehicle 3 sendRequestVote called for node 6
+87676.9ms Vehicle 3 sendRequestVote called for node 7
+87676.9ms Vehicle 3 sendRequestVote called for node 8
+87676.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+87676.9ms Vehicle 3 I am a candidate now! Starting election...
+88536.9ms Vehicle 3 sendRequestVote called for node 1
+88536.9ms Vehicle 3 sendRequestVote called for node 2
+88536.9ms Vehicle 3 sendRequestVote called for node 3
+88536.9ms Vehicle 3 sendRequestVote called for node 5
+88536.9ms Vehicle 3 sendRequestVote called for node 6
+88536.9ms Vehicle 3 sendRequestVote called for node 7
+88536.9ms Vehicle 3 sendRequestVote called for node 8
+89276.9ms Vehicle 7 sendRequestVote called for node 1
+89276.9ms Vehicle 7 sendRequestVote called for node 2
+89276.9ms Vehicle 7 sendRequestVote called for node 3
+89276.9ms Vehicle 7 sendRequestVote called for node 4
+89276.9ms Vehicle 7 sendRequestVote called for node 5
+89276.9ms Vehicle 7 sendRequestVote called for node 6
+89276.9ms Vehicle 7 sendRequestVote called for node 7
+89276.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+89276.9ms Vehicle 7 I am a candidate now! Starting election...
+90136.9ms Vehicle 1 sendRequestVote called for node 1
+90136.9ms Vehicle 1 sendRequestVote called for node 3
+90136.9ms Vehicle 1 sendRequestVote called for node 4
+90136.9ms Vehicle 1 sendRequestVote called for node 5
+90136.9ms Vehicle 1 sendRequestVote called for node 6
+90136.9ms Vehicle 1 sendRequestVote called for node 7
+90136.9ms Vehicle 1 sendRequestVote called for node 8
+90136.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+90136.9ms Vehicle 1 I am a candidate now! Starting election...
+91276.9ms Vehicle 7 sendRequestVote called for node 1
+91276.9ms Vehicle 7 sendRequestVote called for node 2
+91276.9ms Vehicle 7 sendRequestVote called for node 3
+91276.9ms Vehicle 7 sendRequestVote called for node 4
+91276.9ms Vehicle 7 sendRequestVote called for node 5
+91276.9ms Vehicle 7 sendRequestVote called for node 6
+91276.9ms Vehicle 7 sendRequestVote called for node 7
+91276.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+91276.9ms Vehicle 7 I am a candidate now! Starting election...
+92036.9ms Vehicle 7 sendRequestVote called for node 1
+92036.9ms Vehicle 7 sendRequestVote called for node 2
+92036.9ms Vehicle 7 sendRequestVote called for node 3
+92036.9ms Vehicle 7 sendRequestVote called for node 4
+92036.9ms Vehicle 7 sendRequestVote called for node 5
+92036.9ms Vehicle 7 sendRequestVote called for node 6
+92036.9ms Vehicle 7 sendRequestVote called for node 7
+92816.9ms Vehicle 7 sendRequestVote called for node 1
+92816.9ms Vehicle 7 sendRequestVote called for node 2
+92816.9ms Vehicle 7 sendRequestVote called for node 3
+92816.9ms Vehicle 7 sendRequestVote called for node 4
+92816.9ms Vehicle 7 sendRequestVote called for node 5
+92816.9ms Vehicle 7 sendRequestVote called for node 6
+92816.9ms Vehicle 7 sendRequestVote called for node 7
+93576.9ms Vehicle 1 sendRequestVote called for node 1
+93576.9ms Vehicle 1 sendRequestVote called for node 3
+93576.9ms Vehicle 1 sendRequestVote called for node 4
+93576.9ms Vehicle 1 sendRequestVote called for node 5
+93576.9ms Vehicle 1 sendRequestVote called for node 6
+93576.9ms Vehicle 1 sendRequestVote called for node 7
+93576.9ms Vehicle 1 sendRequestVote called for node 8
+93576.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+93576.9ms Vehicle 1 I am a candidate now! Starting election...
+94536.9ms Vehicle 1 sendRequestVote called for node 1
+94536.9ms Vehicle 1 sendRequestVote called for node 3
+94536.9ms Vehicle 1 sendRequestVote called for node 4
+94536.9ms Vehicle 1 sendRequestVote called for node 5
+94536.9ms Vehicle 1 sendRequestVote called for node 6
+94536.9ms Vehicle 1 sendRequestVote called for node 7
+94536.9ms Vehicle 1 sendRequestVote called for node 8
+95336.9ms Vehicle 7 sendRequestVote called for node 1
+95336.9ms Vehicle 7 sendRequestVote called for node 2
+95336.9ms Vehicle 7 sendRequestVote called for node 3
+95336.9ms Vehicle 7 sendRequestVote called for node 4
+95336.9ms Vehicle 7 sendRequestVote called for node 5
+95336.9ms Vehicle 7 sendRequestVote called for node 6
+95336.9ms Vehicle 7 sendRequestVote called for node 7
+95336.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+95336.9ms Vehicle 7 I am a candidate now! Starting election...
+96356.9ms Vehicle 1 sendRequestVote called for node 1
+96356.9ms Vehicle 1 sendRequestVote called for node 3
+96356.9ms Vehicle 1 sendRequestVote called for node 4
+96356.9ms Vehicle 1 sendRequestVote called for node 5
+96356.9ms Vehicle 1 sendRequestVote called for node 6
+96356.9ms Vehicle 1 sendRequestVote called for node 7
+96356.9ms Vehicle 1 sendRequestVote called for node 8
+96356.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+96356.9ms Vehicle 1 I am a candidate now! Starting election...
+97116.9ms Vehicle 7 sendRequestVote called for node 1
+97116.9ms Vehicle 7 sendRequestVote called for node 2
+97116.9ms Vehicle 7 sendRequestVote called for node 3
+97116.9ms Vehicle 7 sendRequestVote called for node 4
+97116.9ms Vehicle 7 sendRequestVote called for node 5
+97116.9ms Vehicle 7 sendRequestVote called for node 6
+97116.9ms Vehicle 7 sendRequestVote called for node 7
+97116.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+97116.9ms Vehicle 7 I am a candidate now! Starting election...
+97856.9ms Vehicle 7 sendRequestVote called for node 1
+97856.9ms Vehicle 7 sendRequestVote called for node 2
+97856.9ms Vehicle 7 sendRequestVote called for node 3
+97856.9ms Vehicle 7 sendRequestVote called for node 4
+97856.9ms Vehicle 7 sendRequestVote called for node 5
+97856.9ms Vehicle 7 sendRequestVote called for node 6
+97856.9ms Vehicle 7 sendRequestVote called for node 7
+98776.9ms Vehicle 7 sendRequestVote called for node 1
+98776.9ms Vehicle 7 sendRequestVote called for node 2
+98776.9ms Vehicle 7 sendRequestVote called for node 3
+98776.9ms Vehicle 7 sendRequestVote called for node 4
+98776.9ms Vehicle 7 sendRequestVote called for node 5
+98776.9ms Vehicle 7 sendRequestVote called for node 6
+98776.9ms Vehicle 7 sendRequestVote called for node 7
+99776.9ms Vehicle 7 sendRequestVote called for node 1
+99776.9ms Vehicle 7 sendRequestVote called for node 2
+99776.9ms Vehicle 7 sendRequestVote called for node 3
+99776.9ms Vehicle 7 sendRequestVote called for node 4
+99776.9ms Vehicle 7 sendRequestVote called for node 5
+99776.9ms Vehicle 7 sendRequestVote called for node 6
+99776.9ms Vehicle 7 sendRequestVote called for node 7
+100656.9ms Vehicle 7 sendRequestVote called for node 1
+100656.9ms Vehicle 7 sendRequestVote called for node 2
+100656.9ms Vehicle 7 sendRequestVote called for node 3
+100656.9ms Vehicle 7 sendRequestVote called for node 4
+100656.9ms Vehicle 7 sendRequestVote called for node 5
+100656.9ms Vehicle 7 sendRequestVote called for node 6
+100656.9ms Vehicle 7 sendRequestVote called for node 7
+101596.9ms Vehicle 1 sendRequestVote called for node 1
+101596.9ms Vehicle 1 sendRequestVote called for node 3
+101596.9ms Vehicle 1 sendRequestVote called for node 4
+101596.9ms Vehicle 1 sendRequestVote called for node 5
+101596.9ms Vehicle 1 sendRequestVote called for node 6
+101596.9ms Vehicle 1 sendRequestVote called for node 7
+101596.9ms Vehicle 1 sendRequestVote called for node 8
+101596.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+101596.9ms Vehicle 1 I am a candidate now! Starting election...
+102436.9ms Vehicle 7 sendRequestVote called for node 1
+102436.9ms Vehicle 7 sendRequestVote called for node 2
+102436.9ms Vehicle 7 sendRequestVote called for node 3
+102436.9ms Vehicle 7 sendRequestVote called for node 4
+102436.9ms Vehicle 7 sendRequestVote called for node 5
+102436.9ms Vehicle 7 sendRequestVote called for node 6
+102436.9ms Vehicle 7 sendRequestVote called for node 7
+102436.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+102436.9ms Vehicle 7 I am a candidate now! Starting election...
+103496.9ms Vehicle 7 sendRequestVote called for node 1
+103496.9ms Vehicle 7 sendRequestVote called for node 2
+103496.9ms Vehicle 7 sendRequestVote called for node 3
+103496.9ms Vehicle 7 sendRequestVote called for node 4
+103496.9ms Vehicle 7 sendRequestVote called for node 5
+103496.9ms Vehicle 7 sendRequestVote called for node 6
+103496.9ms Vehicle 7 sendRequestVote called for node 7
+104416.9ms Vehicle 1 sendRequestVote called for node 1
+104416.9ms Vehicle 1 sendRequestVote called for node 3
+104416.9ms Vehicle 1 sendRequestVote called for node 4
+104416.9ms Vehicle 1 sendRequestVote called for node 5
+104416.9ms Vehicle 1 sendRequestVote called for node 6
+104416.9ms Vehicle 1 sendRequestVote called for node 7
+104416.9ms Vehicle 1 sendRequestVote called for node 8
+104416.9ms Vehicle 1 RAFT STATE CHANGED from 1 to 2
+104416.9ms Vehicle 1 I am a candidate now! Starting election...
+104536.9ms Vehicle 1 EXECUTING oneshot cb
+104536.9ms Vehicle 1 BATCH SAFETY FALLBACK (lost VEHICLE_LEFT?) for batch 3
+104536.9ms Vehicle 1 RESUMING movement
+105596.9ms Vehicle 1 sendRequestVote called for node 1
+105596.9ms Vehicle 1 sendRequestVote called for node 3
+105596.9ms Vehicle 1 sendRequestVote called for node 4
+105596.9ms Vehicle 1 sendRequestVote called for node 5
+105596.9ms Vehicle 1 sendRequestVote called for node 6
+105596.9ms Vehicle 1 sendRequestVote called for node 7
+105596.9ms Vehicle 1 sendRequestVote called for node 8
+106336.9ms Vehicle 1 sendRequestVote called for node 1
+106336.9ms Vehicle 1 sendRequestVote called for node 3
+106336.9ms Vehicle 1 sendRequestVote called for node 4
+106336.9ms Vehicle 1 sendRequestVote called for node 5
+106336.9ms Vehicle 1 sendRequestVote called for node 6
+106336.9ms Vehicle 1 sendRequestVote called for node 7
+106336.9ms Vehicle 1 sendRequestVote called for node 8
+106.7 Vehicle 1 hasPassed=true (on exit edge 34894202#13)
+106700.0ms Vehicle 1 LEFT intersection
+106700.0ms Vehicle 1 BROADCASTING vehicle-passed
+106700.0ms Vehicle 1 sending vehicle-left (isLeader=0, myBatch=3)
+106704.7ms Vehicle 3 RECEIVED vehicle-passed from vehicle 1
+106704.7ms Vehicle 7 RECEIVED vehicle-passed from vehicle 1
+106705.0ms Vehicle 3 RECEIVED vehicle-left from vehicle 1
+106705.0ms Vehicle 7 RECEIVED vehicle-left from vehicle 1
+107136.9ms Vehicle 7 sendRequestVote called for node 1
+107136.9ms Vehicle 7 sendRequestVote called for node 2
+107136.9ms Vehicle 7 sendRequestVote called for node 3
+107136.9ms Vehicle 7 sendRequestVote called for node 4
+107136.9ms Vehicle 7 sendRequestVote called for node 5
+107136.9ms Vehicle 7 sendRequestVote called for node 6
+107136.9ms Vehicle 7 sendRequestVote called for node 7
+107136.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+107136.9ms Vehicle 7 I am a candidate now! Starting election...
+108096.9ms Vehicle 3 sendRequestVote called for node 1
+108096.9ms Vehicle 3 sendRequestVote called for node 2
+108096.9ms Vehicle 3 sendRequestVote called for node 3
+108096.9ms Vehicle 3 sendRequestVote called for node 5
+108096.9ms Vehicle 3 sendRequestVote called for node 6
+108096.9ms Vehicle 3 sendRequestVote called for node 7
+108096.9ms Vehicle 3 sendRequestVote called for node 8
+108096.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+108096.9ms Vehicle 3 I am a candidate now! Starting election...
+109016.9ms Vehicle 3 sendRequestVote called for node 1
+109016.9ms Vehicle 3 sendRequestVote called for node 2
+109016.9ms Vehicle 3 sendRequestVote called for node 3
+109016.9ms Vehicle 3 sendRequestVote called for node 5
+109016.9ms Vehicle 3 sendRequestVote called for node 6
+109016.9ms Vehicle 3 sendRequestVote called for node 7
+109016.9ms Vehicle 3 sendRequestVote called for node 8
+110096.9ms Vehicle 7 sendRequestVote called for node 1
+110096.9ms Vehicle 7 sendRequestVote called for node 2
+110096.9ms Vehicle 7 sendRequestVote called for node 3
+110096.9ms Vehicle 7 sendRequestVote called for node 4
+110096.9ms Vehicle 7 sendRequestVote called for node 5
+110096.9ms Vehicle 7 sendRequestVote called for node 6
+110096.9ms Vehicle 7 sendRequestVote called for node 7
+110096.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+110096.9ms Vehicle 7 I am a candidate now! Starting election...
+110996.9ms Vehicle 3 sendRequestVote called for node 1
+110996.9ms Vehicle 3 sendRequestVote called for node 2
+110996.9ms Vehicle 3 sendRequestVote called for node 3
+110996.9ms Vehicle 3 sendRequestVote called for node 5
+110996.9ms Vehicle 3 sendRequestVote called for node 6
+110996.9ms Vehicle 3 sendRequestVote called for node 7
+110996.9ms Vehicle 3 sendRequestVote called for node 8
+110996.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+110996.9ms Vehicle 3 I am a candidate now! Starting election...
+112236.9ms Vehicle 3 sendRequestVote called for node 1
+112236.9ms Vehicle 3 sendRequestVote called for node 2
+112236.9ms Vehicle 3 sendRequestVote called for node 3
+112236.9ms Vehicle 3 sendRequestVote called for node 5
+112236.9ms Vehicle 3 sendRequestVote called for node 6
+112236.9ms Vehicle 3 sendRequestVote called for node 7
+112236.9ms Vehicle 3 sendRequestVote called for node 8
+112996.9ms Vehicle 7 sendRequestVote called for node 1
+112996.9ms Vehicle 7 sendRequestVote called for node 2
+112996.9ms Vehicle 7 sendRequestVote called for node 3
+112996.9ms Vehicle 7 sendRequestVote called for node 4
+112996.9ms Vehicle 7 sendRequestVote called for node 5
+112996.9ms Vehicle 7 sendRequestVote called for node 6
+112996.9ms Vehicle 7 sendRequestVote called for node 7
+112996.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+112996.9ms Vehicle 7 I am a candidate now! Starting election...
+114396.9ms Vehicle 7 sendRequestVote called for node 1
+114396.9ms Vehicle 7 sendRequestVote called for node 2
+114396.9ms Vehicle 7 sendRequestVote called for node 3
+114396.9ms Vehicle 7 sendRequestVote called for node 4
+114396.9ms Vehicle 7 sendRequestVote called for node 5
+114396.9ms Vehicle 7 sendRequestVote called for node 6
+114396.9ms Vehicle 7 sendRequestVote called for node 7
+115296.9ms Vehicle 7 sendRequestVote called for node 1
+115296.9ms Vehicle 7 sendRequestVote called for node 2
+115296.9ms Vehicle 7 sendRequestVote called for node 3
+115296.9ms Vehicle 7 sendRequestVote called for node 4
+115296.9ms Vehicle 7 sendRequestVote called for node 5
+115296.9ms Vehicle 7 sendRequestVote called for node 6
+115296.9ms Vehicle 7 sendRequestVote called for node 7
+116436.9ms Vehicle 3 sendRequestVote called for node 1
+116436.9ms Vehicle 3 sendRequestVote called for node 2
+116436.9ms Vehicle 3 sendRequestVote called for node 3
+116436.9ms Vehicle 3 sendRequestVote called for node 5
+116436.9ms Vehicle 3 sendRequestVote called for node 6
+116436.9ms Vehicle 3 sendRequestVote called for node 7
+116436.9ms Vehicle 3 sendRequestVote called for node 8
+116436.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+116436.9ms Vehicle 3 I am a candidate now! Starting election...
+117376.9ms Vehicle 3 sendRequestVote called for node 1
+117376.9ms Vehicle 3 sendRequestVote called for node 2
+117376.9ms Vehicle 3 sendRequestVote called for node 3
+117376.9ms Vehicle 3 sendRequestVote called for node 5
+117376.9ms Vehicle 3 sendRequestVote called for node 6
+117376.9ms Vehicle 3 sendRequestVote called for node 7
+117376.9ms Vehicle 3 sendRequestVote called for node 8
+118336.9ms Vehicle 7 sendRequestVote called for node 1
+118336.9ms Vehicle 7 sendRequestVote called for node 2
+118336.9ms Vehicle 7 sendRequestVote called for node 3
+118336.9ms Vehicle 7 sendRequestVote called for node 4
+118336.9ms Vehicle 7 sendRequestVote called for node 5
+118336.9ms Vehicle 7 sendRequestVote called for node 6
+118336.9ms Vehicle 7 sendRequestVote called for node 7
+118336.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+118336.9ms Vehicle 7 I am a candidate now! Starting election...
+119156.9ms Vehicle 7 sendRequestVote called for node 1
+119156.9ms Vehicle 7 sendRequestVote called for node 2
+119156.9ms Vehicle 7 sendRequestVote called for node 3
+119156.9ms Vehicle 7 sendRequestVote called for node 4
+119156.9ms Vehicle 7 sendRequestVote called for node 5
+119156.9ms Vehicle 7 sendRequestVote called for node 6
+119156.9ms Vehicle 7 sendRequestVote called for node 7
+120196.9ms Vehicle 7 sendRequestVote called for node 1
+120196.9ms Vehicle 7 sendRequestVote called for node 2
+120196.9ms Vehicle 7 sendRequestVote called for node 3
+120196.9ms Vehicle 7 sendRequestVote called for node 4
+120196.9ms Vehicle 7 sendRequestVote called for node 5
+120196.9ms Vehicle 7 sendRequestVote called for node 6
+120196.9ms Vehicle 7 sendRequestVote called for node 7
+121356.9ms Vehicle 3 sendRequestVote called for node 1
+121356.9ms Vehicle 3 sendRequestVote called for node 2
+121356.9ms Vehicle 3 sendRequestVote called for node 3
+121356.9ms Vehicle 3 sendRequestVote called for node 5
+121356.9ms Vehicle 3 sendRequestVote called for node 6
+121356.9ms Vehicle 3 sendRequestVote called for node 7
+121356.9ms Vehicle 3 sendRequestVote called for node 8
+121356.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+121356.9ms Vehicle 3 I am a candidate now! Starting election...
+122356.9ms Vehicle 7 sendRequestVote called for node 1
+122356.9ms Vehicle 7 sendRequestVote called for node 2
+122356.9ms Vehicle 7 sendRequestVote called for node 3
+122356.9ms Vehicle 7 sendRequestVote called for node 4
+122356.9ms Vehicle 7 sendRequestVote called for node 5
+122356.9ms Vehicle 7 sendRequestVote called for node 6
+122356.9ms Vehicle 7 sendRequestVote called for node 7
+122356.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+122356.9ms Vehicle 7 I am a candidate now! Starting election...
+123256.9ms Vehicle 7 sendRequestVote called for node 1
+123256.9ms Vehicle 7 sendRequestVote called for node 2
+123256.9ms Vehicle 7 sendRequestVote called for node 3
+123256.9ms Vehicle 7 sendRequestVote called for node 4
+123256.9ms Vehicle 7 sendRequestVote called for node 5
+123256.9ms Vehicle 7 sendRequestVote called for node 6
+123256.9ms Vehicle 7 sendRequestVote called for node 7
+124216.9ms Vehicle 7 sendRequestVote called for node 1
+124216.9ms Vehicle 7 sendRequestVote called for node 2
+124216.9ms Vehicle 7 sendRequestVote called for node 3
+124216.9ms Vehicle 7 sendRequestVote called for node 4
+124216.9ms Vehicle 7 sendRequestVote called for node 5
+124216.9ms Vehicle 7 sendRequestVote called for node 6
+124216.9ms Vehicle 7 sendRequestVote called for node 7
+125196.9ms Vehicle 3 sendRequestVote called for node 1
+125196.9ms Vehicle 3 sendRequestVote called for node 2
+125196.9ms Vehicle 3 sendRequestVote called for node 3
+125196.9ms Vehicle 3 sendRequestVote called for node 5
+125196.9ms Vehicle 3 sendRequestVote called for node 6
+125196.9ms Vehicle 3 sendRequestVote called for node 7
+125196.9ms Vehicle 3 sendRequestVote called for node 8
+125196.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+125196.9ms Vehicle 3 I am a candidate now! Starting election...
+125996.9ms Vehicle 7 sendRequestVote called for node 1
+125996.9ms Vehicle 7 sendRequestVote called for node 2
+125996.9ms Vehicle 7 sendRequestVote called for node 3
+125996.9ms Vehicle 7 sendRequestVote called for node 4
+125996.9ms Vehicle 7 sendRequestVote called for node 5
+125996.9ms Vehicle 7 sendRequestVote called for node 6
+125996.9ms Vehicle 7 sendRequestVote called for node 7
+125996.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+125996.9ms Vehicle 7 I am a candidate now! Starting election...
+127016.9ms Vehicle 3 sendRequestVote called for node 1
+127016.9ms Vehicle 3 sendRequestVote called for node 2
+127016.9ms Vehicle 3 sendRequestVote called for node 3
+127016.9ms Vehicle 3 sendRequestVote called for node 5
+127016.9ms Vehicle 3 sendRequestVote called for node 6
+127016.9ms Vehicle 3 sendRequestVote called for node 7
+127016.9ms Vehicle 3 sendRequestVote called for node 8
+127016.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+127016.9ms Vehicle 3 I am a candidate now! Starting election...
+127876.9ms Vehicle 7 sendRequestVote called for node 1
+127876.9ms Vehicle 7 sendRequestVote called for node 2
+127876.9ms Vehicle 7 sendRequestVote called for node 3
+127876.9ms Vehicle 7 sendRequestVote called for node 4
+127876.9ms Vehicle 7 sendRequestVote called for node 5
+127876.9ms Vehicle 7 sendRequestVote called for node 6
+127876.9ms Vehicle 7 sendRequestVote called for node 7
+127876.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+127876.9ms Vehicle 7 I am a candidate now! Starting election...
+128816.9ms Vehicle 3 sendRequestVote called for node 1
+128816.9ms Vehicle 3 sendRequestVote called for node 2
+128816.9ms Vehicle 3 sendRequestVote called for node 3
+128816.9ms Vehicle 3 sendRequestVote called for node 5
+128816.9ms Vehicle 3 sendRequestVote called for node 6
+128816.9ms Vehicle 3 sendRequestVote called for node 7
+128816.9ms Vehicle 3 sendRequestVote called for node 8
+128816.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+128816.9ms Vehicle 3 I am a candidate now! Starting election...
+130156.9ms Vehicle 7 sendRequestVote called for node 1
+130156.9ms Vehicle 7 sendRequestVote called for node 2
+130156.9ms Vehicle 7 sendRequestVote called for node 3
+130156.9ms Vehicle 7 sendRequestVote called for node 4
+130156.9ms Vehicle 7 sendRequestVote called for node 5
+130156.9ms Vehicle 7 sendRequestVote called for node 6
+130156.9ms Vehicle 7 sendRequestVote called for node 7
+130156.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+130156.9ms Vehicle 7 I am a candidate now! Starting election...
+131016.9ms Vehicle 3 sendRequestVote called for node 1
+131016.9ms Vehicle 3 sendRequestVote called for node 2
+131016.9ms Vehicle 3 sendRequestVote called for node 3
+131016.9ms Vehicle 3 sendRequestVote called for node 5
+131016.9ms Vehicle 3 sendRequestVote called for node 6
+131016.9ms Vehicle 3 sendRequestVote called for node 7
+131016.9ms Vehicle 3 sendRequestVote called for node 8
+131016.9ms Vehicle 3 RAFT STATE CHANGED from 1 to 2
+131016.9ms Vehicle 3 I am a candidate now! Starting election...
+131896.9ms Vehicle 3 sendRequestVote called for node 1
+131896.9ms Vehicle 3 sendRequestVote called for node 2
+131896.9ms Vehicle 3 sendRequestVote called for node 3
+131896.9ms Vehicle 3 sendRequestVote called for node 5
+131896.9ms Vehicle 3 sendRequestVote called for node 6
+131896.9ms Vehicle 3 sendRequestVote called for node 7
+131896.9ms Vehicle 3 sendRequestVote called for node 8
+133036.9ms Vehicle 3 sendRequestVote called for node 1
+133036.9ms Vehicle 3 sendRequestVote called for node 2
+133036.9ms Vehicle 3 sendRequestVote called for node 3
+133036.9ms Vehicle 3 sendRequestVote called for node 5
+133036.9ms Vehicle 3 sendRequestVote called for node 6
+133036.9ms Vehicle 3 sendRequestVote called for node 7
+133036.9ms Vehicle 3 sendRequestVote called for node 8
+134136.9ms Vehicle 7 sendRequestVote called for node 1
+134136.9ms Vehicle 7 sendRequestVote called for node 2
+134136.9ms Vehicle 7 sendRequestVote called for node 3
+134136.9ms Vehicle 7 sendRequestVote called for node 4
+134136.9ms Vehicle 7 sendRequestVote called for node 5
+134136.9ms Vehicle 7 sendRequestVote called for node 6
+134136.9ms Vehicle 7 sendRequestVote called for node 7
+134136.9ms Vehicle 7 RAFT STATE CHANGED from 1 to 2
+134136.9ms Vehicle 7 I am a candidate now! Starting election...
+134536.9ms Vehicle 3 EXECUTING oneshot cb
+134536.9ms Vehicle 3 BATCH SAFETY FALLBACK (lost VEHICLE_LEFT?) for batch 4
+134536.9ms Vehicle 3 RESUMING movement
+134536.9ms Vehicle 7 EXECUTING oneshot cb
+134536.9ms Vehicle 7 BATCH SAFETY FALLBACK (lost VEHICLE_LEFT?) for batch 4
+134536.9ms Vehicle 7 RESUMING movement
+134976.9ms Vehicle 7 sendRequestVote called for node 1
+134976.9ms Vehicle 7 sendRequestVote called for node 2
+134976.9ms Vehicle 7 sendRequestVote called for node 3
+134976.9ms Vehicle 7 sendRequestVote called for node 4
+134976.9ms Vehicle 7 sendRequestVote called for node 5
+134976.9ms Vehicle 7 sendRequestVote called for node 6
+134976.9ms Vehicle 7 sendRequestVote called for node 7
+136016.9ms Vehicle 7 sendRequestVote called for node 1
+136016.9ms Vehicle 7 sendRequestVote called for node 2
+136016.9ms Vehicle 7 sendRequestVote called for node 3
+136016.9ms Vehicle 7 sendRequestVote called for node 4
+136016.9ms Vehicle 7 sendRequestVote called for node 5
+136016.9ms Vehicle 7 sendRequestVote called for node 6
+136016.9ms Vehicle 7 sendRequestVote called for node 7
+136.6 Vehicle 3 hasPassed=true (on exit edge -36905242#11)
+136600.0ms Vehicle 3 LEFT intersection
+136600.0ms Vehicle 3 BROADCASTING vehicle-passed
+136600.0ms Vehicle 3 sending vehicle-left (isLeader=0, myBatch=4)
+136601.8ms Vehicle 7 RECEIVED vehicle-left from vehicle 3
+136602.1ms Vehicle 7 RECEIVED vehicle-passed from vehicle 3
+136.9 Vehicle 7 hasPassed=true (on exit edge -36905242#11)
+136900.0ms Vehicle 7 LEFT intersection
+136900.0ms Vehicle 7 BROADCASTING vehicle-passed
+136900.0ms Vehicle 7 sending vehicle-left (isLeader=0, myBatch=4)
+136916.9ms Vehicle 7 sendRequestVote called for node 1
+136916.9ms Vehicle 7 sendRequestVote called for node 2
+136916.9ms Vehicle 7 sendRequestVote called for node 3
+136916.9ms Vehicle 7 sendRequestVote called for node 4
+136916.9ms Vehicle 7 sendRequestVote called for node 5
+136916.9ms Vehicle 7 sendRequestVote called for node 6
+136916.9ms Vehicle 7 sendRequestVote called for node 7
+** Event #276039   t=300   Elapsed: 3.66079s (0m 03s)  100% completed  (100% total)
+     Speed:     ev/sec=64194.8   simsec/sec=50.6658   ev/simsec=1267.03
+     Messages:  created: 210696   present: 2   in FES: 0
+
+<!> Simulation time limit reached -- at t=300s, event #276039
+
+Calling finish() at end of Run #0...
+
+End.

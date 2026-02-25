@@ -50,45 +50,50 @@ def calculate_metrics_from_runs(runs_data):
         'throughput': [],
         'wait_time': [],
         'transit_time': [],
-        'messages_sent': []
+        'messages_sent': [],
+        'fallback_rate': [],   # fraction of vehicles per run that used fallback
     }
-    
+
     for run_data in runs_data:
         if not run_data:
             continue
-            
+
         num_vehicles = len(run_data)
-        
+
         # RAFT decision time = leader election + decision writing to quorum
         # Defined as: max(order_committed) - min(cluster_formed)
         # Cluster formation is NOT part of RAFT timing (it precedes RAFT).
-        raft_commits = [v['timestamps_ms'].get('order_committed', 0) for v in run_data 
+        raft_commits = [v['timestamps_ms'].get('order_committed', 0) for v in run_data
                        if v.get('coordination_method') != 'fallback' and v['timestamps_ms'].get('order_committed', 0) > 0]
-        cluster_formed_times = [v['timestamps_ms'].get('cluster_formed', 0) for v in run_data 
+        cluster_formed_times = [v['timestamps_ms'].get('cluster_formed', 0) for v in run_data
                                if v['timestamps_ms'].get('cluster_formed', 0) > 0]
-        
+
         if raft_commits and cluster_formed_times:
             raft_decision = max(raft_commits) - min(cluster_formed_times)
             if raft_decision > 0:
                 metrics['raft_decision_time'].append(raft_decision)
-        
+
         # Total intersection time
         stopped_times = [v['timestamps_ms']['stopped'] for v in run_data]
         passed_times = [v['timestamps_ms']['passed'] for v in run_data]
         if stopped_times and passed_times:
             total_time = max(passed_times) - min(stopped_times)
             metrics['total_intersection_time'].append(total_time)
-            
+
             # Throughput
             if total_time > 0:
                 metrics['throughput'].append(num_vehicles / (total_time / 1000.0))
-        
+
+        # Fallback rate: fraction of vehicles that used fallback this run
+        fallback_count = sum(1 for v in run_data if v.get('coordination_method') == 'fallback')
+        metrics['fallback_rate'].append(fallback_count / num_vehicles if num_vehicles > 0 else 0)
+
         # Per-vehicle metrics
         for vehicle in run_data:
             metrics['wait_time'].append(vehicle['durations_ms']['total_wait_time'])
             metrics['transit_time'].append(vehicle['durations_ms']['transit_time'])
             metrics['messages_sent'].append(vehicle['messages']['sent'])
-    
+
     # Calculate mean and std for each metric
     result = {}
     for key, values in metrics.items():
@@ -96,14 +101,14 @@ def calculate_metrics_from_runs(runs_data):
             result[key] = {'mean': np.mean(values), 'std': np.std(values)}
         else:
             result[key] = {'mean': 0, 'std': 0}
-    
+
     return result
 
 def main():
-    vehicle_counts = [4, 8, 16, 32]
+    vehicle_counts = [4, 8, 16]
     protocols = ['wave', 'udp']
 
-    # Folder-name prefix: results are stored as raftwave_Nveh / raft_Nveh
+    # Folder-name prefix: results are stored as raftwave_Nveh_report / raft_Nveh_report
     folder_prefix = {'wave': 'raftwave', 'udp': 'raft'}
 
     # Colors for each protocol
@@ -117,7 +122,13 @@ def main():
         prefix = folder_prefix[protocol]
         for vc in vehicle_counts:
             # Override result_name used inside helpers by patching the folder directly
-            result_name = f"{prefix}_{vc}veh"
+            # Prefer _report folders (fresh runs); fall back to plain name
+            result_name_report = f"{prefix}_{vc}veh_report"
+            result_name_plain  = f"{prefix}_{vc}veh"
+            if os.path.isdir(os.path.join(RESULTS_DIR, result_name_report)):
+                result_name = result_name_report
+            else:
+                result_name = result_name_plain
             # Load raw runs directly (bypass helper that uses wrong prefix)
             result_dir = os.path.join(RESULTS_DIR, result_name)
             runs = []
@@ -152,18 +163,19 @@ def main():
                         'messages_sent': stats.get('messages_sent', {'mean': 0, 'std': 0})
                     }
     
-    # Create figure with only Total Intersection Time and Throughput (1 row x 2 columns)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
+    # Create figure: 1 row x 3 columns
+    fig, axes = plt.subplots(1, 3, figsize=(16, 6))
     fig.suptitle(
         'RAFT Intersection Coordination: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)\n'
         'Industry-Realistic PHY: α=2.75 NLOS, LogNormal Shadowing σ=4dB, Tx=20mW, 6 Mbps',
         fontsize=14, fontweight='bold'
     )
-    
-    # Metrics to plot: RAFT Decision Time and Throughput
+
+    # Metrics to plot: RAFT Decision Time, Throughput, Fallback Rate
     plot_configs = [
         ('raft_decision_time', 'RAFT Decision Time', 'Time (ms)', 0),
-        ('throughput', 'System Throughput', 'Vehicles/second', 1)
+        ('throughput', 'System Throughput', 'Vehicles/second', 1),
+        ('fallback_rate', 'Fallback Rate', 'Fraction of vehicles', 2),
     ]
     
     bar_width = 0.35
@@ -192,7 +204,7 @@ def main():
             for j, (bar, mean) in enumerate(zip(bars, means)):
                 if mean > 0:
                     height = bar.get_height()
-                    if metric == 'throughput':
+                    if metric in ('throughput', 'fallback_rate'):
                         ax.text(bar.get_x() + bar.get_width()/2., height,
                                f'{mean:.3f}', ha='center', va='bottom', fontsize=8, fontweight='bold')
                     else:
@@ -222,12 +234,12 @@ def main():
     
     plt.close()
     
-    # Print summary table (RAFT Decision Time and Throughput only)
-    print("\n" + "="*70)
+    # Print summary table
+    print("\n" + "="*82)
     print("SUMMARY: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)")
-    print("="*70)
-    print(f"{'Vehicles':<10} {'Protocol':<22} {'RAFT Decision (ms)':<20} {'Throughput (veh/s)':<18}")
-    print("-"*70)
+    print("="*82)
+    print(f"{'Vehicles':<10} {'Protocol':<22} {'RAFT Decision (ms)':<20} {'Throughput (veh/s)':<20} {'Fallback Rate':<13}")
+    print("-"*82)
 
     for vc in vehicle_counts:
         for protocol in protocols:
@@ -236,8 +248,9 @@ def main():
                 proto_label = labels[protocol]
                 raft = d.get('raft_decision_time', {}).get('mean', 0)
                 tp = d.get('throughput', {}).get('mean', 0)
-                print(f"{vc:<10} {proto_label:<22} {raft:<20.1f} {tp:<18.3f}")
-        print("-"*70)
+                fb = d.get('fallback_rate', {}).get('mean', 0)
+                print(f"{vc:<10} {proto_label:<22} {raft:<20.1f} {tp:<20.3f} {fb:<13.3f}")
+        print("-"*82)
 
 if __name__ == '__main__':
     main()
