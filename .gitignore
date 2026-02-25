@@ -4,3 +4,15 @@ CLAUDE.md
 docs/
 ./out/
 ./simulations/intersection_8/results/General-#0.vec
+# OMNeT++ result files
+*.vec
+*.sca
+# Build artifacts
+out/
+src/benchmark_dbg
+*.o
+*.exe
+*.so
+
+# Debug binaries
+benchmark_dbg
