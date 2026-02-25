@@ -8,15 +8,13 @@
     <route id="rE" edges="36905242#8 36905242#11 -37551802#8 -37551802#6"/>
     <route id="rN" edges="37551802#6 37551802#8 -36905242#11 -36905242#8"/>
 
-    <!-- 8 vehicles total, 2 per direction - ALL spawn at same time -->
-    <!-- First vehicle in each lane -->
+    <!-- 8 vehicles: veh0,1→rW; veh2,3→rS; veh4,5→rE; veh6,7→rN (matches C++ dirIndex=(id/2)%4) -->
     <vehicle id="veh0" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
-    <vehicle id="veh2" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
-    <vehicle id="veh4" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
-    <vehicle id="veh6" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
-    <!-- Second vehicle in each lane (spawns right behind first) -->
     <vehicle id="veh1" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh2" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh3" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh4" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh5" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
+    <vehicle id="veh6" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh7" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
 </routes>

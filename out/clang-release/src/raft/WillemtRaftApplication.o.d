@@ -86,7 +86,8 @@
   /home/mathesh/veins/src/veins/modules/mobility/traci/TraCICommandInterface.h \
   /home/mathesh/veins/src/veins/modules/world/traci/trafficLight/TraCITrafficLightProgram.h \
   /home/mathesh/veins/src/veins/modules/utility/TimerManager.h \
-  raft/../../third_party/raft/raft_types.h \
+  raft/RaftAppBase.h raft/RaftShared.h \
+  raft/../../third_party/raft/raft_types.h raft/RaftMetrics.h \
   raft/../../third_party/raft/raft.h
 raft/WillemtRaftApplication.h:
 veins_inet/VeinsInetApplicationBase.h:
@@ -177,5 +178,8 @@ veins_inet/VeinsInetMobility.h:
 /home/mathesh/veins/src/veins/modules/mobility/traci/TraCICommandInterface.h:
 /home/mathesh/veins/src/veins/modules/world/traci/trafficLight/TraCITrafficLightProgram.h:
 /home/mathesh/veins/src/veins/modules/utility/TimerManager.h:
+raft/RaftAppBase.h:
+raft/RaftShared.h:
 raft/../../third_party/raft/raft_types.h:
+raft/RaftMetrics.h:
 raft/../../third_party/raft/raft.h:

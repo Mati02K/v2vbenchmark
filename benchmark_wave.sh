@@ -100,9 +100,12 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
     REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
     STATUS_COLLECTION_TIMEOUT=$((500 + VEHICLE_COUNT * 150))
     
-    # Arrival wait time (wait for vehicles to gather before scheduling)
-    # IDENTICAL to UDP - time for vehicles to physically reach intersection
-    ARRIVAL_WAIT_TIME=$((3000 + VEHICLE_COUNT * 400))
+    # Arrival wait time — with wait-for-all cluster formation we already have everyone,
+    # so long wait is redundant; keeps UDP/WAVE comparable
+    ARRIVAL_WAIT_TIME=$((500 + VEHICLE_COUNT * 100))
+
+# NOTE: SUMO and veins_launchd must already be running before launching this script.
+# Start SUMO manually with: DISPLAY=:1 XAUTHORITY=/run/user/1000/gdm/Xauthority python3 /home/mathesh/veins/bin/veins_launchd -vv -c /usr/local/bin/sumo-gui &
 
 # Run simulation
 echo -e "${GREEN}Running WAVE simulation (iteration $iteration)...${NC}"
@@ -269,13 +272,14 @@ for run_data in all_runs_data:
     
     stopped_times = [v['timestamps_ms']['stopped'] for v in run_data]
     
-    if raft_commits:
+    # RAFT decision = leader election + decision writing to quorum (excludes cluster formation)
+    cluster_formed_times = [v['timestamps_ms'].get('cluster_formed', 0) for v in run_data 
+                           if v['timestamps_ms'].get('cluster_formed', 0) > 0]
+    if raft_commits and cluster_formed_times:
         latest_commit = max(raft_commits)
-        first_stopped = min(stopped_times)
-        raft_decision = latest_commit - first_stopped
+        first_cluster = min(cluster_formed_times)
+        raft_decision = latest_commit - first_cluster
     else:
-        # If all vehicles used fallback or no commits, exclude this run from RAFT stats?
-        # Or report 0. User wants "vehicles which passed based on RAFT decision alone"
         raft_decision = 0 
     
     # Store RAFT decision only if valid > 0

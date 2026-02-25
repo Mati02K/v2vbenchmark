@@ -1,0 +1,23 @@
+MSGC: raft/RaftWaveMessage.msg
+MSGC: veins_inet/VeinsInetSampleMessage.msg
+Compiling RAFT: ../third_party/raft/raft_server.c
+Compiling RAFT: ../third_party/raft/raft_server_properties.c
+Compiling RAFT: ../third_party/raft/raft_node.c
+Compiling RAFT: ../third_party/raft/raft_log.c
+raft/WillemtRaftApplication.cc
+raft/WillemtRaftWaveApplication.cc
+raft/RaftAppBase.cc
+raft/RaftMetrics.cc
+veins_inet/VeinsInetApplicationBase.cc
+raft/RaftAppBase.cc:869:49: warning: initialized lambda captures are a C++14 extension [-Wc++14-extensions]
+  869 |         scheduleOneshotMs(safetyDelayMs, [this, expectedBatch = myBatch_]() {
+      |                                                 ^
+veins_inet/VeinsInetManager.cc
+veins_inet/VeinsInetManagerBase.cc
+veins_inet/VeinsInetManagerForker.cc
+1 warning generated.
+veins_inet/VeinsInetMobility.cc
+veins_inet/VeinsInetSampleApplication.cc
+raft/RaftWaveMessage_m.cc
+veins_inet/VeinsInetSampleMessage_m.cc
+Creating executable: ../out/clang-release/src/benchmark

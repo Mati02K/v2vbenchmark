@@ -59,17 +59,21 @@ def calculate_metrics_from_runs(runs_data):
             
         num_vehicles = len(run_data)
         
-        # RAFT decision time: time from first stopped to latest commit
+        # RAFT decision time = leader election + decision writing to quorum
+        # Defined as: max(order_committed) - min(cluster_formed)
+        # Cluster formation is NOT part of RAFT timing (it precedes RAFT).
         raft_commits = [v['timestamps_ms'].get('order_committed', 0) for v in run_data 
                        if v.get('coordination_method') != 'fallback' and v['timestamps_ms'].get('order_committed', 0) > 0]
-        stopped_times = [v['timestamps_ms']['stopped'] for v in run_data]
+        cluster_formed_times = [v['timestamps_ms'].get('cluster_formed', 0) for v in run_data 
+                               if v['timestamps_ms'].get('cluster_formed', 0) > 0]
         
-        if raft_commits and stopped_times:
-            raft_decision = max(raft_commits) - min(stopped_times)
+        if raft_commits and cluster_formed_times:
+            raft_decision = max(raft_commits) - min(cluster_formed_times)
             if raft_decision > 0:
                 metrics['raft_decision_time'].append(raft_decision)
         
         # Total intersection time
+        stopped_times = [v['timestamps_ms']['stopped'] for v in run_data]
         passed_times = [v['timestamps_ms']['passed'] for v in run_data]
         if stopped_times and passed_times:
             total_time = max(passed_times) - min(stopped_times)
@@ -148,29 +152,25 @@ def main():
                         'messages_sent': stats.get('messages_sent', {'mean': 0, 'std': 0})
                     }
     
-    # Create figure with 2 rows x 3 columns
-    fig, axes = plt.subplots(2, 3, figsize=(18, 11))
+    # Create figure with only Total Intersection Time and Throughput (1 row x 2 columns)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 6))
     fig.suptitle(
         'RAFT Intersection Coordination: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)\n'
         'Industry-Realistic PHY: α=2.75 NLOS, LogNormal Shadowing σ=4dB, Tx=20mW, 6 Mbps',
         fontsize=14, fontweight='bold'
     )
     
-    # Metrics to plot
+    # Metrics to plot: RAFT Decision Time and Throughput
     plot_configs = [
-        ('raft_decision_time', 'RAFT Decision Time', 'Time (ms)', 0, 0),
-        ('total_intersection_time', 'Total Intersection Time', 'Time (ms)', 0, 1),
-        ('throughput', 'System Throughput', 'Vehicles/second', 0, 2),
-        ('wait_time', 'Average Wait Time', 'Time (ms)', 1, 0),
-        ('transit_time', 'Average Transit Time', 'Time (ms)', 1, 1),
-        ('messages_sent', 'Messages Sent per Vehicle', 'Count', 1, 2)
+        ('raft_decision_time', 'RAFT Decision Time', 'Time (ms)', 0),
+        ('throughput', 'System Throughput', 'Vehicles/second', 1)
     ]
     
     bar_width = 0.35
     x = np.arange(len(vehicle_counts))
     
-    for metric, title, ylabel, row, col in plot_configs:
-        ax = axes[row, col]
+    for metric, title, ylabel, col in plot_configs:
+        ax = axes[col]
         
         for i, protocol in enumerate(protocols):
             means = []
@@ -222,12 +222,12 @@ def main():
     
     plt.close()
     
-    # Print summary table
-    print("\n" + "="*90)
-    print("SUMMARY TABLE: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a) — Industry-Realistic PHY")
-    print("="*90)
-    print(f"{'Vehicles':<10} {'Protocol':<22} {'RAFT (ms)':<18} {'Total (ms)':<18} {'Throughput':<14} {'Wait (ms)':<12}")
-    print("-"*90)
+    # Print summary table (RAFT Decision Time and Throughput only)
+    print("\n" + "="*70)
+    print("SUMMARY: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)")
+    print("="*70)
+    print(f"{'Vehicles':<10} {'Protocol':<22} {'RAFT Decision (ms)':<20} {'Throughput (veh/s)':<18}")
+    print("-"*70)
 
     for vc in vehicle_counts:
         for protocol in protocols:
@@ -235,11 +235,9 @@ def main():
                 d = data[protocol][vc]
                 proto_label = labels[protocol]
                 raft = d.get('raft_decision_time', {}).get('mean', 0)
-                total = d.get('total_intersection_time', {}).get('mean', 0)
                 tp = d.get('throughput', {}).get('mean', 0)
-                wait = d.get('wait_time', {}).get('mean', 0)
-                print(f"{vc:<10} {proto_label:<22} {raft:<18.1f} {total:<18.1f} {tp:<14.3f} {wait:<12.1f}")
-        print("-"*90)
+                print(f"{vc:<10} {proto_label:<22} {raft:<20.1f} {tp:<18.3f}")
+        print("-"*70)
 
 if __name__ == '__main__':
     main()

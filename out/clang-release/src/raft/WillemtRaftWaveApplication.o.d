@@ -52,7 +52,8 @@
   /home/mathesh/veins/src/veins/modules/mobility/traci/TraCIRegionOfInterest.h \
   /home/mathesh/veins/src/veins/modules/mobility/traci/TraCICommandInterface.h \
   /home/mathesh/veins/src/veins/modules/world/traci/trafficLight/TraCITrafficLightProgram.h \
-  raft/../../third_party/raft/raft_types.h \
+  raft/RaftAppBase.h raft/RaftShared.h \
+  raft/../../third_party/raft/raft_types.h raft/RaftMetrics.h \
   raft/../../third_party/raft/raft.h raft/RaftWaveMessage_m.h
 raft/WillemtRaftWaveApplication.h:
 /home/mathesh/veins/src/veins/modules/application/ieee80211p/DemoBaseApplLayer.h:
@@ -107,6 +108,9 @@ raft/WillemtRaftWaveApplication.h:
 /home/mathesh/veins/src/veins/modules/mobility/traci/TraCIRegionOfInterest.h:
 /home/mathesh/veins/src/veins/modules/mobility/traci/TraCICommandInterface.h:
 /home/mathesh/veins/src/veins/modules/world/traci/trafficLight/TraCITrafficLightProgram.h:
+raft/RaftAppBase.h:
+raft/RaftShared.h:
 raft/../../third_party/raft/raft_types.h:
+raft/RaftMetrics.h:
 raft/../../third_party/raft/raft.h:
 raft/RaftWaveMessage_m.h:

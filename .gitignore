@@ -1,1 +1,6 @@
 benchmark/out/simulations/**/results/*.vec
+CLAUDE.md
+.claude/
+docs/
+./out/
+./simulations/intersection_8/results/General-#0.vec

@@ -8,23 +8,20 @@
     <route id="rE" edges="36905242#8 36905242#11 -37551802#8 -37551802#6"/>
     <route id="rN" edges="37551802#6 37551802#8 -36905242#11 -36905242#8"/>
 
-    <!-- 16 vehicles total, 4 per direction - ALL spawn at same time -->
-    <!-- Lane W (rW): veh0, veh1, veh2, veh3 -->
+    <!-- 16 vehicles: veh0-3→rW; veh4-7→rS; veh8-11→rE; veh12-15→rN (matches C++ dirIndex=(id/4)%4) -->
+    <!-- Keep departPos=0 for all — SUMO stacks naturally; explicit offsets can exceed short edges -->
     <vehicle id="veh0" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh1" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh2" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh3" type="car" route="rW" depart="0.00" departPos="0" departSpeed="max"/>
-    <!-- Lane S (rS): veh4, veh5, veh6, veh7 -->
     <vehicle id="veh4" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh5" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh6" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh7" type="car" route="rS" depart="0.00" departPos="0" departSpeed="max"/>
-    <!-- Lane E (rE): veh8, veh9, veh10, veh11 -->
     <vehicle id="veh8" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh9" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh10" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh11" type="car" route="rE" depart="0.00" departPos="0" departSpeed="max"/>
-    <!-- Lane N (rN): veh12, veh13, veh14, veh15 -->
     <vehicle id="veh12" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh13" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>
     <vehicle id="veh14" type="car" route="rN" depart="0.00" departPos="0" departSpeed="max"/>

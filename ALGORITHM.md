@@ -292,21 +292,26 @@ double electionTimeMs = (timeElected_ - timeStopped_).dbl() * 1000.0;
 
 ### Scenario-Level Metrics
 
-**File**: `benchmark.sh` (aggregate analysis)
+**File**: `benchmark.sh`, `plot_comparison.py` (aggregate analysis)
+
+**RAFT Decision Time** = leader election + decision writing to quorum only (cluster formation excluded):
 
 ```python
-# RAFT Decision Time = when LAST vehicle received order
-latest_commit = max(order_committed_times)  # Latest, not earliest!
-first_stopped = min(stopped_times)
-raft_decision = latest_commit - first_stopped
+# RAFT timing = from cluster ready to last commit (NOT including cluster formation)
+latest_commit = max(order_committed_times)
+first_cluster = min(cluster_formed_times)
+raft_decision = latest_commit - first_cluster
+```
 
-# Total Intersection Time = first stopped to last passed
+**Definition**: Cluster formation timing is never part of RAFT timings. RAFT timings = leader election + decision writing to quorum. The cluster formation phase (vehicles discovering each other) precedes RAFT and depends on physical arrival and radio range—it is not a RAFT protocol cost.
+
+**Total Intersection Time** (unchanged):
+```python
 total_intersection = max(passed_times) - min(stopped_times)
 ```
 
 **Why use LATEST commit?**
 - RAFT consensus isn't complete until ALL vehicles have the order
-- Using earliest would underestimate consensus time
 - Last vehicle receiving order = true consensus completion
 
 ---

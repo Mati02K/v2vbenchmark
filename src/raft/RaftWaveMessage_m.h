@@ -37,39 +37,43 @@ namespace benchmark {
  * // Message types for RAFT protocol
  * enum RaftMsgType
  * {
- *     RAFT_REQUEST_VOTE = 1;
- *     RAFT_REQUEST_VOTE_RESPONSE = 2;
- *     RAFT_APPEND_ENTRIES = 3;
- *     RAFT_APPEND_ENTRIES_RESPONSE = 4;
- *     COORD_STATUS_REQUEST = 10;
- *     COORD_STATUS_RESPONSE = 11;
- *     COORD_VEHICLE_PASSED = 12;
- *     COORD_VEHICLE_LEFT = 13;
- *     COORD_VEHICLE_LEFT_REBROADCAST = 14;
  *     // Dynamic cluster discovery
- *     DISCOVERY_BEACON = 20;
- *     CLUSTER_FORM = 21;
- *     CLUSTER_EXISTS = 22;    // FIX #2: Continuous beacon that cluster exists
+ *     DISCOVERY_BEACON = 16;  // 0x10
+ *     CLUSTER_FORM = 17;  // 0x11
+ *     CLUSTER_EXISTS = 18;  // 0x12
+ * 
+ *     // RAFT Core
+ *     RAFT_REQUEST_VOTE = 32;  // 0x20
+ *     RAFT_REQUEST_VOTE_RESPONSE = 33;  // 0x21
+ *     RAFT_APPEND_ENTRIES = 34;  // 0x22
+ *     RAFT_APPEND_ENTRIES_RESPONSE = 35;  // 0x23
+ * 
+ *     // Coordination
+ *     COORD_STATUS_REQUEST = 48;  // 0x30
+ *     COORD_STATUS_RESPONSE = 49;  // 0x31
+ *     COORD_VEHICLE_PASSED = 51;  // 0x33
+ *     COORD_VEHICLE_LEFT = 52;  // 0x34
+ *     COORD_VEHICLE_LEFT_REBROADCAST = 53;  // 0x35
  * }
  * </pre>
  */
 enum RaftMsgType {
-    RAFT_REQUEST_VOTE = 1,
-    RAFT_REQUEST_VOTE_RESPONSE = 2,
-    RAFT_APPEND_ENTRIES = 3,
-    RAFT_APPEND_ENTRIES_RESPONSE = 4,
-    COORD_STATUS_REQUEST = 10,
-    COORD_STATUS_RESPONSE = 11,
-    COORD_VEHICLE_PASSED = 12,
-    COORD_VEHICLE_LEFT = 13,
-    COORD_VEHICLE_LEFT_REBROADCAST = 14,
-    DISCOVERY_BEACON = 20,
-    CLUSTER_FORM = 21,
-    CLUSTER_EXISTS = 22
+    DISCOVERY_BEACON = 16,
+    CLUSTER_FORM = 17,
+    CLUSTER_EXISTS = 18,
+    RAFT_REQUEST_VOTE = 32,
+    RAFT_REQUEST_VOTE_RESPONSE = 33,
+    RAFT_APPEND_ENTRIES = 34,
+    RAFT_APPEND_ENTRIES_RESPONSE = 35,
+    COORD_STATUS_REQUEST = 48,
+    COORD_STATUS_RESPONSE = 49,
+    COORD_VEHICLE_PASSED = 51,
+    COORD_VEHICLE_LEFT = 52,
+    COORD_VEHICLE_LEFT_REBROADCAST = 53
 };
 
 /**
- * Class generated from <tt>raft/RaftWaveMessage.msg:30</tt> by nedtool.
+ * Class generated from <tt>raft/RaftWaveMessage.msg:34</tt> by nedtool.
  * <pre>
  * // RAFT WAVE message with binary payload
  * packet RaftWaveMessage extends veins::BaseFrame1609_4

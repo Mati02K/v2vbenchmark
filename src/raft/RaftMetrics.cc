@@ -1,0 +1,122 @@
+// RaftMetrics.cc — Implementation of centralized metrics and JSON output
+
+#include "raft/RaftMetrics.h"
+#include <iostream>
+#include <iomanip>
+#include <algorithm>
+
+// ============ STATIC MEMBER DEFINITIONS ============
+
+std::ofstream RaftMetrics::resultsFile_;
+bool          RaftMetrics::resultsFileOpened_    = false;
+int           RaftMetrics::vehiclesCompleted_    = 0;
+int           RaftMetrics::totalVehiclesStatic_  = 4;
+std::string   RaftMetrics::resultsFileNameStatic_ = "raft_results.json";
+
+// ============ FILE MANAGEMENT ============
+
+void RaftMetrics::openResultsFile(const std::string& filename)
+{
+    if (!resultsFileOpened_) {
+        resultsFile_.open(filename, std::ios::out | std::ios::trunc);
+        if (resultsFile_.is_open()) {
+            resultsFile_ << "[\n";
+            resultsFileOpened_    = true;
+            resultsFileNameStatic_ = filename;
+            std::cout << "Opened results file: " << filename << std::endl;
+        } else {
+            std::cerr << "ERROR: Failed to open results file: " << filename << std::endl;
+        }
+    }
+}
+
+void RaftMetrics::closeResultsFile()
+{
+    if (resultsFileOpened_) {
+        resultsFile_ << "\n]";
+        resultsFile_.close();
+        resultsFileOpened_ = false;
+        vehiclesCompleted_ = 0;
+        std::cout << "Closed results file." << std::endl;
+    }
+}
+
+// ============ JSON OUTPUT ============
+
+void RaftMetrics::writeVehicleJSON(
+    int vehicleId,
+    const std::string& lane,
+    const std::string& route,
+    bool wasLeader,
+    const std::string& coordinationMethod,
+    const std::string& transport,
+    double stoppedMs,
+    double clusterFormedMs,
+    double electedMs,
+    double orderCommittedMs,
+    double startedMovingMs,
+    double passedMs,
+    int messagesSent,
+    int messagesReceived,
+    int electionRounds,
+    int logEntriesProposed,
+    int logEntriesCommitted,
+    int myBatch)
+{
+    if (!resultsFileOpened_) return;
+
+    // Derived metrics
+    double totalWaitTime    = (passedMs > 0 && stoppedMs > 0) ? (passedMs - stoppedMs) : 0;
+    // RAFT decision time = leader election + decision writing to quorum (excludes cluster formation)
+    double raftDecisionTime = 0;
+    if (orderCommittedMs > 0 && clusterFormedMs > 0 && orderCommittedMs >= clusterFormedMs) {
+        raftDecisionTime = orderCommittedMs - clusterFormedMs;
+    }
+    double transitTime  = (passedMs > 0 && startedMovingMs > 0) ? (passedMs - startedMovingMs) : 0;
+    double throughput   = (totalWaitTime > 0) ? (1000.0 / totalWaitTime) : 0;
+
+    if (vehiclesCompleted_ > 0) {
+        resultsFile_ << ",\n";
+    }
+
+    resultsFile_ << "  {\n";
+    resultsFile_ << "    \"vehicle_id\": "          << vehicleId << ",\n";
+    resultsFile_ << "    \"lane\": \""               << lane << "\",\n";
+    resultsFile_ << "    \"route\": \""              << route << "\",\n";
+    resultsFile_ << "    \"was_leader\": "           << (wasLeader ? "true" : "false") << ",\n";
+    resultsFile_ << "    \"coordination_method\": \"" << coordinationMethod << "\",\n";
+    resultsFile_ << "    \"transport\": \""          << transport << "\",\n";
+    resultsFile_ << "    \"timestamps_ms\": {\n";
+    resultsFile_ << "      \"stopped\": "            << std::fixed << std::setprecision(1) << stoppedMs << ",\n";
+    resultsFile_ << "      \"cluster_formed\": "     << clusterFormedMs << ",\n";
+    resultsFile_ << "      \"elected\": "            << electedMs << ",\n";
+    resultsFile_ << "      \"order_committed\": "    << orderCommittedMs << ",\n";
+    resultsFile_ << "      \"started_moving\": "     << startedMovingMs << ",\n";
+    resultsFile_ << "      \"passed\": "             << passedMs << "\n";
+    resultsFile_ << "    },\n";
+    resultsFile_ << "    \"durations_ms\": {\n";
+    resultsFile_ << "      \"raft_decision_time\": " << raftDecisionTime << ",\n";
+    resultsFile_ << "      \"total_wait_time\": "    << totalWaitTime << ",\n";
+    resultsFile_ << "      \"transit_time\": "       << transitTime << ",\n";
+    resultsFile_ << "      \"throughput\": "         << throughput << "\n";
+    resultsFile_ << "    },\n";
+    resultsFile_ << "    \"messages\": {\n";
+    resultsFile_ << "      \"sent\": "               << messagesSent << ",\n";
+    resultsFile_ << "      \"received\": "           << messagesReceived << "\n";
+    resultsFile_ << "    },\n";
+    resultsFile_ << "    \"raft_stats\": {\n";
+    resultsFile_ << "      \"election_rounds\": "    << electionRounds << ",\n";
+    resultsFile_ << "      \"entries_proposed\": "   << logEntriesProposed << ",\n";
+    resultsFile_ << "      \"entries_committed\": "  << logEntriesCommitted << ",\n";
+    resultsFile_ << "      \"my_batch\": "           << myBatch << "\n";
+    resultsFile_ << "    }\n";
+    resultsFile_ << "  }";
+    resultsFile_.flush();
+
+    vehiclesCompleted_++;
+
+    // Auto-close when all vehicles have written
+    if (vehiclesCompleted_ >= totalVehiclesStatic_) {
+        closeResultsFile();
+    }
+}
