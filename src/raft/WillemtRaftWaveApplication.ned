@@ -30,6 +30,8 @@ simple WillemtRaftWaveApplication extends DemoBaseApplLayer
         // Distance-based intersection stopping
         double intersectionStopDistance @unit(m) = default(25m);  // Stop within this distance of junction
         int arrivalWaitTimeMs = default(3000);  // Wait time for vehicles to gather before scheduling
+        int discoveryWaitMs = default(3000);    // Time first stopped vehicle waits before forming cluster (increase for far-start scenarios)
+        int clusterFormationDelayMs = default(0); // Extra delay after first stop before forming (lets others arrive)
         
         // Dynamic cluster formation
         double clusterTriggerDistance = default(100.0);  // meters from junction center

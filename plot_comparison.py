@@ -2,10 +2,16 @@
 """
 RAFT Intersection Benchmark Comparison Plotter
 Compares WAVE vs UDP performance across different vehicle counts.
+
+Usage:
+  python3 plot_comparison.py           # Uses raft_*, raftwave_* (intersection_4/8/16)
+  python3 plot_comparison.py --simple  # Uses simple_udp_*, simple_raftwave_* (simple_intersection)
 """
 
+import argparse
 import json
 import os
+import sys
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -73,16 +79,22 @@ def calculate_metrics_from_runs(runs_data):
             if raft_decision > 0:
                 metrics['raft_decision_time'].append(raft_decision)
 
-        # Total intersection time
+        # Total intersection time (legacy: first stop to last pass)
         stopped_times = [v['timestamps_ms']['stopped'] for v in run_data]
         passed_times = [v['timestamps_ms']['passed'] for v in run_data]
         if stopped_times and passed_times:
             total_time = max(passed_times) - min(stopped_times)
             metrics['total_intersection_time'].append(total_time)
 
-            # Throughput
-            if total_time > 0:
-                metrics['throughput'].append(num_vehicles / (total_time / 1000.0))
+        # Throughput: N / (last RAFT vehicle passed - first RAFT start)
+        raft_vehicles = [v for v in run_data if v.get('coordination_method') != 'fallback']
+        raft_starts = [v['timestamps_ms'].get('cluster_formed', 0) for v in raft_vehicles if v['timestamps_ms'].get('cluster_formed', 0) > 0]
+        raft_passed = [v['timestamps_ms']['passed'] for v in raft_vehicles]
+        if raft_starts and raft_passed:
+            raft_time_ms = max(raft_passed) - min(raft_starts)
+            if raft_time_ms > 0:
+                n_count = len(raft_vehicles)
+                metrics['throughput'].append(n_count / (raft_time_ms / 1000.0))
 
         # Fallback rate: fraction of vehicles that used fallback this run
         fallback_count = sum(1 for v in run_data if v.get('coordination_method') == 'fallback')
@@ -105,11 +117,22 @@ def calculate_metrics_from_runs(runs_data):
     return result
 
 def main():
+    parser = argparse.ArgumentParser(description='RAFT Intersection Benchmark Comparison')
+    parser.add_argument('--simple', action='store_true',
+                        help='Use simple_intersection results (simple_udp_*, simple_raftwave_*)')
+    args = parser.parse_args()
+
     vehicle_counts = [4, 8, 16]
     protocols = ['wave', 'udp']
 
-    # Folder-name prefix: results are stored as raftwave_Nveh_report / raft_Nveh_report
-    folder_prefix = {'wave': 'raftwave', 'udp': 'raft'}
+    if args.simple:
+        folder_prefix = {'wave': 'simple_raftwave', 'udp': 'simple_udp'}
+        output_prefix = 'simple_'
+        title_note = ''
+    else:
+        folder_prefix = {'wave': 'raftwave', 'udp': 'raft'}
+        output_prefix = ''
+        title_note = ''
 
     # Colors for each protocol
     colors = {'wave': '#9b59b6', 'udp': '#3498db'}  # Purple for WAVE, Blue for UDP
@@ -121,14 +144,17 @@ def main():
     for protocol in protocols:
         prefix = folder_prefix[protocol]
         for vc in vehicle_counts:
-            # Override result_name used inside helpers by patching the folder directly
-            # Prefer _report folders (fresh runs); fall back to plain name
-            result_name_report = f"{prefix}_{vc}veh_report"
-            result_name_plain  = f"{prefix}_{vc}veh"
-            if os.path.isdir(os.path.join(RESULTS_DIR, result_name_report)):
-                result_name = result_name_report
+            # For simple mode: use exact name. For intersection: prefer _fixed2 > _report > plain
+            if args.simple:
+                result_name = f"{prefix}_{vc}veh"
             else:
-                result_name = result_name_plain
+                for suffix in ['_fixed2', '_report', '']:
+                    candidate = f"{prefix}_{vc}veh{suffix}"
+                    if os.path.isdir(os.path.join(RESULTS_DIR, candidate)):
+                        result_name = candidate
+                        break
+                else:
+                    result_name = f"{prefix}_{vc}veh"
             # Load raw runs directly (bypass helper that uses wrong prefix)
             result_dir = os.path.join(RESULTS_DIR, result_name)
             runs = []
@@ -139,9 +165,23 @@ def main():
                     break
                 try:
                     with open(json_file, 'r') as f:
-                        d = json.load(f)
-                        if d:
-                            runs.append(d)
+                        raw = f.read()
+                    d = json.loads(raw)
+                    if d:
+                        runs.append(d)
+                except json.JSONDecodeError:
+                    # Repair truncated JSON (missing closing ])
+                    try:
+                        s = raw.rstrip()
+                        if s and not s.endswith(']'):
+                            if s.endswith('}'):
+                                d = json.loads(s + '\n]')
+                            else:
+                                d = json.loads(s.rstrip(',') + '\n]')
+                            if d:
+                                runs.append(d)
+                    except Exception:
+                        pass
                 except Exception:
                     pass
                 run_num += 1
@@ -160,28 +200,35 @@ def main():
                         'throughput': stats.get('throughput', {'mean': 0, 'std': 0}),
                         'wait_time': stats.get('total_wait_time', {'mean': 0, 'std': 0}),
                         'transit_time': stats.get('transit_time', {'mean': 0, 'std': 0}),
+                        'fallback_rate': stats.get('fallback_rate', {'mean': 0, 'std': 0}),
                         'messages_sent': stats.get('messages_sent', {'mean': 0, 'std': 0})
                     }
     
-    # Create figure: 1 row x 3 columns
-    fig, axes = plt.subplots(1, 3, figsize=(16, 6))
+    # Create figure: 1 row x 2 columns (RAFT Decision Time, Throughput)
+    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
+    axes = axes.flatten()
     fig.suptitle(
-        'RAFT Intersection Coordination: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)\n'
+        f'RAFT Intersection Coordination: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a){title_note}\n'
         'Industry-Realistic PHY: α=2.75 NLOS, LogNormal Shadowing σ=4dB, Tx=20mW, 6 Mbps',
         fontsize=14, fontweight='bold'
     )
 
-    # Metrics to plot: RAFT Decision Time, Throughput, Fallback Rate
+    # Metrics to plot: RAFT Decision Time, Throughput
+    # (metric_key, title, ylabel, col, scale) - scale optional, default 1
     plot_configs = [
         ('raft_decision_time', 'RAFT Decision Time', 'Time (ms)', 0),
         ('throughput', 'System Throughput', 'Vehicles/second', 1),
-        ('fallback_rate', 'Fallback Rate', 'Fraction of vehicles', 2),
     ]
     
     bar_width = 0.35
     x = np.arange(len(vehicle_counts))
     
-    for metric, title, ylabel, col in plot_configs:
+    for config in plot_configs:
+        metric = config[0]
+        title = config[1]
+        ylabel = config[2]
+        col = config[3]
+        scale = config[4] if len(config) > 4 else 1.0
         ax = axes[col]
         
         for i, protocol in enumerate(protocols):
@@ -189,8 +236,8 @@ def main():
             stds = []
             for vc in vehicle_counts:
                 if vc in data[protocol] and metric in data[protocol][vc]:
-                    means.append(data[protocol][vc][metric]['mean'])
-                    stds.append(data[protocol][vc][metric]['std'])
+                    means.append(data[protocol][vc][metric]['mean'] * scale)
+                    stds.append(data[protocol][vc][metric]['std'] * scale)
                 else:
                     means.append(0)
                     stds.append(0)
@@ -204,7 +251,7 @@ def main():
             for j, (bar, mean) in enumerate(zip(bars, means)):
                 if mean > 0:
                     height = bar.get_height()
-                    if metric in ('throughput', 'fallback_rate'):
+                    if metric == 'throughput':
                         ax.text(bar.get_x() + bar.get_width()/2., height,
                                f'{mean:.3f}', ha='center', va='bottom', fontsize=8, fontweight='bold')
                     else:
@@ -223,23 +270,23 @@ def main():
     plt.tight_layout()
     
     # Save the plot
-    output_file = os.path.join(RESULTS_DIR, 'wave_vs_udp_comparison.png')
+    output_file = os.path.join(RESULTS_DIR, f'{output_prefix}wave_vs_udp_comparison.png')
     plt.savefig(output_file, dpi=150, bbox_inches='tight')
     print(f"Comparison plot saved to: {output_file}")
     
     # Also save as PDF for higher quality
-    pdf_file = os.path.join(RESULTS_DIR, 'wave_vs_udp_comparison.pdf')
+    pdf_file = os.path.join(RESULTS_DIR, f'{output_prefix}wave_vs_udp_comparison.pdf')
     plt.savefig(pdf_file, bbox_inches='tight')
     print(f"PDF version saved to: {pdf_file}")
     
     plt.close()
     
     # Print summary table
-    print("\n" + "="*82)
+    print("\n" + "="*70)
     print("SUMMARY: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)")
-    print("="*82)
-    print(f"{'Vehicles':<10} {'Protocol':<22} {'RAFT Decision (ms)':<20} {'Throughput (veh/s)':<20} {'Fallback Rate':<13}")
-    print("-"*82)
+    print("="*70)
+    print(f"{'Vehicles':<10} {'Protocol':<22} {'RAFT Decision (ms)':<20} {'Throughput (veh/s)':<20}")
+    print("-"*70)
 
     for vc in vehicle_counts:
         for protocol in protocols:
@@ -248,9 +295,8 @@ def main():
                 proto_label = labels[protocol]
                 raft = d.get('raft_decision_time', {}).get('mean', 0)
                 tp = d.get('throughput', {}).get('mean', 0)
-                fb = d.get('fallback_rate', {}).get('mean', 0)
-                print(f"{vc:<10} {proto_label:<22} {raft:<20.1f} {tp:<20.3f} {fb:<13.3f}")
-        print("-"*82)
+                print(f"{vc:<10} {proto_label:<22} {raft:<20.1f} {tp:<20.3f}")
+        print("-"*70)
 
 if __name__ == '__main__':
     main()

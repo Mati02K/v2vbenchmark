@@ -94,15 +94,14 @@ for iteration in $(seq 1 $NUM_ITERATIONS); do
 
     RESULTS_JSON="$ITER_DIR/raft_results.json"
     
-    # RAFT Timing (IDENTICAL to UDP for apples-to-apples comparison)
-    ELECTION_TIMEOUT_BASE=$((300 + VEHICLE_COUNT * 25))
-    ELECTION_JITTER=$((150 + VEHICLE_COUNT * 25))
-    REQUEST_TIMEOUT=$((100 + VEHICLE_COUNT * 5))
-    STATUS_COLLECTION_TIMEOUT=$((500 + VEHICLE_COUNT * 150))
-    
-    # Arrival wait time — with wait-for-all cluster formation we already have everyone,
-    # so long wait is redundant; keeps UDP/WAVE comparable
-    ARRIVAL_WAIT_TIME=$((500 + VEHICLE_COUNT * 100))
+    # RAFT Timing — tuned for <3 s RAFT-decision at 4 vehicles, scales up for 8/16
+    ELECTION_TIMEOUT_BASE=$((200 + VEHICLE_COUNT * 20))
+    ELECTION_JITTER=$((100 + VEHICLE_COUNT * 15))
+    REQUEST_TIMEOUT=$((80  + VEHICLE_COUNT * 5))
+    STATUS_COLLECTION_TIMEOUT=$((150 + VEHICLE_COUNT * 50))
+
+    # Arrival wait: cluster already has everyone, keep short
+    ARRIVAL_WAIT_TIME=$((100 + VEHICLE_COUNT * 50))
 
 # NOTE: SUMO and veins_launchd must already be running before launching this script.
 # Start SUMO manually with: DISPLAY=:1 XAUTHORITY=/run/user/1000/gdm/Xauthority python3 /home/mathesh/veins/bin/veins_launchd -vv -c /usr/local/bin/sumo-gui &

@@ -93,6 +93,9 @@ protected:
     std::set<int> proposedLeft_;      // tracks vehicles proposed-left to RAFT (per-instance)
     bool         passOrderProposed_;  // guard: prevent double proposePassOrder() calls
 
+    // Gossip for VEHICLE_LEFT: dedup by vehicleId (each vehicle leaves once)
+    std::set<int> gossipSeenVehicleLeft_;
+
     // ============ FALLBACK STATE ============
     bool         isFallbackMode_;
     int          failedElectionCount_;
@@ -110,6 +113,8 @@ protected:
     int    fallbackWaitMaxMs_;
     int    passConfirmationMs_;
     int    statusCollectionTimeoutMs_;
+    int    discoveryWaitMs_;  // Time first stopped vehicle waits before forming cluster (allows far vehicles to arrive)
+    int    clusterFormationDelayMs_;  // Extra delay after first stop before any vehicle can form cluster (lets others arrive and stop)
     std::string resultsFileName_;
     std::string transportName_;  // "udp" or "wave"
 
@@ -134,6 +139,9 @@ protected:
     int       logEntriesCommitted_;
     bool      metricsWritten_;
     simtime_t lastRaftPeriodicRun_;
+    simtime_t lastStopDebugPrint_;   // per-vehicle throttle for POS debug print
+    simtime_t lastQueueDebugPrint_;  // per-vehicle throttle for QUEUE_ADV_CHECK print
+    std::string prevRoadId_;         // previous road ID for transition detection
 
     // ============ PURE-VIRTUAL TRANSPORT INTERFACE (3 methods only) ============
     // Subclasses implement these; everything else is in the base.
@@ -164,6 +172,7 @@ protected:
     void handleClusterForm(const std::vector<uint8_t>& data, int senderId);
     void handleClusterExists(const std::vector<uint8_t>& data, int senderId);
     void mergeIntoCluster(const std::set<int>& members);
+    void mergeIntoLargerCluster(const std::set<int>& mergedMembers);
     void broadcastClusterExists();
     void formCluster(const std::set<int>& members);
 
@@ -205,6 +214,7 @@ protected:
     void handleVehiclePassed(int vehicleId);
     void sendVehicleLeft();
     void handleVehicleLeft(int vehicleId);
+    void handleVehicleLeftGossip(int vehicleId, int batchId, int ttl);
     void proposeVehicleLeft(int vehicleId, int batchId);
     void applyVehicleLeftFromRaft(int vehicleId, int batchId);
     void checkBatchAdvance();

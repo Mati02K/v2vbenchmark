@@ -87,6 +87,8 @@ bool WillemtRaftApplication::startApplication()
     resultsFileName_          = par("resultsFile").stdstringValue();
 
     statusCollectionTimeoutMs_ = par("statusCollectionTimeoutMs").intValue();
+    discoveryWaitMs_          = par("discoveryWaitMs").intValue();
+    clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
 
     parseEdgeParametersFromNed();
 
@@ -97,7 +99,7 @@ bool WillemtRaftApplication::startApplication()
 
     int dirIndex = sideIndex % (int)approachEdgeList_.size();
     myLane_      = approachEdgeList_[dirIndex];
-    static const char* routeNames[] = {"rW","rS","rE","rN"};
+    static const char* routeNames[] = {"rN","rS","rE","rW"};  // North,South,East,West (N/W swapped)
     myRoute_ = routeNames[dirIndex % 4];
     myLaneIndex_ = sideIndex % 4;
 
@@ -174,13 +176,19 @@ void WillemtRaftApplication::handleMessageWhenUp(cMessage* msg)
     }
     else if (msg == discoveryTimer_) {
         if (clusterPhase_ == PHASE_DISCOVERY) {
-            sendDiscoveryBeacon();
-            checkClusterTrigger();
+            if (hasStoppedAtIntersection_) {
+                sendDiscoveryBeacon();
+                checkClusterTrigger();
+            }
         } else if (clusterPhase_ == PHASE_COORDINATION && !hasPassedIntersection_) {
             sendDiscoveryBeacon();
             broadcastClusterExists();
         }
-        scheduleAt(simTime() + uniform(0, discoveryBeaconInterval_), discoveryTimer_);
+        // During RAFT coordination, fire beacons rarely so RAFT messages have the channel
+        double nextBeacon = (clusterPhase_ == PHASE_COORDINATION)
+                            ? 2.0
+                            : uniform(0, discoveryBeaconInterval_);
+        scheduleAt(simTime() + nextBeacon, discoveryTimer_);
     }
     else if (msg == raftPeriodicTimer_) {
         if (raftServer_ && !hasPassedIntersection_ && !isFallbackMode_)
@@ -253,7 +261,18 @@ void WillemtRaftApplication::processPacket(std::shared_ptr<Packet> pk)
         if (bytes.size() >= 1) handleVehiclePassed((int)bytes[0]);
     }
     else if (pktName.find("coord-vehicle-left") != std::string::npos) {
-        if (bytes.size() >= 1) handleVehicleLeft((int)bytes[0]);
+        if (bytes.size() >= sizeof(VehicleLeftEntry) + 1) {
+            VehicleLeftEntry e;
+            memcpy(&e, bytes.data(), sizeof(e));
+            int ttl = static_cast<int>(bytes[sizeof(VehicleLeftEntry)]);
+            handleVehicleLeftGossip(e.vehicleId, e.batchId, ttl);
+        } else if (bytes.size() >= sizeof(VehicleLeftEntry)) {
+            VehicleLeftEntry e;
+            memcpy(&e, bytes.data(), sizeof(e));
+            handleVehicleLeft(e.vehicleId);
+        } else if (bytes.size() >= 1) {
+            handleVehicleLeft((int)bytes[0]);
+        }
     }
     // Discovery
     else if (pktName.find("discovery-beacon") != std::string::npos) {
@@ -322,6 +341,7 @@ void WillemtRaftApplication::sendRaftBroadcast(int msgType, const std::vector<ui
         case 0x30: name << "coord-status-request-from-" << myId_ << "-broadcast"; break;
         case 0x33: name << "coord-vehicle-passed-from-" << myId_ << "-broadcast"; break;
         case 0x34: name << "coord-vehicle-left-from-"   << myId_ << "-broadcast"; break;
+        case 0x35: name << "coord-vehicle-left-rebroadcast-from-" << myId_ << "-broadcast"; break;
         default:   name << "raft-bcast-" << msgType << "-from-" << myId_ << "-broadcast"; break;
     }
 

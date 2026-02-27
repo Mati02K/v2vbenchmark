@@ -1,491 +1,603 @@
-# RAFT Intersection Coordination Algorithm
+# V2V RAFT Intersection Coordination — Algorithm Reference
 
-This document explains how the RAFT-based intersection coordination system works, from the third-party library integration to the complete execution flow and timing calculations.
-
----
-
-## Table of Contents
-1. [Third-Party Library Integration](#third-party-library-integration)
-2. [System Architecture](#system-architecture)
-3. [Complete Execution Flow](#complete-execution-flow)
-4. [Timing Calculations](#timing-calculations)
-5. [RAFT Protocol Steps](#raft-protocol-steps)
+> Stack: **OMNeT++ 5.6.2 + INET 4.4.x + Veins + SUMO**
+> Protocols compared: **UDP over IEEE 802.11a** vs **WAVE over IEEE 802.11p**
+> Benchmark: **4, 8, 16 vehicles** | Stop distance **5 m** | Cluster wait **7 s** (5 s discovery + 2 s delay)
 
 ---
 
-## Third-Party Library Integration
+## Current Algorithm Summary (Simple Intersection)
 
-### Willemt/RAFT Library
+| Parameter | Value |
+|-----------|-------|
+| Vehicle counts | 4, 8, 16 |
+| `intersectionStopDistance` | 5 m |
+| `discoveryWaitMs` | 5000 ms |
+| `clusterFormationDelayMs` | 2000 ms |
+| Cluster formation | 7 s after first vehicle stops |
+| Throughput formula | N_raft / (last_raft_passed − first_raft_start) |
+| UDP receiver sensitivity | -92 dBm (matched to WAVE) |
+| Merge rule | Incoming cluster must be strictly larger |
 
-**Source**: The code uses the [willemt/raft](https://github.com/willemt/raft) library, a C implementation of the RAFT consensus algorithm.
+---
 
-**Integration Method**:
-- **Location**: `third_party/raft/` directory
-- **Files included**:
-  - `raft.h` - Main RAFT API
-  - `raft.c` - Core RAFT implementation
-  - `raft_types.h` - Data structures
-  - `raft_private.h` - Internal structures
+## 0. What Each File Does
 
-**How it's used**:
-```cpp
-// In WillemtRaftApplication.h
-extern "C" {
-#include "../../third_party/raft/raft_types.h"
-#include "../../third_party/raft/raft.h"
+| File | Role |
+|------|------|
+| `src/raft/RaftAppBase.h / .cc` | **Abstract base class (~1400 lines).** Contains 100% of the shared RAFT protocol logic — cluster formation, leader election callbacks, status collection, pass-order generation, batch execution, intersection detection, fallback handling, and JSON metrics. Neither UDP nor WAVE logic lives here. |
+| `src/raft/WillemtRaftApplication.h / .cc` | **UDP subclass (~450 lines).** Extends `VeinsInetApplicationBase` (INET). Implements the 6 pure-virtual transport methods using INET `UdpSocket` on 802.11a. Handles OMNeT++ packet send/receive. |
+| `src/raft/WillemtRaftWaveApplication.h / .cc` | **WAVE subclass (~434 lines).** Extends `DemoBaseApplLayer` (Veins). Implements the same 6 virtual methods using Veins `WaveShortMessage` (WSM) on 802.11p / DSRC. Handles Veins send/receive. |
+| `src/raft/RaftShared.h` | **Shared structs and enums.** Defines `ClusterPhase`, `LogEntryType`, `VehicleProposal`, `PassOrderEntry`, `PassBatch`, `PassScheduleEntry`, `VehicleLeftEntry`, `CommittedSchedule`. |
+| `src/raft/RaftMetrics.h / .cc` | **JSON output collector.** Static singleton-like class. Vehicle 0 opens the results file; all vehicles append their record; the last vehicle auto-closes. |
+| `src/raft/RaftWaveMessage.msg` | **OMNeT++ message definition** for the WAVE WSM payload. Auto-generates `RaftWaveMessage_m.h/cc`. |
+| `src/raft/RaftLogger.h` | Logging macros wrapping `EV_INFO` / `EV_WARN`. |
+| `third_party/raft/raft.h / .c` | **willemt/raft C library.** Pure C implementation of the Raft consensus algorithm. Compiled statically into the OMNeT++ binary. |
+| `simulations/simple_intersection_N/omnetpp_udp.ini` | OMNeT++ config for UDP scenario (N = 4, 8, or 16). Sets radio, channel, INET params, RAFT timing, discovery wait, and cluster formation delay. |
+| `simulations/simple_intersection_N/omnetpp_wave.ini` | Same for WAVE. Uses Veins and 802.11p channel settings. |
+| `simulations/simple_intersection_N/intersection.rou.xml` | SUMO route file. 4 directions (W,S,E,N), vehicles start far (departPos 0–140 m), 20 m spacing. |
+| `simulations/simple_intersection_N/intersection.launchd.xml` | Veins launchd config. Tells `veins_launchd` which SUMO config files to stage. |
+| `run_simple_benchmark.sh` | **Simple benchmark runner.** Runs UDP and WAVE for 4, 8, 16 vehicles (3 iterations each), aggregates stats, runs `plot_comparison.py --simple`. |
+| `plot_comparison.py` | Reads result folders and generates RAFT Decision Time + Throughput comparison plot (UDP vs WAVE). |
+
+### Difference Between UDP and WAVE Subclasses
+
+| Aspect | UDP (`WillemtRaftApplication`) | WAVE (`WillemtRaftWaveApplication`) |
+|--------|-------------------------------|-------------------------------------|
+| **Base class** | `VeinsInetApplicationBase` | `DemoBaseApplLayer` |
+| **Radio** | IEEE 802.11a, 5 GHz, INET UdpSocket | IEEE 802.11p, 5.9 GHz DSRC, Veins WSM |
+| **Unicast** | `UdpSocket::sendTo(packet, destAddr, port)` | `sendDirect()` or `sendDown()` with dest MAC |
+| **Broadcast** | `UdpSocket::sendTo(packet, broadcast, port)` | `sendWSM()` with broadcast MAC |
+| **Packet type** | INET `Packet` with `UdpHeader` + `BytesChunk` | Veins `RaftWaveMessage` (WSM subclass) |
+| **Mobility** | `VeinsInetMobility` — wraps Veins TraCI | `TraCIMobility` — direct Veins TraCI |
+| **Discovery beacon fix** | Beacons slow to 2.0 s during `PHASE_COORDINATION` | Same fix applied |
+| **Protocol logic** | 100% in `RaftAppBase` | 100% in `RaftAppBase` |
+
+---
+
+## 1. The Logic
+
+### 1a. How Cars Talk and Stop
+
+#### Vehicle Identity
+
+```
+myId_         = getParentModule()->getIndex()   // 0-based: 0, 1, 2, 3...
+myRaftNodeId_ = myId_ + 1                       // 1-based: 1, 2, 3, 4...
+```
+
+The willemt/raft library requires 1-indexed node IDs; `myRaftNodeId_` is always `myId_ + 1`.
+
+#### Startup (both subclasses)
+
+At simulation start, every vehicle:
+
+1. Reads all parameters from `.ini` (`totalVehicles`, `electionTimeoutBaseMs`, etc.)
+2. Sets `clusterPhase_ = PHASE_DISCOVERY`
+3. Schedules three recurring timers:
+   - **`checkTimer_`** — fires every 50 ms; drives stop detection, queue advancement, exit detection
+   - **`discoveryTimer_`** — fires every `uniform(0, discoveryBeaconInterval)` (default 0.3 s); sends peer-discovery beacons when stopped
+   - **`raftPeriodicTimer_`** — fires every 20 ms (only after cluster formed); ticks the RAFT library
+4. Adds all peer IDs (0 … N-1) to `activeVehicles_`
+
+#### Discovery Beacons
+
+Every beacon is a small broadcast:
+
+```
+Payload: [int32 myId][uint8 clusterPhase]
+Msg type: 0x10 (DISCOVERY_BEACON)
+```
+
+On receipt: add sender to `discoveredPeers_`. The cluster trigger fires after a wait (see §1b).
+
+#### Stopping at the Intersection
+
+`checkAndStopAtIntersection()` is called by `checkTimer_` every 50 ms:
+
+```
+1. Is current road one of approachEdges_?
+2. getDistanceToJunction() = laneLength - lanePosition   [TraCI]
+3. If distance <= intersectionStopDistance_ (5 m in simple intersection):
+     setSpeedMode(0)       // disable all speed control
+     setSpeed(0)           // hard stop
+     hasStoppedAtIntersection_ = true
+     timeStopped_ = NOW
+4. Queued vehicles (dist < 4×stopDistance, speed < 1.5 m/s): same flags, no hard stop
+```
+
+**Note:** `intersectionStopDistance_` is 5 m in the simple intersection configs. Queued-vehicle zone = 5–20 m (4× stop distance).
+
+#### Queue Advancement
+
+For vehicles behind the front vehicle:
+
+```
+checkAndAdvanceInQueue() every 50 ms:
+  leader, gap = TraCI.getLeader(4 × stopDistance)   // 20 m with stopDist=5
+  if gap > stopDistance:
+    setSpeedMode(31)    // restore SUMO car-following
+    setSpeed(-1)        // let SUMO drive
+  // Vehicle accordions forward, then re-stops automatically
+```
+
+---
+
+### 1b. Leader Election Process
+
+#### Cluster Formation Trigger
+
+```
+checkClusterTrigger() (called by discoveryTimer_ when stopped):
+  Fires when ALL of:
+    - hasStoppedAtIntersection_ == true
+    - clusterPhase_ == PHASE_DISCOVERY
+    - (NOW - timeStopped_) >= discoveryWaitMs_ + clusterFormationDelayMs_
+
+  members = discoveredPeers_ ∪ {myId_}
+  → calls formCluster(members)
+```
+
+**Simple intersection config:** `discoveryWaitMs = 5000`, `clusterFormationDelayMs = 2000` → first vehicle waits **7 s** after stopping before forming. This gives late-arriving vehicles time to stop and exchange discovery beacons so the cluster forms with all vehicles together.
+
+#### `formCluster(members)`
+
+```
+1. raftServer_ = raft_new()
+2. For each member vehicle id v:
+     raft_add_node(raftServer_, udata=v, nodeId=v+1, is_self=(v==myId_))
+3. Register callbacks (see §RAFT Callbacks below)
+4. Set election timeout = electionTimeoutBaseMs_ + uniform(0, electionTimeoutJitterMs_)
+5. Set request timeout = requestTimeoutMs_
+6. clusterPhase_ = PHASE_COORDINATION
+7. timeClusterFormed_ = NOW
+8. broadcastClusterForm()            // msg type 0x11, payload=[numMembers][id0][id1]...
+9. Schedule CLUSTER_FORM retries at +300, +700, +1200, +1800 ms (handles packet loss)
+10. onClusterFormed() → start raftPeriodicTimer_
+```
+
+#### RAFT Election (inside the willemt/raft library)
+
+Every 20 ms, `raft_periodic(raftServer_, elapsed_ms)` is called. Internally:
+
+```
+Follower state:
+  Decrement election countdown by elapsed_ms
+  When countdown ≤ 0:
+    → become CANDIDATE
+    → increment current_term
+    → call send_requestvote callback for every other node
+
+send_requestvote callback → doSendRequestVote():
+  Serialize msg_requestvote_t struct
+  sendRaftUnicast(targetId, 0x20, data)   // msg type: RAFT_REQUEST_VOTE
+
+On receiving 0x20:
+  raft_recv_requestvote(server, fromNode, &msg, &response)
+  sendRaftUnicast(fromId, 0x21, response) // msg type: RAFT_REQUEST_VOTE_RESPONSE
+
+On receiving 0x21:
+  raft_recv_requestvote_response(server, fromNode, &response)
+  If quorum votes received → become LEADER
+  onBecameLeader() called
+```
+
+**Key**: Election timeout is **randomised per vehicle** so one vehicle's timeout fires first, wins the election before others even try. With 4 vehicles at `280 ± 160 ms` jitter, the fastest timeout wins in ~280–440 ms after cluster formation.
+
+---
+
+### 1c. Decision Process
+
+#### Step 1 — Status Request
+
+After `arrivalWaitTimeMs_` (default 300 ms for 4 vehicles) the leader broadcasts:
+
+```
+msg type: 0x30 (COORD_STATUS_REQUEST)
+payload:  [int32 leaderId]
+```
+
+Each follower responds with its `VehicleProposal`:
+
+```
+msg type: 0x31 (COORD_STATUS_RESPONSE)
+payload:  struct VehicleProposal {
+    int    vehicleId
+    char   laneEdgeId[64]    // current SUMO edge
+    double positionOnLane    // metres from lane start
+    double speed
+    int    laneIndex         // 0=West 1=South 2=East 3=North
+    int    intendedTurn      // 0=STRAIGHT 1=LEFT 2=RIGHT
+    bool   isFirstInLane     // no vehicle ahead in same lane
+    int    blockedByVehicleId
+    double waitingTimeMs     // time since stopped
+    double distanceToJunction
 }
 ```
 
-The library is **statically linked** into the OMNeT++ simulation, not cloned at runtime. It provides the core RAFT consensus logic while our code handles:
-- Network communication (via OMNeT++)
-- Vehicle coordination logic
-- Intersection-specific decision making
+#### Step 2 — Pass Order Generation (`proposePassOrder`)
 
----
+Once all proposals collected (or `statusCollectionTimeoutMs_` expires):
 
-## System Architecture
-
-### Key Components
+**Sort proposals:**
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│          WillemtRaftApplication.cc                      │
-│  (OMNeT++ Application Layer - Per Vehicle)              │
-├─────────────────────────────────────────────────────────┤
-│  - Vehicle state management                             │
-│  - Network packet handling                              │
-│  - Intersection detection                               │
-│  - Coordination logic                                   │
-└────────────┬────────────────────────────────────────────┘
-             │
-             ├──► Willemt RAFT Library (third_party/raft/)
-             │    - Leader election
-             │    - Log replication
-             │    - Consensus protocol
-             │
-             ├──► Veins/INET (OMNeT++ frameworks)
-             │    - Vehicle mobility (SUMO integration)
-             │    - Network simulation (IEEE 802.11p)
-             │
-             └──► TraCI (SUMO control)
-                  - Vehicle speed control
-                  - Position queries
-                  - Lane information
+Priority:
+  1. isFirstInLane (front vehicles first)
+  2. waitingTimeMs (larger wait → higher priority, only if diff > 500 ms)
+  3. laneIndex (ascending, for tie-breaking)
+  4. distanceToJunction (ascending within lane)
 ```
 
----
-
-## Complete Execution Flow
-
-### Phase 1: Initialization
-
-**File**: `WillemtRaftApplication::initialize()`
+**Greedy batch construction:**
 
 ```
-1. Read parameters from .ned file
-   - totalVehicles, electionTimeoutBaseMs, etc.
-   - statusCollectionTimeoutMs (scaled: 200ms + vehicles × 12.5ms)
-
-2. Initialize RAFT server
-   - Create raft_server_t instance
-   - Set callbacks for network I/O
-   - Configure as follower initially
-
-3. Set up vehicle info
-   - Extract vehicle ID from OMNeT++ module
-   - Determine lane (N/S/E/W) based on ID
-   - Get TraCI interface for SUMO control
-
-4. Open results file
-   - Create raft_results.json for metrics
+Repeat until pool empty (max 16 batches):
+  1. Pick primary: first unblocked vehicle in sorted pool
+  2. Start new batch with primary
+  3. Scan remaining vehicles, add if:
+     a. Their blocker is already scheduled (dependency met)
+     b. No movement conflict with anyone already in this batch
+  4. Conflict check: movementsConflict(laneA, turnA, laneB, turnB)
+     - Same lane → CONFLICT
+     - Opposing lanes (laneA+laneB == 2 or 4), both STRAIGHT → NO CONFLICT
+     - Opposing lanes, both LEFT → NO CONFLICT
+     - Everything else → CONFLICT
 ```
 
-### Phase 2: Vehicle Approaches Intersection
-
-**File**: `WillemtRaftApplication::handlePositionUpdate()`
+Example output for 4 vehicles (W, S, E, N all going straight):
 
 ```
-1. Check if near intersection (every position update)
-   - Query current position via TraCI
-   - Calculate distance to intersection center
-
-2. When within 50m:
-   - Set hasStoppedAtIntersection_ = true
-   - Record timeStopped_ = simTime()
-   - Call mobility_->setSpeed(0) to stop vehicle
-
-3. Start RAFT coordination
-   - If not already in RAFT cluster, join
-   - Begin periodic RAFT processing (20ms intervals)
+Batch 0: [veh0]       // West, first in lane
+Batch 1: [veh1]       // South, first in lane
+Batch 2: [veh2, veh3] // East+North — opposing pair, no conflict
 ```
 
-### Phase 3: RAFT Leader Election
-
-**File**: `WillemtRaftApplication::processRaftPeriodic()`
+#### Step 3 — RAFT Replication
 
 ```
-1. Call raft_periodic() every 20ms
-   - Advances RAFT state machine
-   - Handles election timeouts
-   - Processes pending messages
+Leader calls raft_recv_entry(raftServer_, entry, &response)
+  entry.type = PASS_ORDER
+  entry.data = serialized PassScheduleEntry
 
-2. Election timeout triggers (random 150-300ms)
-   - Follower → Candidate
-   - Candidate requests votes from other vehicles
-   - Sends RequestVote RPC via OMNeT++ packets
+→ send_appendentries callback fires:
+  msg type: 0x22 (RAFT_APPEND_ENTRIES)
+  payload:  [term][prevLogIdx][prevLogTerm][leaderCommit][numEntries]
+            [for each entry: term, id, type, dataLen, data]
 
-3. Vote collection
-   - Each vehicle votes for first candidate
-   - Candidate needs majority (quorum)
-   - Winner becomes leader
+Followers:
+  raft_recv_appendentries(server, fromNode, &msg, &response)
+  Append entry to local log
+  msg type: 0x23 (RAFT_APPEND_ENTRIES_RESPONSE)
 
-4. Track election
-   - When term increases: electionRounds_++
-   - If became leader: timeElected_ = simTime()
+Leader: when quorum (⌊N/2⌋ + 1) followers have responded:
+  commitIdx advances → applylog callback fires on all replicas
 ```
 
-### Phase 4: STATUS Collection (Leader Only)
-
-**File**: `WillemtRaftApplication::requestStatusFromVehicles()`
+#### Step 4 — Apply Log (`doApplyLog`)
 
 ```
-1. Leader broadcasts STATUS_REQUEST
-   - Sends packet to all stopped vehicles
-   - Asks for wayOfSight (can see through intersection?)
-
-2. Vehicles respond with STATUS_RESPONSE
-   - Include wayOfSight boolean
-   - Sent back to leader
-
-3. Leader collects responses
-   - Timeout: 200ms + (vehicles × 12.5ms)
-   - Early break if all vehicles respond
-   - Stores in collectedWayOfSight_ map
-
-4. When complete:
-   - Call collectStatusAndDecide()
-```
-
-### Phase 5: RAFT Consensus - STATUS_REPORT
-
-**File**: `WillemtRaftApplication::proposeStatusReport()`
-
-```
-1. Leader creates STATUS_REPORT entry
-   - Packages all vehicle statuses
-   - Creates RAFT log entry
-
-2. Propose to RAFT
-   - raft_recv_entry() submits to log
-   - RAFT replicates to followers via AppendEntries RPC
-
-3. Followers receive and apply
-   - raft_apply_entry() callback triggered
-   - Each vehicle stores committedStatuses_
-
-4. Quorum commit
-   - When majority acknowledges
-   - Entry becomes committed
-   - All vehicles have same status view
-```
-
-### Phase 6: Leader Decides Pass Order
-
-**File**: `WillemtRaftApplication::proposePassOrder()`
-
-```
-1. Leader calculates optimal order
-   - Prioritize vehicles with wayOfSight=true
-   - Sort by lane (N, S, E, W)
-   - Handle blocked vehicles
-
-2. Create PASS_ORDER entry
-   - Array of vehicle IDs in pass order
-   - Submit to RAFT log
-
-3. RAFT replicates order
-   - AppendEntries to all followers
-   - Wait for quorum acknowledgment
-```
-
-### Phase 7: Order Execution
-
-**File**: `WillemtRaftApplication::executePassOrder()`
-
-```
-1. When PASS_ORDER committed:
-   - timeOrderCommitted_ = simTime()  ← RAFT DECISION TIME END
-   - All vehicles have the order
-
-2. Each vehicle finds its position
-   - Search for myId_ in order array
-   - Calculate delay: position × 150ms
-
-3. First vehicle (position 0):
-   - Starts immediately
-   - resumeMovement() → setSpeed(13.89 m/s)
-   - timeStartedMoving_ = simTime()
-
-4. Other vehicles:
-   - Wait for calculated delay
-   - Then resumeMovement()
-   - Sequential passing with 150ms gaps
-```
-
-### Phase 8: Crossing Intersection
-
-**File**: `WillemtRaftApplication::handlePositionUpdate()`
-
-```
-1. Vehicle moves through intersection
-   - Speed = 13.89 m/s (50 km/h)
-   - TraCI controls actual movement
-
-2. When past intersection:
-   - Detect via position check
-   - timePassed_ = simTime()
-   - Set hasPassedIntersection_ = true
-
-3. Write metrics to JSON
-   - outputMetricsJSON()
-   - Record all timestamps and durations
+entry.type == PASS_ORDER:
+  committedSchedule_ = passed schedule
+  hasCommittedOrder_ = true
+  timeOrderCommitted_ = NOW
+  → applyCommittedPassOrder()
 ```
 
 ---
 
-## Timing Calculations
+### 1d. Car Leaving Process
+
+#### Batch Execution
+
+```
+applyCommittedPassOrder():
+  Find myBatch_ = batch index that contains myId_
+
+  if myBatch_ == currentBatch_ (0):
+    resumeMovement() immediately
+
+  if myBatch_ > currentBatch_:
+    Wait for batch (myBatch_-1) to complete
+    Safety timer: 6 s × myBatch_ (handles lost VEHICLE_LEFT messages)
+
+resumeMovement():
+  timeStartedMoving_ = NOW
+  setSpeedMode(0)
+  setParameter("jmIgnoreFoeProb", "1.0")    // ignore yielding
+  setParameter("jmIgnoreFoeSpeed", "100")   // ignore foe speed
+  setParameter("jmTimegapMinor", "0.0")     // ignore gap to superior vehicles
+  setSpeed(maxSpeed_)                        // drive at maximum
+```
+
+#### Detecting Intersection Exit
+
+`checkIfLeftIntersection()` runs every 50 ms:
+
+```
+hasPassedIntersectionEdge():
+  → currentRoad ∈ exitEdges_?  YES → return true
+  → OR: timeStartedMoving_ > 0 AND currentRoad ∉ (approachEdges_ ∪ internalEdges_)
+```
+
+When true:
+
+```
+hasPassedIntersection_ = true
+timePassed_ = NOW
+sendVehiclePassed()   → broadcast 0x33 with [uint8 myId]
+sendVehicleLeft()     → if leader: propose VEHICLE_LEFT RAFT entry
+                         if follower: broadcast 0x34 (COORD_VEHICLE_LEFT)
+outputMetricsJSON()
+finish()
+```
+
+#### Batch Advancement (leader side)
+
+```
+On receiving VEHICLE_LEFT for vehicle v in batch B:
+  vehiclesLeftInBatch_.insert(v)
+
+checkBatchAdvance():
+  if all vehicles in currentBatch_ are in vehiclesLeftInBatch_:
+    currentBatch_++
+    vehiclesLeftInBatch_.clear()
+    if myBatch_ == currentBatch_:
+      resumeMovement()   // this node is next
+```
+
+---
+
+## 2. How Each Time Is Calculated
+
+All timestamps are in **simulation milliseconds** from `simTime() * 1000`.
 
 ### Timestamps Recorded
 
-```cpp
-// In WillemtRaftApplication.h
-simtime_t timeArrived_;         // When vehicle spawned
-simtime_t timeStopped_;         // When stopped at intersection
-simtime_t timeElected_;         // When became leader (if applicable)
-simtime_t timeOrderCommitted_;  // When PASS_ORDER committed to quorum
-simtime_t timeStartedMoving_;   // When started crossing
-simtime_t timePassed_;          // When cleared intersection
+| Timestamp | Set When |
+|-----------|----------|
+| `timeArrived_` | `startApplication()` / `initialize()` — simulation start |
+| `timeStopped_` | `checkAndStopAtIntersection()` fires — vehicle hard-stops at approach |
+| `timeClusterFormed_` | Inside `formCluster()` after `clusterPhase_ = PHASE_COORDINATION` |
+| `timeElected_` | Inside `onBecameLeader()` — RAFT library declared this node leader |
+| `timeOrderCommitted_` | Inside `doApplyLog()` when `entry.type == PASS_ORDER` |
+| `timeStartedMoving_` | Inside `resumeMovement()` — vehicle released from stop |
+| `timePassed_` | Inside `checkIfLeftIntersection()` — vehicle confirmed off intersection |
+
+### Durations Derived
+
+```
+raftDecisionTime  = max(order_committed) - min(cluster_formed)   [across RAFT vehicles]
+  → From cluster formation until pass order is committed (leader election + replication)
+
+totalWaitTime     = timePassed_ - timeStopped_
+  → Full intersection visit: waiting + crossing
+
+transitTime       = timePassed_ - timeStartedMoving_
+  → Time physically driving through the junction
+
+throughput        = N_raft / (max(passed) - min(cluster_formed))   [RAFT vehicles only, time in s]
+  → Throughput during RAFT coordination window only (excludes discovery wait and pre-formation delay)
 ```
 
-### Metrics Calculated
+### RAFT Timing Parameters (Simple Intersection)
 
-**File**: `WillemtRaftApplication::outputMetricsJSON()`
-
-```cpp
-// 1. RAFT Decision Time (NEW - most important!)
-double raftDecisionTimeMs = (timeOrderCommitted_ - timeStopped_).dbl() * 1000.0;
-// Measures: Leader election + STATUS collection + PASS_ORDER consensus
-// This is the pure RAFT overhead
-
-// 2. Total Wait Time (per vehicle)
-double totalWaitTimeMs = (timeStartedMoving_ - timeStopped_).dbl() * 1000.0;
-// Measures: RAFT decision + waiting for turn
-
-// 3. Transit Time
-double transitTimeMs = (timePassed_ - timeStartedMoving_).dbl() * 1000.0;
-// Measures: Time to cross intersection
-
-// 4. Election Time (leader only)
-double electionTimeMs = (timeElected_ - timeStopped_).dbl() * 1000.0;
-// Measures: Time to become leader
+```ini
+# Fixed values in simple_intersection_4/8/16 omnetpp_*.ini:
+electionTimeoutBaseMs = 500
+electionTimeoutJitterMs = 1000
+requestTimeoutMs = 200
+discoveryWaitMs = 5000
+clusterFormationDelayMs = 2000
+intersectionStopDistance = 5m
 ```
 
-### Scenario-Level Metrics
-
-**File**: `benchmark.sh`, `plot_comparison.py` (aggregate analysis)
-
-**RAFT Decision Time** = leader election + decision writing to quorum only (cluster formation excluded):
-
-```python
-# RAFT timing = from cluster ready to last commit (NOT including cluster formation)
-latest_commit = max(order_committed_times)
-first_cluster = min(cluster_formed_times)
-raft_decision = latest_commit - first_cluster
-```
-
-**Definition**: Cluster formation timing is never part of RAFT timings. RAFT timings = leader election + decision writing to quorum. The cluster formation phase (vehicles discovering each other) precedes RAFT and depends on physical arrival and radio range—it is not a RAFT protocol cost.
-
-**Total Intersection Time** (unchanged):
-```python
-total_intersection = max(passed_times) - min(stopped_times)
-```
-
-**Why use LATEST commit?**
-- RAFT consensus isn't complete until ALL vehicles have the order
-- Last vehicle receiving order = true consensus completion
+Election timeout per vehicle = 500 + uniform(0, 1000) ms → 500–1500 ms. The cluster formation wait is 7 s (5 s discovery + 2 s settling) after the first vehicle stops.
 
 ---
 
-## RAFT Protocol Steps
-
-### 1. Leader Election
+## 3. RAFT Callbacks (How the Library Talks to Our Code)
 
 ```
-Time: 0ms
-┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐
-│Vehicle 0│  │Vehicle 1│  │Vehicle 2│  │Vehicle 3│
-│Follower │  │Follower │  │Follower │  │Follower │
-└─────────┘  └─────────┘  └─────────┘  └─────────┘
+raft_set_callbacks(server, &cbs, this):
 
-Time: 150ms (timeout)
-┌─────────┐  
-│Vehicle 1│ ──RequestVote──► All vehicles
-│Candidate│  
-└─────────┘  
+cbs.send_requestvote        → doSendRequestVote(server, udata, node, msg)
+  Invoked when becoming candidate; serializes msg_requestvote_t
+  → sendRaftUnicast(targetId, 0x20, data)
 
-Time: 180ms
-┌─────────┐  
-│Vehicle 1│ ◄──VoteGranted── All vehicles (quorum!)
-│ LEADER  │  
-└─────────┘  
-```
+cbs.send_appendentries      → doSendAppendEntries(server, udata, node, msg)
+  Invoked by leader every requestTimeoutMs_; serializes variable-length entries
+  → sendRaftUnicast(targetId, 0x22, data)
 
-### 2. STATUS Collection
+cbs.log_offer               → doLogOffer(server, udata, entry, entryIdx)
+  Called when entry is offered to log; we always accept (return 0)
 
-```
-Time: 180ms
-┌─────────┐  
-│Vehicle 1│ ──STATUS_REQUEST──► All vehicles
-│ LEADER  │  
-└─────────┘  
+cbs.applylog                → doApplyLog(server, udata, entry, entryIdx)
+  Called when entry is committed (replicated to quorum)
+  Dispatches on entry type:
+    STATUS_REPORT → store collected statuses
+    PASS_ORDER    → apply schedule, begin batch execution
+    VEHICLE_LEFT  → remove vehicle from active set, check batch advance
+    PASS_COMMAND  → (legacy) resume movement
 
-Time: 200ms
-┌─────────┐  
-│Vehicle 1│ ◄──STATUS_RESPONSE── All vehicles
-│ LEADER  │     (wayOfSight data)
-└─────────┘  
-```
+cbs.persist_vote            → persistVote(server, udata, voted_for)
+  No-op (no durable storage in simulation)
 
-### 3. STATUS_REPORT Consensus
-
-```
-Time: 210ms
-┌─────────┐  
-│Vehicle 1│ ──AppendEntries(STATUS_REPORT)──► Followers
-│ LEADER  │  
-└─────────┘  
-
-Time: 240ms
-┌─────────┐  
-│Vehicle 1│ ◄──Success── Quorum acknowledges
-│ LEADER  │  
-└─────────┘  
-All vehicles apply STATUS_REPORT
-```
-
-### 4. PASS_ORDER Consensus
-
-```
-Time: 250ms
-┌─────────┐  
-│Vehicle 1│ ──AppendEntries(PASS_ORDER)──► Followers
-│ LEADER  │     [0,1,2,3]
-└─────────┘  
-
-Time: 310ms (LAST vehicle receives)
-┌─────────┐  ┌─────────┐  ┌─────────┐  ┌─────────┐
-│Vehicle 0│  │Vehicle 1│  │Vehicle 2│  │Vehicle 3│
-│Has order│  │Has order│  │Has order│  │Has order│
-└─────────┘  └─────────┘  └─────────┘  └─────────┘
-                                        ▲
-                                        │
-                            timeOrderCommitted_ = 310ms
-                            RAFT Decision Time = 310 - 150 = 160ms
-```
-
-### 5. Sequential Execution
-
-```
-Time: 310ms
-Vehicle 0 (position 0): delay = 0ms → starts immediately
-
-Time: 460ms
-Vehicle 1 (position 1): delay = 150ms → starts now
-
-Time: 610ms
-Vehicle 2 (position 2): delay = 300ms → starts now
-
-Time: 760ms
-Vehicle 3 (position 3): delay = 450ms → starts now
+cbs.log                     → raftLog(server, udata, buf)
+  Debug logging (no-op in release build)
 ```
 
 ---
 
-## Scaling with Vehicle Count
+## 4. Message Types Summary
 
-### Timeout Scaling
+| Hex | Name | Direction | Payload |
+|-----|------|-----------|---------|
+| `0x10` | `DISCOVERY_BEACON` | Broadcast | `[int32 myId][uint8 phase]` |
+| `0x11` | `CLUSTER_FORM` | Broadcast | `[uint8 numMembers][int32 id] × N` |
+| `0x12` | `CLUSTER_EXISTS` | Broadcast | Same as CLUSTER_FORM |
+| `0x20` | `RAFT_REQUEST_VOTE` | Broadcast (all vehicles receive; non-target ignores) | `msg_requestvote_t` (C struct) |
+| `0x21` | `RAFT_REQUEST_VOTE_RESPONSE` | Broadcast (same) | `msg_requestvote_response_t` |
+| `0x22` | `RAFT_APPEND_ENTRIES` | Broadcast (same) | Variable — base header + log entries |
+| `0x23` | `RAFT_APPEND_ENTRIES_RESPONSE` | Broadcast (same) | `msg_appendentries_response_t` |
+| `0x30` | `COORD_STATUS_REQUEST` | Broadcast | `[int32 leaderId]` |
+| `0x31` | `COORD_STATUS_RESPONSE` | Broadcast (same — non-leader ignores) | `struct VehicleProposal` |
+| `0x33` | `COORD_VEHICLE_PASSED` | Broadcast | `[uint8 vehicleId]` |
+| `0x34` | `COORD_VEHICLE_LEFT` | Broadcast | `struct VehicleLeftEntry {vehicleId, batchId}` |
+| `0x35` | `COORD_VEHICLE_LEFT_REBROADCAST` | Broadcast | Same as 0x34 |
 
-```cpp
-// Base 200ms + 12.5ms per vehicle
-statusCollectionTimeoutMs_ = 200 + (totalVehicles_ * 12.5);
-
-// Examples:
-// 4 vehicles:  250ms timeout
-// 8 vehicles:  300ms timeout
-// 16 vehicles: 400ms timeout
-// 32 vehicles: 600ms timeout
-```
-
-**Why scale?**
-- More vehicles = more STATUS messages
-- More network traffic = higher collision probability
-- Larger quorum = more consensus rounds needed
-- Realistic simulation of network congestion
-
-### Early Break Optimization
-
-```cpp
-// In handleStatusResponse()
-if (statusResponseCount_ >= expectedResponses) {
-    collectStatusAndDecide();  // Don't wait full timeout!
-}
-```
-
-If all vehicles respond in 100ms but timeout is 600ms, we proceed immediately.
+**All messages in both UDP and WAVE are broadcast at the network layer.** UDP uses IP multicast address `224.0.0.1`; WAVE sets `recipientAddress = -1`. `sendRaftUnicast` is a misnomer — it sends to the same broadcast destination as `sendRaftBroadcast`. The only distinction is an application-layer `targetId` field; non-target vehicles drop the packet silently after receiving it.
 
 ---
 
-## Key Design Decisions
+## 5. How the Benchmark Script Executes Everything
 
-### 1. Why Two-Phase Consensus?
+### run_simple_benchmark.sh — Step by Step
 
-**Phase 1: STATUS_REPORT**
-- Ensures all vehicles have same view of intersection state
-- Prevents split-brain scenarios
-- Leader can make informed decision
+```bash
+./run_simple_benchmark.sh 3
+```
 
-**Phase 2: PASS_ORDER**
-- Ensures all vehicles agree on execution order
-- Prevents conflicts and collisions
-- Survives leader failures
+**Prerequisite:** `veins_launchd` and SUMO must already be running.
 
-### 2. Why Sequential Passing?
+```
+1. FOR EACH VEHICLE COUNT (4, 8, 16):
+   a. UDP: cd simulations/simple_intersection_N/
+      Run: ./src/benchmark -u Cmdenv -n "$NED_PATH" omnetpp_udp.ini
+           --seed-set=$i --**.app[0].resultsFile="results/simple_udp_Nveh/run_i/raft_results.json"
+   b. WAVE: same dir, omnetpp_wave.ini, --**.appl.resultsFile=...
 
-**Position-based delays** (position × 150ms):
-- Prevents physical collisions
-- Simpler than real-time coordination
-- Deterministic and predictable
-- Works even with network delays
+2. AGGREGATE (Python inline):
+   For each result dir (simple_udp_4veh, simple_raftwave_4veh, ...):
+     - RAFT decision time = max(order_committed) - min(cluster_formed)
+     - Throughput = N_raft / (max(passed) - min(cluster_formed)) for RAFT vehicles only
+     - Save aggregate_stats.json
 
-### 3. Why Track Latest Commit?
+3. PLOT:
+   python3 plot_comparison.py --simple
+   Generates: RAFT Decision Time, System Throughput (2 subplots)
+   Output: results/simple_wave_vs_udp_comparison.png
+```
 
-**RAFT decision time = last vehicle receives order**:
-- True measure of consensus completion
-- Accounts for network propagation delays
-- More realistic than "first vehicle" metric
-- Shows actual scalability characteristics
+### NED Path Construction
+
+```bash
+NED_PATH="$INET_DIR/src:$VEINS_DIR/src:$VEINS_INET_DIR/src:./src"
+```
+
+This tells OMNeT++ where to find `.ned` files for INET modules, Veins modules, Veins-INET bridge, and the benchmark's own modules.
+
+### SUMO Coordination
+
+OMNeT++ (via Veins `TraCIScenarioManager`) connects to `veins_launchd` on port 9999. `veins_launchd` starts SUMO, stages config files to a temp directory, and acts as a proxy. Without `DISPLAY=:1`, SUMO's GUI cannot launch.
 
 ---
 
-## Summary
+## 6. Full State Transition Diagram
 
-The RAFT intersection coordination system:
+```
+t = 0 ms
+│
+├── PHASE_DISCOVERY
+│   ├── checkTimer (50 ms): detect stop, queue advance, exit check
+│   ├── discoveryTimer (~0.3 s): when stopped, broadcast DISCOVERY_BEACON, call checkClusterTrigger()
+│   └── receive DISCOVERY_BEACON: add to discoveredPeers_
+│
+│   [when: stopped AND (NOW - timeStopped_) >= discoveryWaitMs + clusterFormationDelayMs (7 s)]
+│
+├── formCluster() → PHASE_COORDINATION  (~7 s after first vehicle stops)
+│   ├── raft_new(), raft_add_node() for all members
+│   ├── raft_set_callbacks()
+│   ├── broadcast CLUSTER_FORM (0x11), retries @ +300/700/1200/1800 ms
+│   └── start raftPeriodicTimer (20 ms)
+│
+│   [raftPeriodicTimer ticking every 20 ms]
+│
+├── RAFT ELECTION  (~2100–3000 ms)
+│   ├── raft_periodic() advances election countdown
+│   ├── First vehicle to time out → CANDIDATE
+│   │   ├── send REQUEST_VOTE (0x20) to all
+│   │   └── receive REQUEST_VOTE_RESPONSE (0x21)
+│   └── Quorum votes → LEADER
+│       └── onBecameLeader()
+│           ├── wasElectedLeader_ = true
+│           ├── timeElected_ = NOW
+│           └── schedule statusRequest after arrivalWaitTimeMs_
+│
+├── STATUS COLLECTION  (~3300–4100 ms)
+│   ├── leader sends STATUS_REQUEST (0x30)
+│   ├── followers send STATUS_RESPONSE (0x31) with VehicleProposal
+│   └── leader: when all received (or timeout) → proposePassOrder()
+│
+├── RAFT REPLICATION  (~4100–4400 ms)
+│   ├── leader: raft_recv_entry(PASS_ORDER)
+│   ├── leader sends APPEND_ENTRIES (0x22) to all followers
+│   ├── followers: raft_recv_appendentries → APPEND_ENTRIES_RESPONSE (0x23)
+│   └── quorum responds → commit index advances → applylog fires
+│
+├── BATCH EXECUTION  (~4400 ms onward)
+│   ├── applyCommittedPassOrder()
+│   │   ├── batch 0 vehicles: resumeMovement() immediately
+│   │   └── batch 1+ vehicles: wait for previous batch
+│   │
+│   ├── Batch 0 crossing:
+│   │   ├── vehicle exits → sendVehiclePassed (0x33)
+│   │   ├── sendVehicleLeft (RAFT entry if leader, 0x34 if follower)
+│   │   └── leader: VEHICLE_LEFT committed → checkBatchAdvance()
+│   │       └── currentBatch_++ → batch 1 vehicles: resumeMovement()
+│   │
+│   └── Repeat for each batch...
+│
+└── METRICS + FINISH  (after last vehicle passes)
+    ├── outputMetricsJSON() → append to raft_results.json
+    ├── RaftMetrics auto-closes file when vehiclesCompleted_ >= totalVehicles_
+    └── finish() → cancel all timers, free raftServer_
+```
 
-1. **Uses willemt/raft library** for core consensus protocol
-2. **Integrates with OMNeT++/Veins** for network and mobility simulation
-3. **Implements two-phase consensus** for safety and correctness
-4. **Scales timeout with vehicle count** for realistic performance
-5. **Tracks comprehensive timing metrics** for accurate benchmarking
-6. **Ensures sequential execution** for collision avoidance
+---
 
-The result is a realistic simulation of distributed consensus for autonomous intersection management, with proper timing measurements that show how RAFT overhead scales with the number of vehicles.
+## 7. Fallback Mode
+
+When RAFT fails (too many retries, or global timeout):
+
+```
+Triggers:
+  1. failedElectionCount_ >= maxFailedElections_ (5)
+  2. Global timeout: cluster formed but no order committed within
+     arrivalWait + statusTimeout + 4×electionTimeout + 3 s
+
+handleFallback():
+  isFallbackMode_ = true
+  coordinationMethod_ = "fallback"
+  timeOrderCommitted_ = NOW  // mark time for metrics
+
+  if wayOfSight_ OR no blocker:
+    resumeMovement() immediately
+  else:
+    delay = 1000 + positionInLane × 2000 ms
+    schedule resumeMovement() after delay
+```
+
+Fallback ensures vehicles never deadlock — they always eventually move, even without consensus.
+
+---
+
+## 8. Key Differences: UDP vs WAVE in Practice
+
+| Characteristic | UDP (802.11a) | WAVE (802.11p) |
+|----------------|--------------|----------------|
+| **Frequency** | 5 GHz | 5.9 GHz (DSRC band) |
+| **Bandwidth** | 20 MHz | 10 MHz |
+| **Receiver sensitivity** | -92 dBm (matched to WAVE) | -92 dBm |
+| **Standard** | IEEE 802.11a | IEEE 802.11p |
+| **RAFT logic** | Identical (in RaftAppBase) | Identical (in RaftAppBase) |
+| **Beacon during RAFT** | 2.0 s | 2.0 s |
+| **RAFT time (4 veh)** | ~2.0 s | ~1.5 s (WAVE faster: better connectivity at low load) |
+| **RAFT time (8 veh)** | ~9.4 s | ~6.5 s (WAVE faster) |
+| **RAFT time (16 veh)** | ~12.1 s | ~14.5 s (UDP faster: 20 MHz vs 10 MHz at high load) |
+
+**Scaling behaviour:** At 4–8 vehicles, WAVE’s 10 dB better effective sensitivity (vs older -82 dBm UDP) helped connectivity across opposite approaches (~350 m). UDP sensitivity was raised to -92 dBm to match. At 16 vehicles, channel capacity matters more—UDP’s 20 MHz outperforms WAVE’s 10 MHz.
+
+### Cluster Merge Rule
+
+When receiving `CLUSTER_EXISTS` from another cluster: merge only if the incoming cluster is **strictly larger**. Equal-sized clusters do not merge (avoids deadlock; radio partitioning is handled by fallback).

@@ -11,5 +11,6 @@
     </time>
     <gui_only>
         <start value="true"/>
+        <quit-on-end value="true"/>
     </gui_only>
 </configuration>

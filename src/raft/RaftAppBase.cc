@@ -56,6 +56,8 @@ RaftAppBase::RaftAppBase()
     , fallbackWaitMaxMs_(3000)
     , passConfirmationMs_(200)
     , statusCollectionTimeoutMs_(3000)
+    , discoveryWaitMs_(3000)
+    , clusterFormationDelayMs_(0)
     , transportName_("unknown")
     , timeArrived_(SIMTIME_ZERO)
     , timeStopped_(SIMTIME_ZERO)
@@ -74,6 +76,9 @@ RaftAppBase::RaftAppBase()
     , logEntriesProposed_(0)
     , logEntriesCommitted_(0)
     , metricsWritten_(false)
+    , lastStopDebugPrint_(SIMTIME_ZERO)
+    , lastQueueDebugPrint_(SIMTIME_ZERO)
+    , prevRoadId_("")
 {}
 
 RaftAppBase::~RaftAppBase()
@@ -118,8 +123,16 @@ void RaftAppBase::handleDiscoveryBeacon(int senderId, uint8_t senderPhase)
     if (senderId == myId_) return;
     if (clusterPhase_ != PHASE_DISCOVERY) return;
     if (senderId < 0 || senderId >= totalVehicles_) return;  // reject recycled/extra SUMO vehicles
+    bool wasNew = (discoveredPeers_.find(senderId) == discoveredPeers_.end());
     discoveredPeers_.insert(senderId);
     activeVehicles_.insert(senderId);
+    if (wasNew) {
+        std::cout << simTime() << " [DBG][V" << myId_ << "] BEACON from V" << senderId
+                  << " => discovered=" << discoveredPeers_.size()+1
+                  << "/" << totalVehicles_
+                  << " (need " << (totalVehicles_ - (int)(discoveredPeers_.size()+1)) << " more)"
+                  << " stopped=" << hasStoppedAtIntersection_ << std::endl;
+    }
 }
 
 void RaftAppBase::checkClusterTrigger()
@@ -128,15 +141,25 @@ void RaftAppBase::checkClusterTrigger()
     if (!hasStoppedAtIntersection_) return;  // Don't form until stopped at intersection
     if (clusterFormationScheduled_) return;  // already scheduled
 
+    // Use discoveryWaitMs + clusterFormationDelayMs: first to stop waits for (a) peers
+    // to arrive and exchange beacons, and (b) an extra settling delay so more vehicles
+    // can stop before anyone forms. Total = discoveryWaitMs + clusterFormationDelayMs.
+    double requiredWaitMs = static_cast<double>(discoveryWaitMs_ + clusterFormationDelayMs_);
+    double waitedMs = (NOW - timeStopped_).dbl() * 1000.0;
+    if (waitedMs < requiredWaitMs) return;
+
     std::set<int> members = discoveredPeers_;
     members.insert(myId_);
 
-    // HACK FIX: Only form when we have ALL totalVehicles_ in the cluster.
-    // This forces a single unified cluster — no early formation with 5–6 members.
-    if (members.size() < (size_t)totalVehicles_) return;
+    std::cout << simTime() << " [DBG][V" << myId_ << "] CLUSTER_TRIGGER FIRING after "
+              << waitedMs << "ms: forming with " << members.size() << "/" << totalVehicles_
+              << " peers=[";
+    for (int v : members) std::cout << v << " ";
+    std::cout << "]" << std::endl;
 
     clusterFormationScheduled_ = true;
-    RAFT_LOG("CLUSTER FORMATION (all " << totalVehicles_ << " vehicles discovered)");
+    RAFT_LOG("CLUSTER FORMATION with " << members.size() << "/" << totalVehicles_
+             << " vehicles (200 ms discovery window)");
     formCluster(members);
 }
 
@@ -151,9 +174,9 @@ void RaftAppBase::formCluster(const std::set<int>& members)
     timeClusterFormed_ = NOW;
     activeVehicles_   = members;
 
-    RAFT_LOG("FORMING CLUSTER with " << members.size() << " members: [");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] FORM_CLUSTER " << members.size() << " members: [";
     for (int v : members) std::cout << v << " ";
-    std::cout << "]" << std::endl;
+    std::cout << "] electionBase=" << electionTimeoutBaseMs_ << "ms" << std::endl;
 
     // Initialise RAFT server
     raft_server_t* s = raft_new();
@@ -201,12 +224,15 @@ void RaftAppBase::formCluster(const std::set<int>& members)
     // Broadcast cluster formation to peers
     broadcastClusterForm();
 
-    // Re-broadcast CLUSTER_FORM several times so vehicles that missed the first
-    // packet due to NLOS shadowing can still merge.  Four retries spread over
-    // ~1.8 s — well within the new fallback timeout (3 + 0.5*N seconds).
-    for (int delayMs : {300, 700, 1200, 1800}) {
+    // Keep broadcasting our cluster membership so that:
+    //  (a) vehicles that missed the first packet can still join, and
+    //  (b) smaller clusters that formed independently can merge into us.
+    // Broadcasts stop once the pass-order is committed (coordination done).
+    // Schedule covers ~20 s so late-stopping vehicles (back of 16-vehicle queue)
+    // have time to stop, wait their 200 ms, then hear our cluster invite.
+    for (int delayMs : {300, 700, 1200, 1800, 3000, 5000, 7000, 10000, 14000, 18000}) {
         scheduleOneshotMs(delayMs, [this]() {
-            if (clusterPhase_ == PHASE_COORDINATION && !hasPassedIntersection_)
+            if (clusterPhase_ == PHASE_COORDINATION && !hasPassedIntersection_ && !hasCommittedOrder_)
                 broadcastClusterExists();
         });
     }
@@ -219,6 +245,51 @@ void RaftAppBase::mergeIntoCluster(const std::set<int>& members)
     clusterPhase_     = PHASE_COORDINATION;
     clusterFormed_    = true;
     timeClusterFormed_ = NOW;
+}
+
+// Dissolve the current RAFT instance and re-form a larger unified cluster.
+// Called when we receive a CLUSTER_INVITE whose member count exceeds ours.
+void RaftAppBase::mergeIntoLargerCluster(const std::set<int>& mergedMembers)
+{
+    if (hasCommittedOrder_ || hasPassedIntersection_) return;
+
+    std::cout << simTime() << " [DBG][V" << myId_
+              << "] MERGE_INTO_LARGER: reinitializing with "
+              << mergedMembers.size() << " members [";
+    for (int v : mergedMembers) std::cout << v << " ";
+    std::cout << "]" << std::endl;
+
+    // 1. Free the current RAFT server so we start fresh.
+    if (raftServer_) {
+        raft_free(raftServer_);
+        raftServer_ = nullptr;
+    }
+
+    // 2. Reset all RAFT-specific state.
+    isLeader_             = false;
+    waitingForStatus_     = false;
+    statusResponseCount_  = 0;
+    passOrderProposed_    = false;
+    lastAppliedIndex_     = 0;
+    lastCheckedTerm_      = 0;
+    failedElectionCount_  = 0;
+    lastRaftPeriodicRun_  = SIMTIME_ZERO;
+    collectedProposals_.clear();
+    collectedWayOfSight_.clear();
+    vehiclesLeftInBatch_.clear();
+    proposedLeft_.clear();
+
+    // 3. Absorb all merged members into our discovery set.
+    for (int v : mergedMembers)
+        if (v != myId_) discoveredPeers_.insert(v);
+
+    // 4. Reset phase flags so formCluster() accepts the call.
+    clusterPhase_              = PHASE_DISCOVERY;
+    clusterFormed_             = false;
+    clusterFormationScheduled_ = true;  // prevent duplicate trigger from timer
+
+    // 5. Re-form the cluster with the larger unified member set.
+    formCluster(mergedMembers);
 }
 
 void RaftAppBase::broadcastClusterForm()
@@ -244,7 +315,7 @@ void RaftAppBase::broadcastClusterExists()
 void RaftAppBase::handleClusterForm(const std::vector<uint8_t>& data, int senderId)
 {
     if (clusterPhase_ != PHASE_DISCOVERY) {
-        // Already in a cluster: just update active members list
+        // Already in a cluster: run merge-if-bigger logic
         handleClusterExists(data, senderId);
         return;
     }
@@ -253,16 +324,26 @@ void RaftAppBase::handleClusterForm(const std::vector<uint8_t>& data, int sender
     uint8_t n = data[0];
     if (data.size() < 1u + n * sizeof(int)) return;
 
-    std::set<int> members;
+    // Absorb all members the sender knows about into our own discovery set.
+    // The 200 ms timer in checkClusterTrigger() will fire and actually form
+    // the cluster, incorporating all peers gathered here.
     for (int i = 0; i < n; i++) {
         int vid;
         memcpy(&vid, data.data() + 1 + i * sizeof(int), sizeof(int));
-        if (vid >= 0 && vid < totalVehicles_)  // reject recycled/extra SUMO vehicles
-            members.insert(vid);
+        if (vid >= 0 && vid < totalVehicles_ && vid != myId_) {
+            bool wasNew = (discoveredPeers_.find(vid) == discoveredPeers_.end());
+            discoveredPeers_.insert(vid);
+            if (wasNew) {
+                std::cout << simTime() << " [DBG][V" << myId_
+                          << "] CLUSTER_FORM absorbed peer V" << vid
+                          << " from sender V" << senderId
+                          << " (now have " << discoveredPeers_.size()+1 << " peers)"
+                          << std::endl;
+            }
+        }
     }
-    members.insert(myId_);  // Always include ourselves
-
-    formCluster(members);
+    // checkClusterTrigger() runs on every timer tick and will form the cluster
+    // once the 200 ms window has elapsed after stopping.
 }
 
 void RaftAppBase::handleClusterExists(const std::vector<uint8_t>& data, int senderId)
@@ -272,19 +353,52 @@ void RaftAppBase::handleClusterExists(const std::vector<uint8_t>& data, int send
     uint8_t n = data[0];
     if (data.size() < 1u + n * sizeof(int)) return;
 
+    std::set<int> incomingMembers;
     for (int i = 0; i < n; i++) {
         int vid;
         memcpy(&vid, data.data() + 1 + i * sizeof(int), sizeof(int));
-        if (vid >= 0 && vid < totalVehicles_)  // Bug 1: reject recycled/extra SUMO vehicles
-            activeVehicles_.insert(vid);
+        if (vid >= 0 && vid < totalVehicles_)
+            incomingMembers.insert(vid);
     }
 
-    // If we're still in DISCOVERY mode, join the cluster
+    // If we're still in DISCOVERY mode, absorb peers and let the timer form the cluster.
     if (clusterPhase_ == PHASE_DISCOVERY) {
-        std::set<int> members = activeVehicles_;
-        members.insert(myId_);
-        formCluster(members);
+        for (int v : incomingMembers) {
+            if (v != myId_) discoveredPeers_.insert(v);
+        }
+        return;
     }
+
+    // ---- We are already in PHASE_COORDINATION ----
+    // Build the union of current + incoming members.
+    std::set<int> currentMembers = activeVehicles_;
+    currentMembers.insert(myId_);
+
+    std::set<int> mergedMembers = currentMembers;
+    mergedMembers.insert(incomingMembers.begin(), incomingMembers.end());
+
+    // Merge condition: union adds new vehicles AND no order committed yet.
+    // Incoming cluster must be strictly larger; we merge into them.
+    bool incomingBigger   = (incomingMembers.size() > currentMembers.size());
+    bool unionAddsMembers = (mergedMembers.size()   > currentMembers.size());
+
+    raft_term_t currentTerm = raftServer_ ? raft_get_current_term(raftServer_) : 0;
+    bool canMerge         = !hasCommittedOrder_ && !hasPassedIntersection_
+                            && lastAppliedIndex_ == 0  // no RAFT progress yet
+                            && currentTerm == 0;       // no election started yet
+
+    if (canMerge && unionAddsMembers && incomingBigger) {
+        std::cout << simTime() << " [DBG][V" << myId_
+                  << "] MERGE: incoming=" << incomingMembers.size()
+                  << " mine=" << currentMembers.size()
+                  << " -> merging into " << mergedMembers.size() << " members" << std::endl;
+        mergeIntoLargerCluster(mergedMembers);
+        return;
+    }
+
+    // No merge — just update the active-vehicle set with any new arrivals.
+    for (int v : incomingMembers)
+        activeVehicles_.insert(v);
 }
 
 // ============ RAFT PERIODIC ============
@@ -345,37 +459,62 @@ void RaftAppBase::processRaftPeriodic()
 
     // Global timeout fallback — two-phase:
     //
-    // Phase 1 (pre-cluster): if the cluster hasn't formed within
-    //   (5 + N seconds) of stopping, something is wrong with discovery → fallback.
-    //   This covers WAVE cluster-splitting: vehicles stuck in DISCOVERY forever.
+    // Phase 1 (pre-cluster): handled by the 200 ms trigger in checkClusterTrigger;
+    //   cluster always forms quickly now, so this is only a safety net.
     //
-    // Phase 2 (post-cluster): once the cluster is formed, RAFT must converge within
-    //   (arrivalWait + statusCollection + 4×electionTimeout + 3 s) of cluster
-    //   formation.  Measuring from cluster formation avoids punishing vehicles that
-    //   stopped long before the cluster could form.
+    // Phase 2 (post-cluster): RAFT must converge within the timeout window.
+    //
+    // Key fix for large clusters (16+ vehicles):
+    //   • For the LEADER: the window starts from ELECTION TIME, not cluster-form time.
+    //     A leader elected late (after many merge rounds) gets the full window.
+    //   • For FOLLOWERS: if a leader is currently known to RAFT, the global timer is
+    //     paused — the leader is working and we must not preempt it.
     if (hasStoppedAtIntersection_ && !hasCommittedOrder_ && !isFallbackMode_) {
         if (timeClusterFormed_ > SIMTIME_ZERO) {
-            // Post-cluster: time RAFT window from cluster formation
-            simtime_t raftWait   = now - timeClusterFormed_;
-            double    raftTimeout = (arrivalWaitTimeMs_ + statusCollectionTimeoutMs_ +
-                                     electionTimeoutBaseMs_ * 4 + electionTimeoutJitterMs_ * 2 +
-                                     3000) / 1000.0;
+            // For followers with a known leader: skip the timeout, leader is in charge.
+            if (!isLeader_ && raftServer_) {
+                raft_node_id_t knownLeader = raft_get_current_leader(raftServer_);
+                if (knownLeader != -1 /* RAFT_NODE_ID_NONE not guaranteed to be -1, check != 0 */) {
+                    // Leader is known — don't time out, wait for its decision.
+                    goto skip_timeout;
+                }
+            }
+
+            // For the leader: window starts from election time so coordination has
+            // a full budget regardless of how long cluster formation took.
+            simtime_t refTime;
+            if (isLeader_ && timeElected_ > SIMTIME_ZERO) {
+                refTime = timeElected_;
+            } else {
+                // Non-leader without a known leader (or leader not yet elected):
+                // use the later of stopped-time and cluster-formed-time.
+                refTime = (timeStopped_ > timeClusterFormed_) ? timeStopped_ : timeClusterFormed_;
+            }
+
+            simtime_t raftWait  = now - refTime;
+            // Scale the timeout with cluster size: each extra vehicle adds one
+            // extra election-round worth of headroom (worst case: all stagger).
+            double extraPerVehicle = electionTimeoutBaseMs_ / 1000.0;
+            double raftTimeout = (arrivalWaitTimeMs_ + statusCollectionTimeoutMs_ +
+                                  electionTimeoutBaseMs_ * 4 + electionTimeoutJitterMs_ * 2 +
+                                  totalVehicles_ * extraPerVehicle * 1000.0 +
+                                  3000) / 1000.0;
             if (raftWait.dbl() > raftTimeout) {
                 RAFT_LOG("RAFT TIMEOUT: " << raftWait.dbl()*1000.0
-                         << "ms since cluster formed (threshold=" << raftTimeout*1000.0 << "ms)");
+                         << "ms since ref (threshold=" << raftTimeout*1000.0 << "ms)");
                 handleFallback();
             }
         } else {
-            // Pre-cluster: time discovery window from first stop
-            simtime_t discWait     = now - timeStopped_;
-            double    discTimeout  = 5.0 + totalVehicles_ * 1.0;
+            // Pre-cluster: safety net (200 ms trigger should handle this)
+            simtime_t discWait    = now - timeStopped_;
+            double    discTimeout = 5.0 + totalVehicles_ * 1.0;
             if (discWait.dbl() > discTimeout) {
-                RAFT_LOG("DISCOVERY TIMEOUT: " << discWait.dbl()*1000.0
-                         << "ms stopped, no cluster yet (threshold=" << discTimeout*1000.0 << "ms)");
+                RAFT_LOG("DISCOVERY TIMEOUT (safety net): " << discWait.dbl()*1000.0 << "ms");
                 handleFallback();
             }
         }
     }
+    skip_timeout:;
 }
 
 // ============ RAFT STATIC CALLBACKS ============
@@ -628,6 +767,9 @@ void RaftAppBase::deserializeAppendEntriesResponse(const std::vector<uint8_t>& d
 
 void RaftAppBase::sendStatusRequest()
 {
+    std::cout << simTime() << " [DBG][V" << myId_ << "] SEND_STATUS_REQUEST to "
+              << activeVehicles_.size() << " active vehicles, timeout="
+              << statusCollectionTimeoutMs_ << "ms" << std::endl;
     RAFT_LOG_LEADER("sending STATUS_REQUEST (timeout=" << statusCollectionTimeoutMs_ << "ms)");
 
     // Payload carries senderId — must be non-empty for INET UDP compatibility
@@ -674,12 +816,20 @@ void RaftAppBase::handleStatusResponse(int fromVehicle, bool wos)
 
 void RaftAppBase::handleStatusResponseProposal(int fromVehicle, const VehicleProposal& proposal)
 {
+    std::cout << simTime() << " [DBG][V" << myId_ << "] STATUS_RESPONSE from V" << fromVehicle
+              << " isLeader=" << isLeader_ << " waitingForStatus=" << waitingForStatus_
+              << " count=" << statusResponseCount_ << "/" << (totalVehicles_-1)
+              << " wos=" << proposal.isFirstInLane
+              << " dist=" << proposal.distanceToJunction << "m" << std::endl;
     if (!isLeader_ || !waitingForStatus_) return;
     collectedProposals_[fromVehicle] = proposal;
     collectedWayOfSight_[fromVehicle] = proposal.isFirstInLane;
     statusResponseCount_++;
+    std::cout << simTime() << " [DBG][V" << myId_ << "] STATUS collected " << statusResponseCount_
+              << "/" << (totalVehicles_-1) << " (need " << (totalVehicles_-1) << ")" << std::endl;
     if (statusResponseCount_ >= totalVehicles_ - 1) {
         waitingForStatus_ = false;
+        std::cout << simTime() << " [DBG][V" << myId_ << "] ALL STATUS COLLECTED -> proposePassOrder()" << std::endl;
         proposePassOrder();
     }
 }
@@ -711,10 +861,10 @@ void RaftAppBase::proposeStatusReport()
         int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
         int sideIndex = vid / vehiclesPerSide;
         switch (sideIndex % 4) {
-            case 0: strncpy(s.lane, "N2C", 63); break;
+            case 0: strncpy(s.lane, "W2C", 63); break;  // West (swapped with North)
             case 1: strncpy(s.lane, "S2C", 63); break;
             case 2: strncpy(s.lane, "E2C", 63); break;
-            case 3: strncpy(s.lane, "W2C", 63); break;
+            case 3: strncpy(s.lane, "N2C", 63); break;  // North (swapped with West)
         }
         s.positionInLane = vid % vehiclesPerSide;
         report.numVehicles++;
@@ -750,10 +900,10 @@ void RaftAppBase::proposeStatusReport()
 
 int RaftAppBase::getLaneIndex(const std::string& lane)
 {
-    if (lane == "N2C") return 0;
+    if (lane == "N2C") return 3;  // North (swapped with West)
     if (lane == "S2C") return 1;
     if (lane == "E2C") return 2;
-    if (lane == "W2C") return 3;
+    if (lane == "W2C") return 0;  // West (swapped with North)
     return 0;
 }
 
@@ -913,8 +1063,21 @@ void RaftAppBase::applyCommittedPassOrder()
         if (myBatch_ >= 0) break;
     }
 
+    // Print full committed schedule
+    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER COMMITTED: numBatches="
+              << committedSchedule_.numBatches << " myBatch=" << myBatch_ << std::endl;
+    for (int b = 0; b < committedSchedule_.numBatches; b++) {
+        std::cout << "  [DBG] Batch " << b << ": [";
+        for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
+            std::cout << committedSchedule_.batches[b].vehicleIds[v];
+            if (v+1 < committedSchedule_.batches[b].numVehicles) std::cout << ",";
+        }
+        std::cout << "]" << std::endl;
+    }
+
     if (myBatch_ < 0) {
         RAFT_LOG("NOT SCHEDULED - using fallback");
+        std::cout << simTime() << " [DBG][V" << myId_ << "] NOT IN SCHEDULE! Using fallback." << std::endl;
         int fallbackDelayMs = committedSchedule_.numBatches * 2000;
         scheduleOneshotMs(fallbackDelayMs, [this]() {
             if (!hasPassedIntersection_) {
@@ -929,14 +1092,26 @@ void RaftAppBase::applyCommittedPassOrder()
     RAFT_LOG("assigned to batch " << myBatch_
              << " (current batch: " << currentBatch_ << ")");
 
+    std::cout << simTime() << " [DBG][V" << myId_ << "] ASSIGNED batch=" << myBatch_
+              << " currentBatch=" << currentBatch_
+              << " hasCommitted=" << hasCommittedOrder_
+              << " hasStopped=" << hasStoppedAtIntersection_ << std::endl;
+
     if (myBatch_ == 0) {
+        std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH 0 -> calling resumeMovement immediately" << std::endl;
         resumeMovement();
     } else {
         // Primary mechanism: checkBatchAdvance() will call resumeMovement() once
         // the previous batch has fully cleared via VEHICLE_LEFT broadcasts.
-        // Safety fallback only fires if VEHICLE_LEFT messages are lost (30 s per batch).
-        int safetyDelayMs = myBatch_ * 30000;
+        // Safety fallback fires if VEHICLE_LEFT messages are lost or ghost vehicles
+        // in the schedule never send them. 6 s per batch prevents endless waiting.
+        int safetyDelayMs = myBatch_ * 6000;
+        std::cout << simTime() << " [DBG][V" << myId_ << "] WAITING for batch " << myBatch_
+                  << " (safetyFallback in " << safetyDelayMs << "ms)" << std::endl;
         scheduleOneshotMs(safetyDelayMs, [this, expectedBatch = myBatch_]() {
+            std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH SAFETY FALLBACK FIRED for batch "
+                      << expectedBatch << " curBatch=" << currentBatch_
+                      << " hasPassedIntersection=" << hasPassedIntersection_ << std::endl;
             if (!hasPassedIntersection_ && currentBatch_ < expectedBatch) {
                 RAFT_LOG("BATCH SAFETY FALLBACK (lost VEHICLE_LEFT?) for batch " << expectedBatch);
                 currentBatch_ = expectedBatch;
@@ -959,6 +1134,9 @@ void RaftAppBase::sendVehiclePassed()
 
 void RaftAppBase::handleVehiclePassed(int vehicleId)
 {
+    std::cout << simTime() << " [DBG][V" << myId_ << "] VEHICLE_PASSED: V" << vehicleId
+              << " frontVeh=" << vehicleInFrontOfMe_
+              << " myBatch=" << myBatch_ << " curBatch=" << currentBatch_ << std::endl;
     RAFT_LOG("RECEIVED vehicle-passed from vehicle " << vehicleId);
     activeVehicles_.erase(vehicleId);
     if (vehicleId == vehicleInFrontOfMe_) {
@@ -971,6 +1149,8 @@ void RaftAppBase::handleVehiclePassed(int vehicleId)
         // Previously we only did (a) — queued vehicles never advanced when first
         // vehicle left, causing "last vehicle in lane never moves" bug.
         if (!hasPassedIntersection_ && traciVehicle_ && timeStartedMoving_ == SIMTIME_ZERO) {
+            std::cout << simTime() << " [CHAIN][V" << myId_ << "] Front V" << vehicleId
+                      << " passed -> advancing to stop position (resume car-following)" << std::endl;
             RAFT_LOG("front vehicle passed — advancing to stop position (chain)");
             try {
                 traciVehicle_->setSpeedMode(31);  // restore SUMO car-following
@@ -982,37 +1162,56 @@ void RaftAppBase::handleVehiclePassed(int vehicleId)
 
 void RaftAppBase::sendVehicleLeft()
 {
-    RAFT_LOG("sending vehicle-left (isLeader=" << isLeader_
-             << ", myBatch=" << myBatch_ << ")");
-    if (isLeader_ && raftServer_) {
-        proposeVehicleLeft(myId_, myBatch_);
-    } else {
-        VehicleLeftEntry e; e.vehicleId = myId_; e.batchId = myBatch_;
-        std::vector<uint8_t> data(sizeof(VehicleLeftEntry));
-        memcpy(data.data(), &e, sizeof(e));
-        sendRaftBroadcast(/*COORD_VEHICLE_LEFT*/ 0x34, data);
-        messagesSent_++;
-    }
+    RAFT_LOG("sending vehicle-left (gossip, isLeader=" << isLeader_
+             << ", myBatch=" << myBatch_ << ", ttl=" << totalVehicles_ << ")");
+    VehicleLeftEntry e; e.vehicleId = myId_; e.batchId = myBatch_;
+    std::vector<uint8_t> data(sizeof(VehicleLeftEntry) + 1);
+    memcpy(data.data(), &e, sizeof(e));
+    data[sizeof(VehicleLeftEntry)] = static_cast<uint8_t>(std::min(totalVehicles_, 255));
+    sendRaftBroadcast(/*COORD_VEHICLE_LEFT*/ 0x34, data);
+    messagesSent_++;
 }
 
 void RaftAppBase::handleVehicleLeft(int vehicleId)
 {
-    RAFT_LOG("RECEIVED vehicle-left from vehicle " << vehicleId);
-    if (isLeader_ && raftServer_) {
-        int batchId = -1;
-        for (int b = 0; b < committedSchedule_.numBatches; b++) {
-            for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
-                if (committedSchedule_.batches[b].vehicleIds[v] == vehicleId) {
-                    batchId = b; break;
-                }
+    // Legacy path: look up batchId and delegate to gossip handler (ttl=1 = no rebroadcast)
+    int batchId = -1;
+    for (int b = 0; b < committedSchedule_.numBatches; b++) {
+        for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
+            if (committedSchedule_.batches[b].vehicleIds[v] == vehicleId) {
+                batchId = b; break;
             }
-            if (batchId >= 0) break;
         }
-        proposeVehicleLeft(vehicleId, batchId);
+        if (batchId >= 0) break;
     }
+    handleVehicleLeftGossip(vehicleId, batchId, 1);
+}
+
+void RaftAppBase::handleVehicleLeftGossip(int vehicleId, int batchId, int ttl)
+{
+    if (gossipSeenVehicleLeft_.count(vehicleId)) return;
+    gossipSeenVehicleLeft_.insert(vehicleId);
+
+    std::cout << simTime() << " [DBG][V" << myId_ << "] VEHICLE_LEFT_GOSSIP: V" << vehicleId
+              << " batch=" << batchId << " ttl=" << ttl
+              << " curBatch=" << currentBatch_
+              << " vehiclesLeftSoFar=[";
+    for (int v : vehiclesLeftInBatch_) std::cout << v << " ";
+    std::cout << "]" << std::endl;
+    RAFT_LOG("RECEIVED vehicle-left (gossip) from vehicle " << vehicleId);
+
     activeVehicles_.erase(vehicleId);
     vehiclesLeftInBatch_.insert(vehicleId);
     checkBatchAdvance();
+
+    if (ttl > 1) {
+        VehicleLeftEntry e; e.vehicleId = vehicleId; e.batchId = batchId;
+        std::vector<uint8_t> data(sizeof(VehicleLeftEntry) + 1);
+        memcpy(data.data(), &e, sizeof(e));
+        data[sizeof(VehicleLeftEntry)] = static_cast<uint8_t>(std::min(ttl - 1, 255));
+        sendRaftBroadcast(/*COORD_VEHICLE_LEFT_REBROADCAST*/ 0x35, data);
+        messagesSent_++;
+    }
 }
 
 void RaftAppBase::proposeVehicleLeft(int vehicleId, int batchId)
@@ -1062,15 +1261,31 @@ void RaftAppBase::checkBatchAdvance()
 
     PassBatch& batch = committedSchedule_.batches[currentBatch_];
     bool allLeft = true;
+    std::string missing = "";
     for (int v = 0; v < batch.numVehicles; v++) {
-        if (!vehiclesLeftInBatch_.count(batch.vehicleIds[v])) { allLeft = false; break; }
+        int vid = batch.vehicleIds[v];
+        if (!vehiclesLeftInBatch_.count(vid)) {
+            allLeft = false;
+            missing += std::to_string(vid) + " ";
+        }
     }
+
+    std::cout << simTime() << " [DBG][V" << myId_ << "] CHECK_BATCH_ADVANCE curBatch=" << currentBatch_
+              << " allLeft=" << allLeft
+              << " missing=[" << missing << "]"
+              << " vehiclesLeft=[";
+    for (int v : vehiclesLeftInBatch_) std::cout << v << " ";
+    std::cout << "]" << std::endl;
+
     if (allLeft) {
         currentBatch_++;
         vehiclesLeftInBatch_.clear();
         RAFT_LOG("BATCH ADVANCE: now on batch " << currentBatch_);
+        std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH ADVANCED to " << currentBatch_
+                  << " myBatch=" << myBatch_ << std::endl;
         if (myBatch_ == currentBatch_ && !hasPassedIntersection_) {
             RAFT_LOG("MY BATCH - starting movement");
+            std::cout << simTime() << " [DBG][V" << myId_ << "] MY BATCH NOW ACTIVE -> resumeMovement()" << std::endl;
             resumeMovement();
         }
     }
@@ -1120,11 +1335,111 @@ void RaftAppBase::checkAndStopAtIntersection()
     if (timeStartedMoving_ > SIMTIME_ZERO) return;  // already cleared to go
     try {
         std::string roadId = traciVehicle_->getRoadId();
+
+        // --- DBG: per-vehicle periodic position report + road transition ---
+        bool roadChanged = (roadId != prevRoadId_);
+        std::string lastKnownRoad = prevRoadId_;  // save before potential update
+        if (roadChanged) {
+            prevRoadId_ = roadId;
+            double spd = 999.0;
+            try { spd = traciVehicle_->getSpeed(); } catch (...) {}
+            double d = getDistanceToJunction();
+            std::cout << simTime() << " [DBG][V" << myId_ << "] ROAD_CHANGE -> " << roadId
+                      << " dist=" << d << "m speed=" << spd << "m/s"
+                      << " onApproach=" << (intersectionEdges_.count(roadId) ? "YES" : "NO") << std::endl;
+            // Proactively cache approach edge + lane index so cluster-junction detection
+            // can use them even if the approach edge was too short to trigger a stop.
+            if (intersectionEdges_.count(roadId)) {
+                intersectionEdge_ = roadId;
+                for (int i = 0; i < (int)approachEdgeList_.size(); i++) {
+                    if (approachEdgeList_[i] == roadId) {
+                        myLaneIndex_ = i;
+                        break;
+                    }
+                }
+            }
+        }
+        if (NOW - lastStopDebugPrint_ > 5.0) {
+            lastStopDebugPrint_ = NOW;
+            double spd = 999.0;
+            try { spd = traciVehicle_->getSpeed(); } catch (...) {}
+            double d = getDistanceToJunction();
+            std::cout << simTime() << " [DBG][V" << myId_ << "] POS roadId=" << roadId
+                      << " dist=" << d << "m speed=" << spd << "m/s"
+                      << " onApproach=" << (intersectionEdges_.count(roadId) ? "YES" : "NO")
+                      << " stopped=" << hasStoppedAtIntersection_
+                      << " phase=" << clusterPhase_
+                      << " leader=" << isLeader_
+                      << " committed=" << hasCommittedOrder_
+                      << " myBatch=" << myBatch_
+                      << " curBatch=" << currentBatch_ << std::endl;
+        }
+
+        // Catch vehicles that enter the main intersection cluster junction without being
+        // stopped on the approach edge (short approach lanes traversed in <CHECK_INTERVAL).
+        bool onClusterJunction = (!roadId.empty() && roadId[0] == ':' &&
+                                   roadId.find("cluster") != std::string::npos);
+        if (onClusterJunction) {
+            if (!hasStoppedAtIntersection_) {
+                // If approach edge wasn't proactively cached, try lastKnownRoad as fallback.
+                if ((intersectionEdge_.empty() || intersectionEdge_[0] == ':') &&
+                    !lastKnownRoad.empty() && lastKnownRoad[0] != ':') {
+                    for (int i = 0; i < (int)approachEdgeList_.size(); i++) {
+                        if (approachEdgeList_[i] == lastKnownRoad) {
+                            intersectionEdge_ = lastKnownRoad;
+                            myLaneIndex_ = i;
+                            break;
+                        }
+                    }
+                }
+                if (intersectionEdge_.empty()) intersectionEdge_ = roadId;
+                stopVehicle();
+                hasStoppedAtIntersection_ = true;
+                timeStopped_ = NOW;
+                calculateWayOfSight();
+                std::cout << simTime() << " [DBG][V" << myId_ << "] STOPPED (cluster-junction)"
+                          << " road=" << roadId
+                          << " approachEdge=" << intersectionEdge_
+                          << " laneIdx=" << myLaneIndex_
+                          << " wos=" << wayOfSight_
+                          << " isLeader=" << isLeader_ << std::endl;
+                RAFT_LOG("STOPPED (cluster-junction) approachEdge=" << intersectionEdge_);
+                if (isLeader_ && !hasCommittedOrder_) {
+                    scheduleOneshotMs(arrivalWaitTimeMs_, [this]() {
+                        if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_) {
+                            sendStatusRequest();
+                            scheduleOneshotMs(statusCollectionTimeoutMs_, [this]() {
+                                if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_)
+                                    collectStatusAndDecide();
+                            });
+                        }
+                    });
+                }
+            }
+            return;  // Do not proceed to approach-edge logic
+        }
+
         if (!intersectionEdges_.count(roadId)) return;
 
         double dist  = getDistanceToJunction();
         double speed = 999.0;
         try { speed = traciVehicle_->getSpeed(); } catch (...) {}
+
+        // Log raw distance/junction data for stop-position debugging
+        double lanePos = 0, laneLen = 0;
+        try {
+            if (traci_) {
+                std::string lid = traciVehicle_->getLaneId();
+                lanePos = traciVehicle_->getLanePosition();
+                laneLen = traci_->lane(lid).getLength();
+            }
+        } catch (...) {}
+        if (dist >= 0 && dist <= intersectionStopDistance_ * 5.0 && !hasStoppedAtIntersection_) {
+            std::cout << simTime() << " [STOP_CHECK][V" << myId_ << "] road=" << roadId
+                      << " dist=" << dist << "m (lanePos=" << lanePos << " laneLen=" << laneLen << ")"
+                      << " stopDist=" << intersectionStopDistance_ << "m speed=" << speed << "m/s"
+                      << std::endl;
+        }
 
         // Front of queue: within stop distance → hard stop and wait for pass order.
         bool closeEnough = (dist >= 0 && dist <= intersectionStopDistance_);
@@ -1142,6 +1457,11 @@ void RaftAppBase::checkAndStopAtIntersection()
                 timeStopped_     = NOW;
                 intersectionEdge_ = roadId;
                 calculateWayOfSight();
+                std::cout << simTime() << " [STOP_CHECK][V" << myId_ << "] STOPPED (front, hard stop) dist="
+                          << dist << "m road=" << roadId
+                          << " wos=" << wayOfSight_
+                          << " frontVeh=" << vehicleInFrontOfMe_
+                          << " isLeader=" << isLeader_ << std::endl;
                 RAFT_LOG("STOPPED (front) at dist=" << dist << "m");
                 if (isLeader_ && !hasCommittedOrder_) {
                     scheduleOneshotMs(arrivalWaitTimeMs_, [this]() {
@@ -1163,6 +1483,11 @@ void RaftAppBase::checkAndStopAtIntersection()
             timeStopped_     = NOW;
             intersectionEdge_ = roadId;
             calculateWayOfSight();
+            std::cout << simTime() << " [STOP_CHECK][V" << myId_ << "] QUEUED (no hard stop) dist=" << dist
+                      << "m speed=" << speed << "m/s road=" << roadId
+                      << " wos=" << wayOfSight_
+                      << " frontVeh=" << vehicleInFrontOfMe_
+                      << " isLeader=" << isLeader_ << std::endl;
             RAFT_LOG("QUEUED at dist=" << dist << "m speed=" << speed << "m/s");
             if (isLeader_ && !hasCommittedOrder_) {
                 scheduleOneshotMs(arrivalWaitTimeMs_, [this]() {
@@ -1201,7 +1526,19 @@ void RaftAppBase::checkAndAdvanceInQueue()
         bool gapOpened = leader.first.empty() ||
                          leader.second > intersectionStopDistance_;
 
+        if (NOW - lastQueueDebugPrint_ > 1.0) {
+            lastQueueDebugPrint_ = NOW;
+            std::cout << simTime() << " [QUEUE_ADV][V" << myId_ << "] dist=" << dist
+                      << "m speed=" << speed
+                      << " leader=" << (leader.first.empty() ? "NONE" : leader.first)
+                      << " gap=" << leader.second << "m gapOpened=" << gapOpened
+                      << " (need gap>" << intersectionStopDistance_ << "m)"
+                      << " myBatch=" << myBatch_ << " curBatch=" << currentBatch_ << std::endl;
+        }
+
         if (gapOpened) {
+            std::cout << simTime() << " [QUEUE_ADV][V" << myId_ << "] RELEASING - front moved, taking place"
+                      << " dist=" << dist << "m gap=" << leader.second << "m" << std::endl;
             RAFT_LOG("QUEUE ADVANCE (TraCI): gap=" << leader.second
                      << "m dist=" << dist << "m leader=" << leader.first);
             traciVehicle_->setSpeedMode(31);  // all SUMO safety checks on
@@ -1247,24 +1584,55 @@ bool RaftAppBase::hasPassedIntersectionEdge() const
 
 void RaftAppBase::calculateWayOfSight()
 {
+    // Step 1: determine actual laneIndex from the road this vehicle is currently on.
+    // The approach edge list is indexed 0-3 and maps to the 4 intersection directions.
+    if (traciVehicle_) {
+        try {
+            std::string roadId = traciVehicle_->getRoadId();
+            // If on a junction internal edge, fall back to the cached approach edge for
+            // lane index determination (vehicle may have slipped through a short approach lane).
+            const std::string& lookupRoad = (!roadId.empty() && roadId[0] == ':')
+                                            ? intersectionEdge_ : roadId;
+            for (int i = 0; i < (int)approachEdgeList_.size(); i++) {
+                if (approachEdgeList_[i] == lookupRoad) {
+                    myLaneIndex_ = i;
+                    break;
+                }
+            }
+        } catch (...) {}
+
+        // Step 2: use TraCI leader to determine physical queue position.
+        // A vehicle is "first in lane" (wayOfSight=true) when no one is in front.
+        try {
+            auto leader = traciVehicle_->getLeader(intersectionStopDistance_ * 4.0);
+            if (leader.first.empty()) {
+                wayOfSight_         = true;
+                vehicleInFrontOfMe_ = -1;
+            } else {
+                wayOfSight_         = false;
+                vehicleInFrontOfMe_ = -1;  // SUMO ID can't be directly mapped to OMNeT++ index
+            }
+            std::cout << simTime() << " [DBG][V" << myId_ << "] WOS_CALC"
+                      << " laneIdx=" << myLaneIndex_
+                      << " wos=" << wayOfSight_
+                      << " traciLeader=" << (leader.first.empty() ? "NONE" : leader.first)
+                      << " gap=" << leader.second << std::endl;
+        } catch (...) {
+            wayOfSight_         = true;
+            vehicleInFrontOfMe_ = -1;
+        }
+        return;
+    }
+
+    // Fallback: no TraCI yet — use module-index formula (less accurate).
     int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
     int positionInLane  = myId_ % vehiclesPerSide;
-
     if (positionInLane == 0) {
-        wayOfSight_ = true;
+        wayOfSight_         = true;
         vehicleInFrontOfMe_ = -1;
     } else {
-        int laneStartId = (myId_ / vehiclesPerSide) * vehiclesPerSide;
+        wayOfSight_         = true;
         vehicleInFrontOfMe_ = -1;
-        wayOfSight_ = true;
-        for (int pos = positionInLane - 1; pos >= 0; pos--) {
-            int other = laneStartId + pos;
-            if (activeVehicles_.count(other)) {
-                vehicleInFrontOfMe_ = other;
-                wayOfSight_ = false;
-                break;
-            }
-        }
     }
 }
 
@@ -1293,6 +1661,12 @@ void RaftAppBase::stopVehicle()
 void RaftAppBase::resumeMovement()
 {
     if (!traciVehicle_ || hasPassedIntersection_) return;
+    std::cout << simTime() << " [DBG][V" << myId_ << "] RESUME_MOVEMENT called"
+              << " hasStopped=" << hasStoppedAtIntersection_
+              << " myBatch=" << myBatch_
+              << " curBatch=" << currentBatch_
+              << " isLeader=" << isLeader_
+              << " fallback=" << isFallbackMode_ << std::endl;
     timeStartedMoving_ = NOW;
     RAFT_LOG("RESUMING movement");
     try {
@@ -1309,6 +1683,13 @@ void RaftAppBase::resumeMovement()
 
 void RaftAppBase::onBecameLeader()
 {
+    std::cout << simTime() << " [DBG][V" << myId_ << "] BECAME LEADER term="
+              << raft_get_current_term(raftServer_)
+              << " stopped=" << hasStoppedAtIntersection_
+              << " committed=" << hasCommittedOrder_
+              << " activeVehicles=[";
+    for (int v : activeVehicles_) std::cout << v << " ";
+    std::cout << "]" << std::endl;
     RAFT_LOG("BECAME LEADER (term=" << raft_get_current_term(raftServer_) << ")");
     wasElectedLeader_     = true;
     timeElected_          = NOW;
@@ -1336,10 +1717,31 @@ void RaftAppBase::handleFallback()
     isFallbackMode_     = true;
     coordinationMethod_ = "fallback";
     timeOrderCommitted_ = NOW;
+    std::cout << simTime() << " [DBG][V" << myId_ << "] FALLBACK ACTIVATED"
+              << " wos=" << wayOfSight_
+              << " frontVeh=" << vehicleInFrontOfMe_
+              << " failedElections=" << failedElectionCount_
+              << " stopped=" << hasStoppedAtIntersection_
+              << " committed=" << hasCommittedOrder_
+              << " isLeader=" << isLeader_ << std::endl;
     RAFT_LOG("FALLBACK MODE activated");
     if (wayOfSight_ || vehicleInFrontOfMe_ == -1
         || !activeVehicles_.count(vehicleInFrontOfMe_)) {
         resumeMovement();
+    } else {
+        // Vehicle is queued behind another. Estimate queue position from lane layout
+        // (vehiclesPerSide vehicles per approach) and stagger departure to avoid
+        // simultaneous movement into the intersection.
+        // Also handles the all-fallback deadlock: when everyone falls back at once,
+        // activeVehicles_ still contains all vehicles so nobody would resume without
+        // this timer. Staggered by 2 s per position so only the front vehicle goes first.
+        int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
+        int posInLane       = myId_ % vehiclesPerSide;
+        int delayMs         = fallbackWaitMinMs_ + posInLane * 2000;
+        RAFT_LOG("FALLBACK queued (pos=" << posInLane << ") — forced resume in " << delayMs << "ms");
+        scheduleOneshotMs(delayMs, [this]() {
+            if (!hasPassedIntersection_) resumeMovement();
+        });
     }
 }
 

@@ -86,6 +86,8 @@ void WillemtRaftWaveApplication::initialize(int stage)
             fallbackWaitMaxMs_        = par("fallbackWaitMaxMs").intValue();
             passConfirmationMs_       = par("passConfirmationMs").intValue();
             statusCollectionTimeoutMs_ = par("statusCollectionTimeoutMs").intValue();
+            discoveryWaitMs_          = par("discoveryWaitMs").intValue();
+            clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
             intersectionStopDistance_ = par("intersectionStopDistance").doubleValue();
             arrivalWaitTimeMs_        = par("arrivalWaitTimeMs").intValue();
             clusterTriggerDistance_   = par("clusterTriggerDistance").doubleValue();
@@ -97,6 +99,18 @@ void WillemtRaftWaveApplication::initialize(int stage)
 
         parseEdgeParametersFromNed();
 
+        // Ghost vehicle: SUMO recycled a vehicle slot after the original N vehicles
+        // completed their routes.  myId_ >= totalVehicles_ means this module should
+        // not participate in RAFT cluster formation or channel communication.
+        // It may still drive through the intersection naturally via SUMO; we just
+        // don't start any timers so it stays silent on the RAFT protocol layer.
+        if (myId_ >= totalVehicles_) {
+            std::cout << simTime() << " [DBG] Ghost vehicle V" << myId_
+                      << " (totalVehicles=" << totalVehicles_ << ") — skipping RAFT init"
+                      << std::endl;
+            return;  // do not schedule checkTimer, discoveryTimer, or raftPeriodicTimer
+        }
+
         int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
         int sideIndex       = myId_ / vehiclesPerSide;
         int posInLane       = myId_ % vehiclesPerSide;
@@ -106,7 +120,7 @@ void WillemtRaftWaveApplication::initialize(int stage)
             int dirIndex = sideIndex % (int)approachEdgeList_.size();
             myLane_ = approachEdgeList_[dirIndex];
         }
-        static const char* routeNames[] = {"rW","rS","rE","rN"};
+        static const char* routeNames[] = {"rN","rS","rE","rW"};  // North,South,East,West (N/W swapped)
         myRoute_ = routeNames[sideIndex % 4];
 
         vehicleInFrontOfMe_ = (posInLane > 0) ? myId_ - 1 : -1;
@@ -170,6 +184,14 @@ void WillemtRaftWaveApplication::handlePositionUpdate(cObject* obj)
         if (mobility_) {
             traci_        = mobility_->getCommandInterface();
             traciVehicle_ = mobility_->getVehicleCommandInterface();
+            // Print SUMO↔OMNeT++ vehicle ID mapping once at first position update
+            try {
+                std::string sumoId = mobility_->getExternalId();
+                std::cout << simTime() << " [DBG] OMNeT++_V" << myId_
+                          << " <=> SUMO_" << sumoId
+                          << " laneIdx=" << myLaneIndex_
+                          << " route=" << myRoute_ << std::endl;
+            } catch (...) {}
         }
     }
 }
@@ -188,14 +210,21 @@ void WillemtRaftWaveApplication::handleSelfMsg(cMessage* msg)
     }
     else if (msg == discoveryTimer_) {
         // Broadcast a beacon and check if we should form a cluster
+        // Only send beacons and trigger formation after stopping at intersection
         if (clusterPhase_ == PHASE_DISCOVERY) {
-            sendDiscoveryBeacon();
-            checkClusterTrigger();
+            if (hasStoppedAtIntersection_) {
+                sendDiscoveryBeacon();
+                checkClusterTrigger();
+            }
         } else if (clusterPhase_ == PHASE_COORDINATION && !hasPassedIntersection_) {
             sendDiscoveryBeacon();
             broadcastClusterExists();
         }
-        scheduleAt(simTime() + uniform(0, discoveryBeaconInterval_), discoveryTimer_);
+        // During RAFT coordination, fire beacons rarely so RAFT messages have the channel
+        double nextBeacon = (clusterPhase_ == PHASE_COORDINATION)
+                            ? 2.0
+                            : uniform(0, discoveryBeaconInterval_);
+        scheduleAt(simTime() + nextBeacon, discoveryTimer_);
     }
     else if (msg == raftPeriodicTimer_) {
         processRaftPeriodic();
@@ -302,7 +331,12 @@ void WillemtRaftWaveApplication::onWSM(BaseFrame1609_4* frame)
             break;
         case benchmark::COORD_VEHICLE_LEFT:
         case benchmark::COORD_VEHICLE_LEFT_REBROADCAST:
-            if (payload.size() >= sizeof(VehicleLeftEntry)) {
+            if (payload.size() >= sizeof(VehicleLeftEntry) + 1) {
+                VehicleLeftEntry e;
+                memcpy(&e, payload.data(), sizeof(e));
+                int ttl = static_cast<int>(payload[sizeof(VehicleLeftEntry)]);
+                handleVehicleLeftGossip(e.vehicleId, e.batchId, ttl);
+            } else if (payload.size() >= sizeof(VehicleLeftEntry)) {
                 VehicleLeftEntry e;
                 memcpy(&e, payload.data(), sizeof(e));
                 handleVehicleLeft(e.vehicleId);
