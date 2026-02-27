@@ -75,13 +75,13 @@
       "cluster_formed": 20343.9,
       "elected": 0.0,
       "order_committed": 21523.9,
-      "started_moving": 22400.4,
+      "started_moving": 22400.6,
       "passed": 23300.0
     },
     "durations_ms": {
       "raft_decision_time": 1180.0,
       "total_wait_time": 10200.0,
-      "transit_time": 899.6,
+      "transit_time": 899.4,
       "throughput": 0.1
     },
     "messages": {
@@ -107,13 +107,13 @@
       "cluster_formed": 20717.2,
       "elected": 0.0,
       "order_committed": 21537.2,
-      "started_moving": 22400.4,
+      "started_moving": 22400.6,
       "passed": 23300.0
     },
     "durations_ms": {
       "raft_decision_time": 820.0,
       "total_wait_time": 9800.0,
-      "transit_time": 899.6,
+      "transit_time": 899.4,
       "throughput": 0.1
     },
     "messages": {

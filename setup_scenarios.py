@@ -297,22 +297,26 @@ def generate_launchd(output_path, net_file="osm.net.xml"):
 
 
 def generate_config_xml(output_path):
-    """Generate radio propagation config for WAVE/802.11p."""
+    """Generate radio propagation config for WAVE/802.11p (CH178 = 5.89 GHz, publication-quality)."""
     content = '''<?xml version="1.0" encoding="UTF-8"?>
 <root>
-    <!-- Path Loss: Log-Distance model for urban intersection (NLOS) -->
-    <!-- Alpha = 2.8 per Winner+ B1 urban micro-cell model -->
+    <!-- Path Loss: Log-Distance NLOS (alpha=2.75 Winner+ B1 urban) -->
     <AnalogueModel type="SimplePathlossModel">
-        <parameter name="alpha" type="double" value="2.0"/>
+        <parameter name="alpha" type="double" value="2.75"/>
         <parameter name="carrierFrequency" type="double" value="5.890e9"/>
     </AnalogueModel>
     
-    <!-- Decider: SNIR-based packet delivery for 802.11p -->
-    <!-- Sensitivity: -85 dBm for 10 MHz @ 6 Mbps (QPSK 1/2) -->
+    <!-- Lognormal Shadowing: sigma=4dB, correlationDist=5m -->
+    <AnalogueModel type="LogNormalShadowing">
+        <parameter name="sigma" type="double" value="4.0"/>
+        <parameter name="correlationDist" type="double" value="5.0"/>
+    </AnalogueModel>
+    
+    <!-- Decider: SNIR-based, sensitivity -88 dBm (standards-aligned 10 MHz @ 6 Mbps) -->
     <Decider type="Decider80211p">
         <parameter name="centerFrequency" type="double" value="5.890e9"/>
         <parameter name="bandwidth" type="double" value="10e6"/>
-        <parameter name="sensitivity" type="double" value="-85.0"/>
+        <parameter name="sensitivity" type="double" value="-88.0"/>
     </Decider>
     
     <Antenna type="AntennaPosition">
@@ -327,10 +331,10 @@ def generate_config_xml(output_path):
 
 
 def generate_ned_inet(output_path, pkg_name):
-    """Generate NED file for UDP/INET simulation."""
+    """Generate NED file for UDP/INET simulation (DimensionalRadio, SNIR-based)."""
     content = f'''package {pkg_name};
 
-import inet.physicallayer.ieee80211.packetlevel.Ieee80211ScalarRadioMedium;
+import inet.physicallayer.ieee80211.packetlevel.Ieee80211DimensionalRadioMedium;
 import benchmark.veins_inet.VeinsInetManager;
 import inet.networklayer.configurator.ipv4.Ipv4NetworkConfigurator;
 
@@ -339,7 +343,7 @@ network IntersectionScenarioInet
     parameters:
         @display("bgb=800,600");
     submodules:
-        radioMedium: Ieee80211ScalarRadioMedium {{
+        radioMedium: Ieee80211DimensionalRadioMedium {{
             @display("p=50,50");
         }}
         manager: VeinsInetManager {{
@@ -382,6 +386,10 @@ network = IntersectionScenarioInet
 sim-time-limit = 300s
 debug-on-errors = true
 cmdenv-express-mode = true
+cmdenv-autoflush = true
+print-undisposed = false
+**.scalar-recording = false
+**.vector-recording = false
 
 # Veins-INET manager
 *.manager.updateInterval = 0.1s
@@ -413,17 +421,30 @@ cmdenv-express-mode = true
 *.node[*].app[0].fallbackWaitMinMs = 100
 *.node[*].app[0].fallbackWaitMaxMs = 300
 *.node[*].app[0].passConfirmationMs = 300
-*.node[*].app[0].statusCollectionTimeoutMs = 200
+*.node[*].app[0].statusCollectionTimeoutMs = 800
 
-# Wi-Fi
+# IEEE 802.11a (DimensionalRadio, ad-hoc, SNIR-based, CH36)
 *.node[*].wlan[0].typename = "Ieee80211Interface"
-*.node[*].wlan[0].radio.typename = "Ieee80211ScalarRadio"
-*.node[*].wlan[0].radio.transmitter.communicationRange = 500m
-*.node[*].wlan[0].radio.transmitter.power = 20mW
-*.node[*].wlan[0].mac.dcf.channelAccess.cwMin = 7
-*.node[*].wlan[0].radio.receiver.sensitivity = -85dBm
-*.node[*].wlan[0].radio.centerFrequency = 5.9GHz
-*.node[*].wlan[0].radio.bandwidth = 10MHz
+*.node[*].wlan[0].radio.typename = "Ieee80211DimensionalRadio"
+*.node[*].wlan[0].mgmt.typename = "Ieee80211MgmtAdhoc"
+*.node[*].wlan[0].radio.bandName = "5 GHz"
+*.node[*].wlan[0].radio.channelNumber = 36
+*.node[*].wlan[0].radio.centerFrequency = 5.18GHz
+*.node[*].wlan[0].radio.bandwidth = 20MHz
+*.node[*].wlan[0].radio.transmitter.power = 200mW
+*.node[*].wlan[0].radio.transmitter.modeSet = "ieee80211a"
+*.node[*].wlan[0].radio.transmitter.mode = "OFDM-6Mbps"
+*.node[*].wlan[0].radio.receiver.sensitivity = -82dBm
+*.node[*].wlan[0].radio.receiver.noiseFigure = 10dB
+*.node[*].wlan[0].bitrate = 6Mbps
+*.node[*].wlan[0].mac.dcf.channelAccess.cwMin = 15
+*.node[*].wlan[0].mac.dcf.channelAccess.cwMax = 1023
+
+# Radio medium + path loss (LogNormalShadowing, sigma=4dB)
+*.radioMedium.typename = "Ieee80211DimensionalRadioMedium"
+*.radioMedium.pathLoss.typename = "LogNormalShadowing"
+*.radioMedium.pathLoss.alpha = 2.75
+*.radioMedium.pathLoss.sigma = 4
 '''
     with open(output_path, 'w') as f:
         f.write(content)
@@ -474,9 +495,9 @@ print-undisposed = false
 *.connectionManager.maxInterfDist = 2600m
 *.connectionManager.drawMaxIntfDist = false
 
-# MAC 1609.4
+# MAC 1609.4 (OBU-class 200 mW)
 *.**.nic.mac1609_4.useServiceChannel = false
-*.**.nic.mac1609_4.txPower = 100mW
+*.**.nic.mac1609_4.txPower = 200mW
 *.**.nic.mac1609_4.bitrate = 6Mbps
 
 # RAFT Application
@@ -496,17 +517,17 @@ print-undisposed = false
 *.node[*].appl.passConfirmationMs = 300
 *.node[*].appl.statusCollectionTimeoutMs = 800
 
-# 802.11p NIC
+# 802.11p NIC (OBU-class 200 mW, kTB=-104dBm, effective floor -94dBm)
 *.node[*].nic.phy80211p.analogueModels = xmldoc("config.xml", "//AnalogueModel")
 *.node[*].nic.phy80211p.decider = xmldoc("config.xml", "//Decider")
-*.node[*].nic.phy80211p.sensitivity = -85dBm
+*.node[*].nic.phy80211p.sensitivity = -88dBm
 *.node[*].nic.phy80211p.maxTXPower = 200mW
 *.node[*].nic.phy80211p.useThermalNoise = true
-*.node[*].nic.phy80211p.thermalNoise = -110dBm
+*.node[*].nic.phy80211p.thermalNoise = -104dBm
 *.node[*].nic.phy80211p.useNoiseFloor = true
-*.node[*].nic.phy80211p.noiseFloor = -98dBm
+*.node[*].nic.phy80211p.noiseFloor = -94dBm
 *.node[*].nic.phy80211p.usePropagationDelay = true
-*.node[*].nic.phy80211p.minPowerLevel = -110dBm
+*.node[*].nic.phy80211p.minPowerLevel = -94dBm
 '''
     with open(output_path, 'w') as f:
         f.write(content)

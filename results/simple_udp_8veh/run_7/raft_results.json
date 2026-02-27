@@ -170,19 +170,19 @@
       "stopped": 17100.0,
       "cluster_formed": 24101.8,
       "elected": 0.0,
-      "order_committed": 38321.8,
-      "started_moving": 38321.8,
-      "passed": 39200.0
+      "order_committed": 38921.8,
+      "started_moving": 38921.8,
+      "passed": 39800.0
     },
     "durations_ms": {
-      "raft_decision_time": 14220.0,
-      "total_wait_time": 22100.0,
+      "raft_decision_time": 14820.0,
+      "total_wait_time": 22700.0,
       "transit_time": 878.2,
       "throughput": 0.0
     },
     "messages": {
-      "sent": 197,
-      "received": 450
+      "sent": 198,
+      "received": 451
     },
     "raft_stats": {
       "election_rounds": 15,
@@ -203,21 +203,21 @@
       "cluster_formed": 22289.6,
       "elected": 0.0,
       "order_committed": 22649.6,
-      "started_moving": 39200.2,
-      "passed": 40100.0
+      "started_moving": 39800.4,
+      "passed": 40700.0
     },
     "durations_ms": {
       "raft_decision_time": 360.0,
-      "total_wait_time": 24900.0,
-      "transit_time": 899.8,
+      "total_wait_time": 25500.0,
+      "transit_time": 899.6,
       "throughput": 0.0
     },
     "messages": {
-      "sent": 173,
-      "received": 463
+      "sent": 178,
+      "received": 466
     },
     "raft_stats": {
-      "election_rounds": 17,
+      "election_rounds": 18,
       "entries_proposed": 0,
       "entries_committed": 1,
       "my_batch": 3
@@ -234,19 +234,19 @@
       "stopped": 19300.0,
       "cluster_formed": 26444.1,
       "elected": 0.0,
-      "order_committed": 40664.1,
-      "started_moving": 40664.1,
-      "passed": 41500.0
+      "order_committed": 41264.1,
+      "started_moving": 41264.1,
+      "passed": 42100.0
     },
     "durations_ms": {
-      "raft_decision_time": 14220.0,
-      "total_wait_time": 22200.0,
+      "raft_decision_time": 14820.0,
+      "total_wait_time": 22800.0,
       "transit_time": 835.9,
       "throughput": 0.0
     },
     "messages": {
       "sent": 251,
-      "received": 461
+      "received": 464
     },
     "raft_stats": {
       "election_rounds": 15,

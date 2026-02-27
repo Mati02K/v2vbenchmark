@@ -234,13 +234,13 @@
       "stopped": 19300.0,
       "cluster_formed": 26475.0,
       "elected": 0.0,
-      "order_committed": 40695.0,
-      "started_moving": 40695.0,
-      "passed": 41500.0
+      "order_committed": 41295.0,
+      "started_moving": 41295.0,
+      "passed": 42100.0
     },
     "durations_ms": {
-      "raft_decision_time": 14220.0,
-      "total_wait_time": 22200.0,
+      "raft_decision_time": 14820.0,
+      "total_wait_time": 22800.0,
       "transit_time": 805.0,
       "throughput": 0.0
     },

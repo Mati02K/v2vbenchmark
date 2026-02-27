@@ -24,17 +24,13 @@
     </AnalogueModel>
 
     <!-- Decider: SNIR-based packet delivery for 802.11p 10 MHz @ 6 Mbps
-         Sensitivity = -92 dBm:
-           Thermal noise floor kTB(10 MHz) ≈ -104 dBm
-           NF (receiver) ≈ 10 dB  → noise = -94 dBm
-           Required Eb/N0 (BPSK 1/2 OFDM) ≈ 5 dB min SNIR + 3 dB link margin
-           → sensitivity ≈ -94 + 3 = -91 → round to -92 dBm (conservative)
+         Sensitivity = -88 dBm (standards-aligned for 10 MHz @ 6 Mbps)
          centerFrequency = 5.89e9 Hz (CH178, control channel)
          bandwidth       = 10e6 Hz  (ITS-G5 / 802.11p channel width) -->
     <Decider type="Decider80211p">
         <parameter name="centerFrequency" type="double" value="5.89e9"/>
         <parameter name="bandwidth"       type="double" value="10e6"/>
-        <parameter name="sensitivity"     type="double" value="-92.0"/>
+        <parameter name="sensitivity"     type="double" value="-88.0"/>
     </Decider>
 
     <!-- Antenna: vehicle roof-mount

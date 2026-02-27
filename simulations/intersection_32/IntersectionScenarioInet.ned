@@ -1,6 +1,6 @@
 package intersection_32;
 
-import inet.physicallayer.ieee80211.packetlevel.Ieee80211ScalarRadioMedium;
+import inet.physicallayer.ieee80211.packetlevel.Ieee80211DimensionalRadioMedium;
 import benchmark.veins_inet.VeinsInetManager;
 import inet.networklayer.configurator.ipv4.Ipv4NetworkConfigurator;
 
@@ -9,7 +9,7 @@ network IntersectionScenarioInet
     parameters:
         @display("bgb=800,600");
     submodules:
-        radioMedium: Ieee80211ScalarRadioMedium {
+        radioMedium: Ieee80211DimensionalRadioMedium {
             @display("p=50,50");
         }
         manager: VeinsInetManager {

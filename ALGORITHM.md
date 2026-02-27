@@ -14,9 +14,13 @@
 | `intersectionStopDistance` | 5 m |
 | `discoveryWaitMs` | 5000 ms |
 | `clusterFormationDelayMs` | 2000 ms |
+| UDP channel | CH36 (5.18 GHz 802.11a) |
+| WAVE channel | CH178 (5.89 GHz 802.11p CCH) |
 | Cluster formation | 7 s after first vehicle stops |
 | Throughput formula | N_raft / (last_raft_passed − first_raft_start) |
-| UDP receiver sensitivity | -92 dBm (matched to WAVE) |
+| UDP receiver sensitivity | -82 dBm (802.11a 20 MHz @ 6 Mbps) |
+| WAVE sensitivity | -88 dBm (802.11p 10 MHz @ 6 Mbps) |
+| Transmit power (both) | 200 mW (23 dBm, OBU-class) |
 | Merge rule | Incoming cluster must be strictly larger |
 
 ---
@@ -45,7 +49,7 @@
 | Aspect | UDP (`WillemtRaftApplication`) | WAVE (`WillemtRaftWaveApplication`) |
 |--------|-------------------------------|-------------------------------------|
 | **Base class** | `VeinsInetApplicationBase` | `DemoBaseApplLayer` |
-| **Radio** | IEEE 802.11a, 5 GHz, INET UdpSocket | IEEE 802.11p, 5.9 GHz DSRC, Veins WSM |
+| **Radio** | IEEE 802.11a, CH36 (5.18 GHz), INET UdpSocket | IEEE 802.11p, CH178 (5.89 GHz) DSRC, Veins WSM |
 | **Unicast** | `UdpSocket::sendTo(packet, destAddr, port)` | `sendDirect()` or `sendDown()` with dest MAC |
 | **Broadcast** | `UdpSocket::sendTo(packet, broadcast, port)` | `sendWSM()` with broadcast MAC |
 | **Packet type** | INET `Packet` with `UdpHeader` + `BytesChunk` | Veins `RaftWaveMessage` (WSM subclass) |
@@ -586,9 +590,10 @@ Fallback ensures vehicles never deadlock — they always eventually move, even w
 
 | Characteristic | UDP (802.11a) | WAVE (802.11p) |
 |----------------|--------------|----------------|
-| **Frequency** | 5 GHz | 5.9 GHz (DSRC band) |
+| **Channel / Frequency** | CH36 = 5.18 GHz (802.11a UNII-1) | CH178 = 5.89 GHz (DSRC CCH) |
 | **Bandwidth** | 20 MHz | 10 MHz |
-| **Receiver sensitivity** | -92 dBm (matched to WAVE) | -92 dBm |
+| **Tx power** | 200 mW (23 dBm, OBU-class) | 200 mW (23 dBm, OBU-class) |
+| **Receiver sensitivity** | -82 dBm (802.11a std) | -88 dBm (802.11p std) |
 | **Standard** | IEEE 802.11a | IEEE 802.11p |
 | **RAFT logic** | Identical (in RaftAppBase) | Identical (in RaftAppBase) |
 | **Beacon during RAFT** | 2.0 s | 2.0 s |
@@ -596,7 +601,7 @@ Fallback ensures vehicles never deadlock — they always eventually move, even w
 | **RAFT time (8 veh)** | ~9.4 s | ~6.5 s (WAVE faster) |
 | **RAFT time (16 veh)** | ~12.1 s | ~14.5 s (UDP faster: 20 MHz vs 10 MHz at high load) |
 
-**Scaling behaviour:** At 4–8 vehicles, WAVE’s 10 dB better effective sensitivity (vs older -82 dBm UDP) helped connectivity across opposite approaches (~350 m). UDP sensitivity was raised to -92 dBm to match. At 16 vehicles, channel capacity matters more—UDP’s 20 MHz outperforms WAVE’s 10 MHz.
+**Scaling behaviour:** At 4–8 vehicles, WAVE’s 10 dB better effective sensitivity (vs older -82 dBm UDP) helped connectivity across opposite approaches (~350 m). Both use standards-aligned sensitivity (UDP -82 dBm, WAVE -88 dBm) and matched OBU power (200 mW). At 16 vehicles, channel capacity matters more—UDP’s 20 MHz outperforms WAVE’s 10 MHz.
 
 ### Cluster Merge Rule
 
