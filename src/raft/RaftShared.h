@@ -1,6 +1,6 @@
 #pragma once
 // RaftShared.h — Shared structs, enums and constants for RAFT intersection applications
-// Included by both WillemtRaftApplication (UDP) and WillemtRaftWaveApplication (WAVE)
+// Included by both UdpRaftApplication (UDP) and WaveRaftApplication (WAVE)
 
 #include <cstdint>
 #include <cstring>

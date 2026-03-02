@@ -33,8 +33,8 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 OBJS = \
     $O/raft/RaftAppBase.o \
     $O/raft/RaftMetrics.o \
-    $O/raft/WillemtRaftApplication.o \
-    $O/raft/WillemtRaftWaveApplication.o \
+    $O/raft/UdpRaftApplication.o \
+    $O/raft/WaveRaftApplication.o \
     $O/veins_inet/VeinsInetApplicationBase.o \
     $O/veins_inet/VeinsInetManager.o \
     $O/veins_inet/VeinsInetManagerBase.o \

@@ -9,23 +9,23 @@
     "timestamps_ms": {
       "stopped": 12900.0,
       "cluster_formed": 20004.5,
-      "elected": 22764.5,
-      "order_committed": 22784.5,
-      "started_moving": 22784.5,
-      "passed": 23600.0
+      "elected": 23124.5,
+      "order_committed": 23144.5,
+      "started_moving": 23144.5,
+      "passed": 24000.0
     },
     "durations_ms": {
-      "raft_decision_time": 2780.0,
-      "total_wait_time": 10700.0,
-      "transit_time": 815.5,
+      "raft_decision_time": 3140.0,
+      "total_wait_time": 11100.0,
+      "transit_time": 855.5,
       "throughput": 0.1
     },
     "messages": {
-      "sent": 223,
-      "received": 392
+      "sent": 224,
+      "received": 400
     },
     "raft_stats": {
-      "election_rounds": 6,
+      "election_rounds": 4,
       "entries_proposed": 1,
       "entries_committed": 1,
       "my_batch": 0
@@ -40,21 +40,21 @@
     "transport": "wave",
     "timestamps_ms": {
       "stopped": 11300.0,
-      "cluster_formed": 18437.9,
+      "cluster_formed": 20006.0,
       "elected": 0.0,
-      "order_committed": 22957.9,
-      "started_moving": 22957.9,
-      "passed": 23800.0
+      "order_committed": 23317.9,
+      "started_moving": 23317.9,
+      "passed": 24200.0
     },
     "durations_ms": {
-      "raft_decision_time": 4520.0,
-      "total_wait_time": 12500.0,
-      "transit_time": 842.1,
+      "raft_decision_time": 3311.9,
+      "total_wait_time": 12900.0,
+      "transit_time": 882.1,
       "throughput": 0.1
     },
     "messages": {
-      "sent": 163,
-      "received": 362
+      "sent": 166,
+      "received": 361
     },
     "raft_stats": {
       "election_rounds": 6,
@@ -72,24 +72,24 @@
     "transport": "wave",
     "timestamps_ms": {
       "stopped": 13300.0,
-      "cluster_formed": 20453.7,
+      "cluster_formed": 20311.6,
       "elected": 0.0,
-      "order_committed": 22953.7,
-      "started_moving": 23803.9,
-      "passed": 24700.0
+      "order_committed": 23311.6,
+      "started_moving": 24204.4,
+      "passed": 25100.0
     },
     "durations_ms": {
-      "raft_decision_time": 2500.0,
-      "total_wait_time": 11400.0,
-      "transit_time": 896.1,
+      "raft_decision_time": 3000.0,
+      "total_wait_time": 11800.0,
+      "transit_time": 895.6,
       "throughput": 0.1
     },
     "messages": {
-      "sent": 133,
-      "received": 396
+      "sent": 134,
+      "received": 402
     },
     "raft_stats": {
-      "election_rounds": 6,
+      "election_rounds": 4,
       "entries_proposed": 0,
       "entries_committed": 1,
       "my_batch": 1
@@ -104,21 +104,21 @@
     "transport": "wave",
     "timestamps_ms": {
       "stopped": 14500.0,
-      "cluster_formed": 21577.1,
+      "cluster_formed": 21583.1,
       "elected": 0.0,
-      "order_committed": 22957.1,
-      "started_moving": 23803.9,
-      "passed": 24700.0
+      "order_committed": 23323.1,
+      "started_moving": 24204.4,
+      "passed": 25100.0
     },
     "durations_ms": {
-      "raft_decision_time": 1380.0,
-      "total_wait_time": 10200.0,
-      "transit_time": 896.1,
+      "raft_decision_time": 1740.0,
+      "total_wait_time": 10600.0,
+      "transit_time": 895.6,
       "throughput": 0.1
     },
     "messages": {
-      "sent": 125,
-      "received": 393
+      "sent": 128,
+      "received": 400
     },
     "raft_stats": {
       "election_rounds": 2,
@@ -136,27 +136,59 @@
     "transport": "wave",
     "timestamps_ms": {
       "stopped": 15600.0,
-      "cluster_formed": 22768.3,
+      "cluster_formed": 22718.2,
       "elected": 0.0,
-      "order_committed": 22968.3,
-      "started_moving": 24702.7,
-      "passed": 25700.0
+      "order_committed": 23318.2,
+      "started_moving": 25103.5,
+      "passed": 26100.0
     },
     "durations_ms": {
-      "raft_decision_time": 200.0,
-      "total_wait_time": 10100.0,
-      "transit_time": 997.3,
+      "raft_decision_time": 600.0,
+      "total_wait_time": 10500.0,
+      "transit_time": 996.5,
       "throughput": 0.1
     },
     "messages": {
-      "sent": 138,
-      "received": 415
+      "sent": 137,
+      "received": 424
     },
     "raft_stats": {
       "election_rounds": 3,
       "entries_proposed": 0,
       "entries_committed": 1,
       "my_batch": 2
+    }
+  },
+  {
+    "vehicle_id": 7,
+    "lane": "N2C",
+    "route": "rW",
+    "was_leader": false,
+    "coordination_method": "fallback",
+    "transport": "wave",
+    "timestamps_ms": {
+      "stopped": 19300.0,
+      "cluster_formed": 26449.4,
+      "elected": 0.0,
+      "order_committed": 41263.0,
+      "started_moving": 41263.0,
+      "passed": 42100.0
+    },
+    "durations_ms": {
+      "raft_decision_time": 14813.6,
+      "total_wait_time": 22800.0,
+      "transit_time": 837.0,
+      "throughput": 0.0
+    },
+    "messages": {
+      "sent": 280,
+      "received": 514
+    },
+    "raft_stats": {
+      "election_rounds": 16,
+      "entries_proposed": 0,
+      "entries_committed": 0,
+      "my_batch": -1
     }
   },
   {
@@ -168,24 +200,24 @@
     "transport": "wave",
     "timestamps_ms": {
       "stopped": 17100.0,
-      "cluster_formed": 24199.0,
+      "cluster_formed": 26447.2,
       "elected": 0.0,
-      "order_committed": 39019.0,
-      "started_moving": 39019.0,
-      "passed": 39900.0
+      "order_committed": 41250.4,
+      "started_moving": 41250.4,
+      "passed": 42100.0
     },
     "durations_ms": {
-      "raft_decision_time": 14820.0,
-      "total_wait_time": 22800.0,
-      "transit_time": 881.0,
+      "raft_decision_time": 14803.2,
+      "total_wait_time": 25000.0,
+      "transit_time": 849.6,
       "throughput": 0.0
     },
     "messages": {
-      "sent": 260,
-      "received": 483
+      "sent": 227,
+      "received": 491
     },
     "raft_stats": {
-      "election_rounds": 16,
+      "election_rounds": 17,
       "entries_proposed": 0,
       "entries_committed": 0,
       "my_batch": -1
@@ -200,59 +232,27 @@
     "transport": "wave",
     "timestamps_ms": {
       "stopped": 15200.0,
-      "cluster_formed": 22217.1,
+      "cluster_formed": 22440.0,
       "elected": 0.0,
-      "order_committed": 22957.1,
-      "started_moving": 39904.0,
-      "passed": 40800.0
+      "order_committed": 23309.4,
+      "started_moving": 41309.4,
+      "passed": 42200.0
     },
     "durations_ms": {
-      "raft_decision_time": 740.0,
-      "total_wait_time": 25600.0,
-      "transit_time": 896.0,
+      "raft_decision_time": 869.4,
+      "total_wait_time": 27000.0,
+      "transit_time": 890.6,
       "throughput": 0.0
     },
     "messages": {
-      "sent": 195,
-      "received": 491
+      "sent": 205,
+      "received": 523
     },
     "raft_stats": {
       "election_rounds": 18,
       "entries_proposed": 0,
       "entries_committed": 1,
       "my_batch": 3
-    }
-  },
-  {
-    "vehicle_id": 7,
-    "lane": "N2C",
-    "route": "rW",
-    "was_leader": false,
-    "coordination_method": "fallback",
-    "transport": "wave",
-    "timestamps_ms": {
-      "stopped": 19300.0,
-      "cluster_formed": 26363.6,
-      "elected": 0.0,
-      "order_committed": 41183.6,
-      "started_moving": 41183.6,
-      "passed": 42000.0
-    },
-    "durations_ms": {
-      "raft_decision_time": 14820.0,
-      "total_wait_time": 22700.0,
-      "transit_time": 816.4,
-      "throughput": 0.0
-    },
-    "messages": {
-      "sent": 186,
-      "received": 480
-    },
-    "raft_stats": {
-      "election_rounds": 15,
-      "entries_proposed": 0,
-      "entries_committed": 0,
-      "my_batch": -1
     }
   }
 ]

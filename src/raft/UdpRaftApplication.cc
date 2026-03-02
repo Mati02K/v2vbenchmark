@@ -1,12 +1,12 @@
-// WillemtRaftApplication.cc — UDP/INET transport subclass of RaftAppBase
+// UdpRaftApplication.cc — UDP/INET transport subclass of RaftAppBase
 // ~400 lines: only startApplication, stopApplication, processPacket,
-//             sendRaftUnicast, sendRaftBroadcast, getDistanceToJunction,
+//             sendRaftToPeer, sendRaftBroadcast, getDistanceToJunction,
 //             scheduleOneshotMs, and UDP-specific RAFT message handlers.
 //
 // All cluster formation, RAFT callbacks, serialization, coordination,
 // batch scheduling, intersection detection, and metrics live in RaftAppBase.cc
 
-#include "raft/WillemtRaftApplication.h"
+#include "raft/UdpRaftApplication.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -19,22 +19,22 @@ extern "C" {
 
 using namespace inet;
 
-Define_Module(WillemtRaftApplication);
+Define_Module(UdpRaftApplication);
 
 // ============ CONSTRUCTOR / DESTRUCTOR ============
 
-WillemtRaftApplication::WillemtRaftApplication()
+UdpRaftApplication::UdpRaftApplication()
 {
     transportName_ = "udp";
     memset(&committedPassOrder_, 0, sizeof(committedPassOrder_));
     memset(&committedSchedule_,  0, sizeof(committedSchedule_));
 }
 
-WillemtRaftApplication::~WillemtRaftApplication() {}
+UdpRaftApplication::~UdpRaftApplication() {}
 
 // ============ EDGE PARAMETER PARSING (reads OMNeT++ par()) ============
 
-void WillemtRaftApplication::parseEdgeParametersFromNed()
+void UdpRaftApplication::parseEdgeParametersFromNed()
 {
     auto splitTrim = [](const std::string& s, char delim,
                         std::vector<std::string>& out,
@@ -65,7 +65,7 @@ void WillemtRaftApplication::parseEdgeParametersFromNed()
 
 // ============ APPLICATION START ============
 
-bool WillemtRaftApplication::startApplication()
+bool UdpRaftApplication::startApplication()
 {
     std::cout << "Vehicle RAFT (UDP) starting application." << std::endl;
     myId_         = getParentModule()->getIndex();
@@ -89,6 +89,7 @@ bool WillemtRaftApplication::startApplication()
     statusCollectionTimeoutMs_ = par("statusCollectionTimeoutMs").intValue();
     discoveryWaitMs_          = par("discoveryWaitMs").intValue();
     clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
+    mergeCooldownMs_         = par("mergeCooldownMs").intValue();
 
     parseEdgeParametersFromNed();
 
@@ -137,12 +138,12 @@ bool WillemtRaftApplication::startApplication()
     return true;
 }
 
-bool WillemtRaftApplication::stopApplication()
+bool UdpRaftApplication::stopApplication()
 {
     return true;
 }
 
-void WillemtRaftApplication::finish()
+void UdpRaftApplication::finish()
 {
     if (!metricsWritten_ && RaftMetrics::isOpen() && hasStoppedAtIntersection_) {
         if (timeStartedMoving_ == SIMTIME_ZERO) timeStartedMoving_ = simTime();
@@ -164,7 +165,7 @@ void WillemtRaftApplication::finish()
     VeinsInetApplicationBase::finish();
 }
 
-void WillemtRaftApplication::handleMessageWhenUp(cMessage* msg)
+void UdpRaftApplication::handleMessageWhenUp(cMessage* msg)
 {
     if (msg == checkTimer_) {
         checkAndStopAtIntersection();
@@ -175,20 +176,15 @@ void WillemtRaftApplication::handleMessageWhenUp(cMessage* msg)
             scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
     }
     else if (msg == discoveryTimer_) {
-        if (clusterPhase_ == PHASE_DISCOVERY) {
-            if (hasStoppedAtIntersection_) {
-                sendDiscoveryBeacon();
+        if (!hasPassedIntersection_) {
+            sendClusterInvitation();
+            if (clusterPhase_ == PHASE_DISCOVERY && hasStoppedAtIntersection_)
                 checkClusterTrigger();
-            }
-        } else if (clusterPhase_ == PHASE_COORDINATION && !hasPassedIntersection_) {
-            sendDiscoveryBeacon();
-            broadcastClusterExists();
+            else if (clusterPhase_ == PHASE_COORDINATION)
+                broadcastClusterExists();
         }
-        // During RAFT coordination, fire beacons rarely so RAFT messages have the channel
-        double nextBeacon = (clusterPhase_ == PHASE_COORDINATION)
-                            ? 2.0
-                            : uniform(0, discoveryBeaconInterval_);
-        scheduleAt(simTime() + nextBeacon, discoveryTimer_);
+        double nextInterval = (clusterPhase_ == PHASE_COORDINATION) ? 2.0 : uniform(0, discoveryBeaconInterval_);
+        scheduleAt(simTime() + nextInterval, discoveryTimer_);
     }
     else if (msg == raftPeriodicTimer_) {
         if (raftServer_ && !hasPassedIntersection_ && !isFallbackMode_)
@@ -219,7 +215,7 @@ void WillemtRaftApplication::handleMessageWhenUp(cMessage* msg)
 
 // ============ PACKET PROCESSING ============
 
-void WillemtRaftApplication::processPacket(std::shared_ptr<Packet> pk)
+void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
 {
     if (hasPassedIntersection_) return;
 
@@ -274,7 +270,9 @@ void WillemtRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             handleVehicleLeft((int)bytes[0]);
         }
     }
-    // Discovery
+    // Discovery / cluster invitation
+    else if (pktName.find("cluster-invitation") != std::string::npos)
+        handleClusterInvitation(bytes, extractSenderFromPacketName(pktName));
     else if (pktName.find("discovery-beacon") != std::string::npos) {
         int senderId = extractSenderFromPacketName(pktName);
         if (senderId != myId_ && bytes.size() >= sizeof(int) + 1) {
@@ -289,18 +287,20 @@ void WillemtRaftApplication::processPacket(std::shared_ptr<Packet> pk)
         handleClusterForm(bytes, extractSenderFromPacketName(pktName));
     else if (pktName.find("cluster-exists") != std::string::npos)
         handleClusterExists(bytes, extractSenderFromPacketName(pktName));
+    else if (pktName.find("late-join-order") != std::string::npos)
+        handleLateJoinOrder(bytes, extractSenderFromPacketName(pktName));
 }
 
 // ============ PACKET NAME HELPERS ============
 
-int WillemtRaftApplication::extractTargetFromPacketName(const std::string& n)
+int UdpRaftApplication::extractTargetFromPacketName(const std::string& n)
 {
     size_t p = n.rfind("-to-");
     if (p == std::string::npos) return -1;
     try { return std::stoi(n.substr(p + 4)); } catch (...) { return -1; }
 }
 
-int WillemtRaftApplication::extractSenderFromPacketName(const std::string& n)
+int UdpRaftApplication::extractSenderFromPacketName(const std::string& n)
 {
     size_t fromPos = n.find("-from-");
     if (fromPos == std::string::npos) return -1;
@@ -311,7 +311,7 @@ int WillemtRaftApplication::extractSenderFromPacketName(const std::string& n)
 
 // ============ TRANSPORT IMPLEMENTATION ============
 
-void WillemtRaftApplication::sendRaftUnicast(int targetVehicleId, int msgType,
+void UdpRaftApplication::sendRaftToPeer(int targetVehicleId, int msgType,
                                               const std::vector<uint8_t>& data)
 {
     // Build packet name from msgType (we map numeric types back to names for clarity)
@@ -322,6 +322,7 @@ void WillemtRaftApplication::sendRaftUnicast(int targetVehicleId, int msgType,
         case 0x22: name << "raft-appendentries-from-"       << myId_ << "-to-" << targetVehicleId; break;
         case 0x23: name << "raft-appendentries-response-from-" << myId_ << "-node-" << myRaftNodeId_ << "-to-" << targetVehicleId; break;
         case 0x31: name << "coord-status-response-from-"    << myId_ << "-to-" << targetVehicleId; break;
+        case 0x40: name << "late-join-order-from-"         << myId_ << "-to-" << targetVehicleId; break;
         default:   name << "raft-msg-" << msgType << "-from-" << myId_ << "-to-" << targetVehicleId; break;
     }
 
@@ -332,12 +333,13 @@ void WillemtRaftApplication::sendRaftUnicast(int targetVehicleId, int msgType,
     messagesSent_++;
 }
 
-void WillemtRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_t>& data)
+void UdpRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_t>& data)
 {
     std::ostringstream name;
     switch (msgType) {
         case 0x10: name << "discovery-beacon-from-" << myId_; break;
         case 0x11: name << "cluster-form-from-"     << myId_ << "-broadcast"; break;
+        case 0x13: name << "cluster-invitation-from-" << myId_ << "-broadcast"; break;
         case 0x30: name << "coord-status-request-from-" << myId_ << "-broadcast"; break;
         case 0x33: name << "coord-vehicle-passed-from-" << myId_ << "-broadcast"; break;
         case 0x34: name << "coord-vehicle-left-from-"   << myId_ << "-broadcast"; break;
@@ -352,7 +354,7 @@ void WillemtRaftApplication::sendRaftBroadcast(int msgType, const std::vector<ui
     messagesSent_++;
 }
 
-double WillemtRaftApplication::getDistanceToJunction() const
+double UdpRaftApplication::getDistanceToJunction() const
 {
     if (!traciVehicle_) return 999999.0;
     try {
@@ -364,7 +366,7 @@ double WillemtRaftApplication::getDistanceToJunction() const
     } catch (...) { return 999999.0; }
 }
 
-void WillemtRaftApplication::scheduleOneshotMs(double delayMs, std::function<void()> fn)
+void UdpRaftApplication::scheduleOneshotMs(double delayMs, std::function<void()> fn)
 {
     omnetpp::cMessage* msg = new omnetpp::cMessage("oneshotTimer");
     oneshotTimers_.push_back(msg);
@@ -372,21 +374,21 @@ void WillemtRaftApplication::scheduleOneshotMs(double delayMs, std::function<voi
     scheduleAt(simTime() + (delayMs / 1000.0), msg);
 }
 
-void WillemtRaftApplication::onClusterFormed()
+void UdpRaftApplication::onClusterFormed()
 {
     if (raftPeriodicTimer_ && !raftPeriodicTimer_->isScheduled()) {
         scheduleAt(simTime() + RAFT_PERIODIC_INTERVAL, raftPeriodicTimer_);
     }
 }
 
-double WillemtRaftApplication::getRandomDouble(double lo, double hi)
+double UdpRaftApplication::getRandomDouble(double lo, double hi)
 {
     return uniform(lo, hi);
 }
 
 // ============ UDP-SPECIFIC RAFT MESSAGE HANDLERS ============
 
-void WillemtRaftApplication::handleRequestVote(const std::vector<uint8_t>& data,
+void UdpRaftApplication::handleRequestVote(const std::vector<uint8_t>& data,
                                                 const std::string& pktName)
 {
     if (!raftServer_) return;
@@ -399,11 +401,11 @@ void WillemtRaftApplication::handleRequestVote(const std::vector<uint8_t>& data,
     if (raft_recv_requestvote(raftServer_, node, &msg, &resp) == 0) {
         int senderVehicleId = msg.candidate_id - 1;
         auto respData = serializeRequestVoteResponse(&resp);
-        sendRaftUnicast(senderVehicleId, 0x21, respData);
+        sendRaftToPeer(senderVehicleId, 0x21, respData);
     }
 }
 
-void WillemtRaftApplication::handleRequestVoteResponse(const std::vector<uint8_t>& data,
+void UdpRaftApplication::handleRequestVoteResponse(const std::vector<uint8_t>& data,
                                                         const std::string& pktName)
 {
     if (!raftServer_) return;
@@ -420,7 +422,7 @@ void WillemtRaftApplication::handleRequestVoteResponse(const std::vector<uint8_t
     } catch (...) {}
 }
 
-void WillemtRaftApplication::handleAppendEntries(const std::vector<uint8_t>& data,
+void UdpRaftApplication::handleAppendEntries(const std::vector<uint8_t>& data,
                                                   const std::string& pktName)
 {
     if (!raftServer_) return;
@@ -442,12 +444,12 @@ void WillemtRaftApplication::handleAppendEntries(const std::vector<uint8_t>& dat
         msg_appendentries_response_t resp;
         raft_recv_appendentries(raftServer_, node, &msg, &resp);
         auto respData = serializeAppendEntriesResponse(&resp);
-        sendRaftUnicast(senderVehicleId, 0x23, respData);
+        sendRaftToPeer(senderVehicleId, 0x23, respData);
     }
     if (msg.entries) delete[] msg.entries;
 }
 
-void WillemtRaftApplication::handleAppendEntriesResponse(const std::vector<uint8_t>& data,
+void UdpRaftApplication::handleAppendEntriesResponse(const std::vector<uint8_t>& data,
                                                           const std::string& pktName)
 {
     if (!raftServer_) return;

@@ -63,7 +63,7 @@ if [ ! -d "$SIM_DIR" ]; then
     exit 1
 fi
 
-APP_TYPE="WillemtRaftWaveApplication"
+APP_TYPE="WaveRaftApplication"
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  RAFT over WAVE Multi-Run Benchmark${NC}"

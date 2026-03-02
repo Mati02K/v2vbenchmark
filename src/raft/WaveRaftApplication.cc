@@ -1,12 +1,12 @@
-// WillemtRaftWaveApplication.cc — WAVE/802.11p transport subclass of RaftAppBase
+// WaveRaftApplication.cc — WAVE/802.11p transport subclass of RaftAppBase
 // ~350 lines: only initialize, finish, onWSM, handleSelfMsg, handlePositionUpdate,
-//             sendRaftUnicast, sendRaftBroadcast, getDistanceToJunction,
+//             sendRaftToPeer, sendRaftBroadcast, getDistanceToJunction,
 //             scheduleOneshotMs, and WAVE WSM message dispatch.
 //
 // All cluster formation, RAFT callbacks, serialization, coordination,
 // batch scheduling, intersection detection, and metrics live in RaftAppBase.cc
 
-#include "raft/WillemtRaftWaveApplication.h"
+#include "raft/WaveRaftApplication.h"
 #include "raft/RaftWaveMessage_m.h"
 #include "veins/modules/mobility/traci/TraCIScenarioManager.h"
 #include <iostream>
@@ -19,25 +19,25 @@ extern "C" {
 
 using namespace veins;
 
-Define_Module(WillemtRaftWaveApplication);
+Define_Module(WaveRaftApplication);
 
 // ============ STATIC MEMBERS ============
-bool WillemtRaftWaveApplication::isGlobalInitialized_ = false;
+bool WaveRaftApplication::isGlobalInitialized_ = false;
 
 // ============ CONSTRUCTOR / DESTRUCTOR ============
 
-WillemtRaftWaveApplication::WillemtRaftWaveApplication()
+WaveRaftApplication::WaveRaftApplication()
 {
     transportName_ = "wave";
     memset(&committedPassOrder_, 0, sizeof(committedPassOrder_));
     memset(&committedSchedule_,  0, sizeof(committedSchedule_));
 }
 
-WillemtRaftWaveApplication::~WillemtRaftWaveApplication() {}
+WaveRaftApplication::~WaveRaftApplication() {}
 
 // ============ EDGE PARAMETER PARSING (reads OMNeT++ par()) ============
 
-void WillemtRaftWaveApplication::parseEdgeParametersFromNed()
+void WaveRaftApplication::parseEdgeParametersFromNed()
 {
     auto splitTrim = [](const std::string& s, char delim,
                         std::vector<std::string>& out,
@@ -68,7 +68,7 @@ void WillemtRaftWaveApplication::parseEdgeParametersFromNed()
 
 // ============ INITIALIZATION ============
 
-void WillemtRaftWaveApplication::initialize(int stage)
+void WaveRaftApplication::initialize(int stage)
 {
     DemoBaseApplLayer::initialize(stage);
 
@@ -88,6 +88,7 @@ void WillemtRaftWaveApplication::initialize(int stage)
             statusCollectionTimeoutMs_ = par("statusCollectionTimeoutMs").intValue();
             discoveryWaitMs_          = par("discoveryWaitMs").intValue();
             clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
+            mergeCooldownMs_         = par("mergeCooldownMs").intValue();
             intersectionStopDistance_ = par("intersectionStopDistance").doubleValue();
             arrivalWaitTimeMs_        = par("arrivalWaitTimeMs").intValue();
             clusterTriggerDistance_   = par("clusterTriggerDistance").doubleValue();
@@ -147,7 +148,7 @@ void WillemtRaftWaveApplication::initialize(int stage)
     }
 }
 
-void WillemtRaftWaveApplication::finish()
+void WaveRaftApplication::finish()
 {
     if (!metricsWritten_ && RaftMetrics::isOpen() && hasStoppedAtIntersection_) {
         if (timeStartedMoving_ == SIMTIME_ZERO) timeStartedMoving_ = simTime();
@@ -176,7 +177,7 @@ void WillemtRaftWaveApplication::finish()
 
 // ============ POSITION UPDATE ============
 
-void WillemtRaftWaveApplication::handlePositionUpdate(cObject* obj)
+void WaveRaftApplication::handlePositionUpdate(cObject* obj)
 {
     DemoBaseApplLayer::handlePositionUpdate(obj);
     if (!mobility_) {
@@ -198,7 +199,7 @@ void WillemtRaftWaveApplication::handlePositionUpdate(cObject* obj)
 
 // ============ SELF MESSAGE HANDLING ============
 
-void WillemtRaftWaveApplication::handleSelfMsg(cMessage* msg)
+void WaveRaftApplication::handleSelfMsg(cMessage* msg)
 {
     if (msg == checkTimer_) {
         checkAndStopAtIntersection();
@@ -209,22 +210,15 @@ void WillemtRaftWaveApplication::handleSelfMsg(cMessage* msg)
             scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
     }
     else if (msg == discoveryTimer_) {
-        // Broadcast a beacon and check if we should form a cluster
-        // Only send beacons and trigger formation after stopping at intersection
-        if (clusterPhase_ == PHASE_DISCOVERY) {
-            if (hasStoppedAtIntersection_) {
-                sendDiscoveryBeacon();
+        if (!hasPassedIntersection_) {
+            sendClusterInvitation();
+            if (clusterPhase_ == PHASE_DISCOVERY && hasStoppedAtIntersection_)
                 checkClusterTrigger();
-            }
-        } else if (clusterPhase_ == PHASE_COORDINATION && !hasPassedIntersection_) {
-            sendDiscoveryBeacon();
-            broadcastClusterExists();
+            else if (clusterPhase_ == PHASE_COORDINATION)
+                broadcastClusterExists();
         }
-        // During RAFT coordination, fire beacons rarely so RAFT messages have the channel
-        double nextBeacon = (clusterPhase_ == PHASE_COORDINATION)
-                            ? 2.0
-                            : uniform(0, discoveryBeaconInterval_);
-        scheduleAt(simTime() + nextBeacon, discoveryTimer_);
+        double nextInterval = (clusterPhase_ == PHASE_COORDINATION) ? 2.0 : uniform(0, discoveryBeaconInterval_);
+        scheduleAt(simTime() + nextInterval, discoveryTimer_);
     }
     else if (msg == raftPeriodicTimer_) {
         processRaftPeriodic();
@@ -232,20 +226,6 @@ void WillemtRaftWaveApplication::handleSelfMsg(cMessage* msg)
             scheduleAt(simTime() + RAFT_PERIODIC_INTERVAL, raftPeriodicTimer_);
     }
     else if (strcmp(msg->getName(), "oneshotTimer") == 0) {
-        // OneshotMsg is a cMessage subclass that carries a std::function callback.
-        // We use dynamic_cast via a locally-defined type trick: since the type is
-        // defined in scheduleOneshotMs, we re-define the same layout here.
-        // Safer: store the callback index in setKind() and use parallel vector.
-        // For correctness we use reinterpret approach via function stored in msg object.
-        // The msg was created by scheduleOneshotMs as a cMessage with extra data.
-        // We use a static helper cast approach:
-        struct OneshotPayload {
-            std::function<void()> cb;
-        };
-        // The OneshotMsg in scheduleOneshotMs has the same memory layout. We delete
-        // the msg only AFTER calling the callback to avoid use-after-free.
-        // Since we cannot cross-function dynamic_cast a locally defined struct,
-        // we use a workaround: store the callback in a static map keyed by msg ptr.
         auto it = oneshotCallbacks_.find(msg);
         if (it != oneshotCallbacks_.end()) {
             std::cout << std::fixed << std::setprecision(1) << (simTime().dbl()*1000.0)
@@ -268,7 +248,7 @@ void WillemtRaftWaveApplication::handleSelfMsg(cMessage* msg)
 
 // ============ WSM HANDLING ============
 
-void WillemtRaftWaveApplication::onWSM(BaseFrame1609_4* frame)
+void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
 {
     if (hasPassedIntersection_) return;
 
@@ -290,6 +270,9 @@ void WillemtRaftWaveApplication::onWSM(BaseFrame1609_4* frame)
     messagesReceived_++;
 
     switch (msgType) {
+        case benchmark::CLUSTER_INVITATION:
+            handleClusterInvitation(payload, senderId);
+            break;
         case benchmark::DISCOVERY_BEACON: {
             uint8_t senderPhase = (payload.size() >= sizeof(int)+1) ? payload[sizeof(int)] : 0;
             if (senderPhase == PHASE_DISCOVERY)
@@ -329,6 +312,9 @@ void WillemtRaftWaveApplication::onWSM(BaseFrame1609_4* frame)
         case benchmark::COORD_VEHICLE_PASSED:
             if (payload.size() >= 1) handleVehiclePassed((int)payload[0]);
             break;
+        case benchmark::LATE_JOIN_ORDER:
+            handleLateJoinOrder(payload, senderId);
+            break;
         case benchmark::COORD_VEHICLE_LEFT:
         case benchmark::COORD_VEHICLE_LEFT_REBROADCAST:
             if (payload.size() >= sizeof(VehicleLeftEntry) + 1) {
@@ -349,7 +335,7 @@ void WillemtRaftWaveApplication::onWSM(BaseFrame1609_4* frame)
 
 // ============ WAVE RAFT MESSAGE SEND HELPERS ============
 
-void WillemtRaftWaveApplication::sendRaftMessage(int msgType, int targetId,
+void WaveRaftApplication::sendRaftMessage(int msgType, int targetId,
                                                   const std::vector<uint8_t>& data)
 {
     benchmark::RaftWaveMessage* wsm = new benchmark::RaftWaveMessage();
@@ -365,25 +351,25 @@ void WillemtRaftWaveApplication::sendRaftMessage(int msgType, int targetId,
     messagesSent_++;
 }
 
-void WillemtRaftWaveApplication::broadcastRaftMessage(int msgType, const std::vector<uint8_t>& data)
+void WaveRaftApplication::broadcastRaftMessage(int msgType, const std::vector<uint8_t>& data)
 {
     sendRaftMessage(msgType, -1, data);
 }
 
 // ============ TRANSPORT IMPLEMENTATION (RaftAppBase pure virtuals) ============
 
-void WillemtRaftWaveApplication::sendRaftUnicast(int targetVehicleId, int msgType,
+void WaveRaftApplication::sendRaftToPeer(int targetVehicleId, int msgType,
                                                   const std::vector<uint8_t>& data)
 {
     sendRaftMessage(msgType, targetVehicleId, data);
 }
 
-void WillemtRaftWaveApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_t>& data)
+void WaveRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_t>& data)
 {
     sendRaftMessage(msgType, -1, data);
 }
 
-double WillemtRaftWaveApplication::getDistanceToJunction() const
+double WaveRaftApplication::getDistanceToJunction() const
 {
     if (!traciVehicle_) return 999999.0;
     try {
@@ -396,7 +382,7 @@ double WillemtRaftWaveApplication::getDistanceToJunction() const
     } catch (...) { return 999999.0; }
 }
 
-void WillemtRaftWaveApplication::onClusterFormed()
+void WaveRaftApplication::onClusterFormed()
 {
     // WAVE requires explicit starting of the periodic RAFT processing
     if (raftPeriodicTimer_ && !raftPeriodicTimer_->isScheduled()) {
@@ -404,12 +390,12 @@ void WillemtRaftWaveApplication::onClusterFormed()
     }
 }
 
-double WillemtRaftWaveApplication::getRandomDouble(double lo, double hi)
+double WaveRaftApplication::getRandomDouble(double lo, double hi)
 {
     return uniform(lo, hi);
 }
 
-void WillemtRaftWaveApplication::scheduleOneshotMs(double delayMs, std::function<void()> fn)
+void WaveRaftApplication::scheduleOneshotMs(double delayMs, std::function<void()> fn)
 {
     cMessage* tmsg = new cMessage("oneshotTimer");
     std::cout << std::fixed << std::setprecision(1) << (simTime().dbl()*1000.0) 
@@ -421,7 +407,7 @@ void WillemtRaftWaveApplication::scheduleOneshotMs(double delayMs, std::function
 
 // ============ WAVE-SPECIFIC RAFT MESSAGE HANDLERS ============
 
-void WillemtRaftWaveApplication::handleRequestVote(const std::vector<uint8_t>& data, int senderId)
+void WaveRaftApplication::handleRequestVote(const std::vector<uint8_t>& data, int senderId)
 {
     msg_requestvote_t msg;
     deserializeRequestVote(data, &msg);
@@ -431,14 +417,14 @@ void WillemtRaftWaveApplication::handleRequestVote(const std::vector<uint8_t>& d
     sendRaftMessage(benchmark::RAFT_REQUEST_VOTE_RESPONSE, senderId, respData);
 }
 
-void WillemtRaftWaveApplication::handleRequestVoteResponse(const std::vector<uint8_t>& data, int senderId)
+void WaveRaftApplication::handleRequestVoteResponse(const std::vector<uint8_t>& data, int senderId)
 {
     msg_requestvote_response_t msg;
     deserializeRequestVoteResponse(data, &msg);
     raft_recv_requestvote_response(raftServer_, raft_get_node(raftServer_, senderId+1), &msg);
 }
 
-void WillemtRaftWaveApplication::handleAppendEntries(const std::vector<uint8_t>& data, int senderId)
+void WaveRaftApplication::handleAppendEntries(const std::vector<uint8_t>& data, int senderId)
 {
     msg_appendentries_t msg;
     deserializeAppendEntries(data, &msg);
@@ -455,7 +441,7 @@ void WillemtRaftWaveApplication::handleAppendEntries(const std::vector<uint8_t>&
     sendRaftMessage(benchmark::RAFT_APPEND_ENTRIES_RESPONSE, senderId, respData);
 }
 
-void WillemtRaftWaveApplication::handleAppendEntriesResponse(const std::vector<uint8_t>& data, int senderId)
+void WaveRaftApplication::handleAppendEntriesResponse(const std::vector<uint8_t>& data, int senderId)
 {
     msg_appendentries_response_t msg;
     deserializeAppendEntriesResponse(data, &msg);

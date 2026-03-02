@@ -406,8 +406,8 @@ print-undisposed = false
 
 # RAFT Application
 *.node[*].numApps = 1
-*.node[*].app[0].typename = "WillemtRaftApplication"
-*.node[*].app[0].middleware.typename = "benchmark.raft.WillemtRaftApplication"
+*.node[*].app[0].typename = "UdpRaftApplication"
+        *.node[*].app[0].middleware.typename = "benchmark.raft.UdpRaftApplication"
 *.node[*].app[0].totalVehicles = {num_vehicles}
 *.node[*].app[0].approachEdges = "{approach_str}"
 *.node[*].app[0].exitEdges = "{exit_str}"
@@ -501,7 +501,7 @@ print-undisposed = false
 *.**.nic.mac1609_4.bitrate = 6Mbps
 
 # RAFT Application
-*.node[*].applType = "benchmark.raft.WillemtRaftWaveApplication"
+*.node[*].applType = "benchmark.raft.WaveRaftApplication"
 *.node[*].appl.totalVehicles = {num_vehicles}
 *.node[*].appl.approachEdges = "{approach_str}"
 *.node[*].appl.exitEdges = "{exit_str}"

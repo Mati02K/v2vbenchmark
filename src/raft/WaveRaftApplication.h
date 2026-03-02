@@ -1,5 +1,5 @@
 #pragma once
-// WillemtRaftWaveApplication.h — WAVE/802.11p transport subclass of RaftAppBase
+// WaveRaftApplication.h — WAVE/802.11p transport subclass of RaftAppBase
 // Only contains WAVE-specific transport glue; all shared logic is in RaftAppBase.
 
 #include "veins/modules/application/ieee80211p/DemoBaseApplLayer.h"
@@ -10,13 +10,13 @@
 
 using namespace veins;
 
-class WillemtRaftWaveApplication
+class WaveRaftApplication
     : public DemoBaseApplLayer
     , public RaftAppBase
 {
 public:
-    WillemtRaftWaveApplication();
-    virtual ~WillemtRaftWaveApplication();
+    WaveRaftApplication();
+    virtual ~WaveRaftApplication();
 
 protected:
     // OMNeT++ application lifecycle (Veins)
@@ -61,7 +61,7 @@ private:
     void handleAppendEntriesResponse(const std::vector<uint8_t>&, int senderId);
 
     // ── RaftAppBase pure-virtual implementations ───────────────────────
-    void sendRaftUnicast(int targetVehicleId,
+    void sendRaftToPeer(int targetVehicleId,
                          int msgType,
                          const std::vector<uint8_t>& data) override;
     virtual void sendRaftBroadcast(int msgType, const std::vector<uint8_t>& data) override;

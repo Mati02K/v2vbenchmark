@@ -57,6 +57,9 @@ def calculate_metrics_from_runs(runs_data):
         'wait_time': [],
         'transit_time': [],
         'messages_sent': [],
+        'messages_received': [],
+        'delivery_ratio': [],      # heuristic: received / (sent * (N-1)), 1 = perfect
+        'estimated_loss_rate': [],  # 1 - delivery_ratio
         'fallback_rate': [],   # fraction of vehicles per run that used fallback
     }
 
@@ -66,9 +69,11 @@ def calculate_metrics_from_runs(runs_data):
 
         num_vehicles = len(run_data)
 
-        # RAFT decision time = leader election + decision writing to quorum
-        # Defined as: max(order_committed) - min(cluster_formed)
-        # Cluster formation is NOT part of RAFT timing (it precedes RAFT).
+        # RAFT decision time = time from first cluster form to consensus (all vehicles have decision).
+        # Excludes late-joiner receive delay: use only RAFT vehicles in main cluster.
+        # Late joiners (coordination_method=raft with order_committed from LATE_JOIN) now store
+        # the main cluster's consensus time, so max(order_committed) reflects real commit.
+        # Fallback: cap outlier per-vehicle (order-cluster) > 20s as likely stale metric.
         raft_commits = [v['timestamps_ms'].get('order_committed', 0) for v in run_data
                        if v.get('coordination_method') != 'fallback' and v['timestamps_ms'].get('order_committed', 0) > 0]
         cluster_formed_times = [v['timestamps_ms'].get('cluster_formed', 0) for v in run_data
@@ -101,10 +106,22 @@ def calculate_metrics_from_runs(runs_data):
         metrics['fallback_rate'].append(fallback_count / num_vehicles if num_vehicles > 0 else 0)
 
         # Per-vehicle metrics
+        total_sent = sum(vehicle['messages']['sent'] for vehicle in run_data)
+        total_received = sum(vehicle['messages']['received'] for vehicle in run_data)
+        metrics['messages_sent'].append(total_sent)
+        metrics['messages_received'].append(total_received)
+
+        # Heuristic for message loss (assumes broadcast-heavy: 1 send -> (N-1) ideal receives)
+        # delivery_ratio = actual / expected; <1 implies loss
+        N = num_vehicles
+        expected_received = total_sent * (N - 1) if N > 1 else total_sent
+        if expected_received > 0:
+            ratio = min(1.0, total_received / expected_received)
+            metrics['delivery_ratio'].append(ratio)
+            metrics['estimated_loss_rate'].append(1.0 - ratio)
         for vehicle in run_data:
             metrics['wait_time'].append(vehicle['durations_ms']['total_wait_time'])
             metrics['transit_time'].append(vehicle['durations_ms']['transit_time'])
-            metrics['messages_sent'].append(vehicle['messages']['sent'])
 
     # Calculate mean and std for each metric
     result = {}
@@ -201,7 +218,10 @@ def main():
                         'wait_time': stats.get('total_wait_time', {'mean': 0, 'std': 0}),
                         'transit_time': stats.get('transit_time', {'mean': 0, 'std': 0}),
                         'fallback_rate': stats.get('fallback_rate', {'mean': 0, 'std': 0}),
-                        'messages_sent': stats.get('messages_sent', {'mean': 0, 'std': 0})
+                        'messages_sent': stats.get('messages_sent', {'mean': 0, 'std': 0}),
+                        'messages_received': stats.get('messages_received', {'mean': 0, 'std': 0}),
+                        'delivery_ratio': stats.get('delivery_ratio', {'mean': 0, 'std': 0}),
+                        'estimated_loss_rate': stats.get('estimated_loss_rate', {'mean': 0, 'std': 0})
                     }
     
     # Create figure: 1 row x 2 columns (RAFT Decision Time, Throughput)
@@ -280,6 +300,106 @@ def main():
     print(f"PDF version saved to: {pdf_file}")
     
     plt.close()
+
+    # --- Separate Fallback Rate plot ---
+    fig_fb, ax_fb = plt.subplots(figsize=(8, 5))
+    bar_width = 0.35
+    x = np.arange(len(vehicle_counts))
+
+    for i, protocol in enumerate(protocols):
+        means = []
+        stds = []
+        for vc in vehicle_counts:
+            if vc in data[protocol] and 'fallback_rate' in data[protocol][vc]:
+                means.append(data[protocol][vc]['fallback_rate']['mean'] * 100)
+                stds.append(data[protocol][vc]['fallback_rate']['std'] * 100)
+            else:
+                means.append(0)
+                stds.append(0)
+
+        offset = (i - 0.5) * bar_width
+        bars = ax_fb.bar(x + offset, means, bar_width, yerr=stds,
+                        label=labels[protocol], color=colors[protocol],
+                        alpha=0.8, capsize=5, edgecolor='black', linewidth=0.5)
+
+        for bar, mean in zip(bars, means):
+            if mean > 0:
+                height = bar.get_height()
+                ax_fb.text(bar.get_x() + bar.get_width()/2., height,
+                          f'{mean:.1f}%', ha='center', va='bottom', fontsize=9, fontweight='bold')
+
+    ax_fb.set_xlabel('Number of Vehicles', fontsize=11, fontweight='bold')
+    ax_fb.set_ylabel('Fallback Rate (%)', fontsize=11, fontweight='bold')
+    ax_fb.set_title('Fallback Rate: Vehicles Passing Without RAFT Consensus', fontsize=12, fontweight='bold')
+    ax_fb.set_xticks(x)
+    ax_fb.set_xticklabels([f'{vc} veh' for vc in vehicle_counts])
+    ax_fb.legend(loc='upper left')
+    ax_fb.grid(True, alpha=0.3, axis='y')
+    ax_fb.set_ylim(bottom=0)
+
+    plt.tight_layout()
+    fallback_png = os.path.join(RESULTS_DIR, 'fallbacks.png')
+    fallback_pdf = os.path.join(RESULTS_DIR, 'fallbacks.pdf')
+    fig_fb.savefig(fallback_png, dpi=150, bbox_inches='tight')
+    fig_fb.savefig(fallback_pdf, bbox_inches='tight')
+    plt.close(fig_fb)
+    print(f"Fallback plot saved to: {fallback_png}")
+
+    # --- Messages Sent/Received/Loss plot ---
+    fig_msg, axes_msg = plt.subplots(1, 3, figsize=(14, 5))
+    fig_msg.suptitle(
+        f'RAFT Intersection: Messages Sent, Received & Estimated Loss{title_note}\n'
+        'Industry-Realistic PHY: α=2.75 NLOS, LogNormal Shadowing σ=4dB, Tx=20mW, 6 Mbps',
+        fontsize=14, fontweight='bold'
+    )
+    bar_width = 0.35
+    x = np.arange(len(vehicle_counts))
+
+    msg_plot_configs = [
+        ('messages_sent', 'Messages Sent (total per run)', 'Messages', 1),
+        ('messages_received', 'Messages Received (total per run)', 'Messages', 1),
+        ('estimated_loss_rate', 'Est. Message Loss Rate (heuristic)', 'Loss Rate (%)', 100),
+    ]
+    for col, (metric, title, ylabel, scale) in enumerate(msg_plot_configs):
+        ax = axes_msg[col]
+        for i, protocol in enumerate(protocols):
+            means = []
+            stds = []
+            for vc in vehicle_counts:
+                if vc in data[protocol] and metric in data[protocol][vc]:
+                    means.append(data[protocol][vc][metric]['mean'] * scale)
+                    stds.append(data[protocol][vc][metric]['std'] * scale)
+                else:
+                    means.append(0)
+                    stds.append(0)
+
+            offset = (i - 0.5) * bar_width
+            bars = ax.bar(x + offset, means, bar_width, yerr=stds,
+                         label=labels[protocol], color=colors[protocol],
+                         alpha=0.8, capsize=5, edgecolor='black', linewidth=0.5)
+
+            for bar, mean in zip(bars, means):
+                if mean > 0 or (col == 2 and scale == 100):
+                    fmt = f'{mean:.1f}%' if scale == 100 else f'{mean:.0f}'
+                    ax.text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                            fmt, ha='center', va='bottom', fontsize=8, fontweight='bold')
+
+        ax.set_xlabel('Number of Vehicles', fontsize=11, fontweight='bold')
+        ax.set_ylabel(ylabel, fontsize=11, fontweight='bold')
+        ax.set_title(title, fontsize=12, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels([f'{vc} veh' for vc in vehicle_counts])
+        ax.legend(loc='upper left')
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_ylim(bottom=0)
+
+    plt.tight_layout()
+    messages_png = os.path.join(RESULTS_DIR, 'messages.png')
+    messages_pdf = os.path.join(RESULTS_DIR, 'messages.pdf')
+    fig_msg.savefig(messages_png, dpi=150, bbox_inches='tight')
+    fig_msg.savefig(messages_pdf, bbox_inches='tight')
+    plt.close(fig_msg)
+    print(f"Messages plot saved to: {messages_png}")
     
     # Print summary table
     print("\n" + "="*70)

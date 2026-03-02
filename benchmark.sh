@@ -64,7 +64,7 @@ if [ ! -d "$SIM_DIR" ]; then
     exit 1
 fi
 
-APP_TYPE="WillemtRaftApplication"
+APP_TYPE="UdpRaftApplication"
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  RAFT Multi-Run Benchmark${NC}"
@@ -256,6 +256,8 @@ metrics = {
     'transit_time': [],
     'messages_sent': [],
     'messages_received': [],
+    'delivery_ratio': [],
+    'estimated_loss_rate': [],
     'election_rounds': []
 }
 
@@ -295,6 +297,18 @@ for run_data in all_runs_data:
         system_throughput = 0
     metrics['throughput'].append(system_throughput)
     
+    total_sent = sum(v['messages']['sent'] for v in run_data)
+    total_received = sum(v['messages']['received'] for v in run_data)
+    N = len(run_data)
+    expected = total_sent * (N - 1) if N > 1 else total_sent
+    if expected > 0:
+        ratio = min(1.0, total_received / expected)
+        metrics['delivery_ratio'].append(ratio)
+        metrics['estimated_loss_rate'].append(1.0 - ratio)
+    else:
+        metrics['delivery_ratio'].append(1.0)
+        metrics['estimated_loss_rate'].append(0.0)
+
     for vehicle in run_data:
         metrics['total_wait_time'].append(vehicle['durations_ms']['total_wait_time'])
         metrics['transit_time'].append(vehicle['durations_ms']['transit_time'])
@@ -331,9 +345,8 @@ run_averages = {key: [] for key in metrics.keys()}
 run_idx = 0
 for run_data in all_runs_data:
     for key in metrics.keys():
-        if key == 'raft_decision_time' or key == 'total_intersection_time':
-            # These are already scenario-level (one value per run)
-            # Just use the value we already calculated
+        if key in ('raft_decision_time', 'total_intersection_time', 'delivery_ratio', 'estimated_loss_rate'):
+            # Scenario-level (one value per run)
             run_averages[key].append(metrics[key][run_idx])
         elif key == 'throughput':
             values = [v.get('throughput_veh_per_sec', 0) for v in run_data]

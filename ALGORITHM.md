@@ -2,7 +2,7 @@
 
 > Stack: **OMNeT++ 5.6.2 + INET 4.4.x + Veins + SUMO**
 > Protocols compared: **UDP over IEEE 802.11a** vs **WAVE over IEEE 802.11p**
-> Benchmark: **4, 8, 16 vehicles** | Stop distance **5 m** | Cluster wait **7 s** (5 s discovery + 2 s delay)
+> Benchmark: **4, 8, 16 vehicles** | Stop distance **5 m** | Cluster wait **5 s** (single formation window)
 
 ---
 
@@ -13,15 +13,15 @@
 | Vehicle counts | 4, 8, 16 |
 | `intersectionStopDistance` | 5 m |
 | `discoveryWaitMs` | 5000 ms |
-| `clusterFormationDelayMs` | 2000 ms |
+| `clusterFormationDelayMs` | 0 ms |
 | UDP channel | CH36 (5.18 GHz 802.11a) |
 | WAVE channel | CH178 (5.89 GHz 802.11p CCH) |
-| Cluster formation | 7 s after first vehicle stops |
+| Cluster formation | 5 s after first vehicle stops |
 | Throughput formula | N_raft / (last_raft_passed − first_raft_start) |
 | UDP receiver sensitivity | -82 dBm (802.11a 20 MHz @ 6 Mbps) |
 | WAVE sensitivity | -88 dBm (802.11p 10 MHz @ 6 Mbps) |
 | Transmit power (both) | 200 mW (23 dBm, OBU-class) |
-| Merge rule | Incoming cluster must be strictly larger |
+| Merge rule | Timestamp + clusterId: older timestamp wins; tie-break by lower clusterId |
 
 ---
 
@@ -30,8 +30,8 @@
 | File | Role |
 |------|------|
 | `src/raft/RaftAppBase.h / .cc` | **Abstract base class (~1400 lines).** Contains 100% of the shared RAFT protocol logic — cluster formation, leader election callbacks, status collection, pass-order generation, batch execution, intersection detection, fallback handling, and JSON metrics. Neither UDP nor WAVE logic lives here. |
-| `src/raft/WillemtRaftApplication.h / .cc` | **UDP subclass (~450 lines).** Extends `VeinsInetApplicationBase` (INET). Implements the 6 pure-virtual transport methods using INET `UdpSocket` on 802.11a. Handles OMNeT++ packet send/receive. |
-| `src/raft/WillemtRaftWaveApplication.h / .cc` | **WAVE subclass (~434 lines).** Extends `DemoBaseApplLayer` (Veins). Implements the same 6 virtual methods using Veins `WaveShortMessage` (WSM) on 802.11p / DSRC. Handles Veins send/receive. |
+| `src/raft/UdpRaftApplication.h / .cc` | **UDP subclass (~450 lines).** Extends `VeinsInetApplicationBase` (INET). Implements the 6 pure-virtual transport methods using INET `UdpSocket` on 802.11a. Handles OMNeT++ packet send/receive. |
+| `src/raft/WaveRaftApplication.h / .cc` | **WAVE subclass (~434 lines).** Extends `DemoBaseApplLayer` (Veins). Implements the same 6 virtual methods using Veins `WaveShortMessage` (WSM) on 802.11p / DSRC. Handles Veins send/receive. |
 | `src/raft/RaftShared.h` | **Shared structs and enums.** Defines `ClusterPhase`, `LogEntryType`, `VehicleProposal`, `PassOrderEntry`, `PassBatch`, `PassScheduleEntry`, `VehicleLeftEntry`, `CommittedSchedule`. |
 | `src/raft/RaftMetrics.h / .cc` | **JSON output collector.** Static singleton-like class. Vehicle 0 opens the results file; all vehicles append their record; the last vehicle auto-closes. |
 | `src/raft/RaftWaveMessage.msg` | **OMNeT++ message definition** for the WAVE WSM payload. Auto-generates `RaftWaveMessage_m.h/cc`. |
@@ -46,7 +46,7 @@
 
 ### Difference Between UDP and WAVE Subclasses
 
-| Aspect | UDP (`WillemtRaftApplication`) | WAVE (`WillemtRaftWaveApplication`) |
+| Aspect | UDP (`UdpRaftApplication`) | WAVE (`WaveRaftApplication`) |
 |--------|-------------------------------|-------------------------------------|
 | **Base class** | `VeinsInetApplicationBase` | `DemoBaseApplLayer` |
 | **Radio** | IEEE 802.11a, CH36 (5.18 GHz), INET UdpSocket | IEEE 802.11p, CH178 (5.89 GHz) DSRC, Veins WSM |
@@ -54,7 +54,7 @@
 | **Broadcast** | `UdpSocket::sendTo(packet, broadcast, port)` | `sendWSM()` with broadcast MAC |
 | **Packet type** | INET `Packet` with `UdpHeader` + `BytesChunk` | Veins `RaftWaveMessage` (WSM subclass) |
 | **Mobility** | `VeinsInetMobility` — wraps Veins TraCI | `TraCIMobility` — direct Veins TraCI |
-| **Discovery beacon fix** | Beacons slow to 2.0 s during `PHASE_COORDINATION` | Same fix applied |
+| **Cluster invitation** | sendClusterInvitation when `!hasPassedIntersection_`; 2.0 s during COORDINATION | Same in both |
 | **Protocol logic** | 100% in `RaftAppBase` | 100% in `RaftAppBase` |
 
 ---
@@ -80,20 +80,25 @@ At simulation start, every vehicle:
 2. Sets `clusterPhase_ = PHASE_DISCOVERY`
 3. Schedules three recurring timers:
    - **`checkTimer_`** — fires every 50 ms; drives stop detection, queue advancement, exit detection
-   - **`discoveryTimer_`** — fires every `uniform(0, discoveryBeaconInterval)` (default 0.3 s); sends peer-discovery beacons when stopped
+   - **`discoveryTimer_`** — fires every `uniform(0, discoveryBeaconInterval)` (default 0.3 s); sends CLUSTER_INVITATION when `!hasPassedIntersection_` (from startup until exit)
    - **`raftPeriodicTimer_`** — fires every 20 ms (only after cluster formed); ticks the RAFT library
 4. Adds all peer IDs (0 … N-1) to `activeVehicles_`
 
-#### Discovery Beacons
+#### Cluster Invitation (Discovery + Merge)
 
-Every beacon is a small broadcast:
+From **startup until `hasPassedIntersection_`**, vehicles send **CLUSTER_INVITATION** (replacing discovery beacons):
 
 ```
-Payload: [int32 myId][uint8 clusterPhase]
-Msg type: 0x10 (DISCOVERY_BEACON)
+Msg type: 0x13 (CLUSTER_INVITATION)
+Payload: [vehicleId:4B][clusterId:4B][timestamp:8B][numMembers:1B][member0:4B]...
 ```
 
-On receipt: add sender to `discoveredPeers_`. The cluster trigger fires after a wait (see §1b).
+- `clusterId` = min(vehicleIds) in cluster; `timestamp` = simTime at first send.
+- **Merge rule:** older timestamp wins; tie-break by lower clusterId.
+- On receipt: add members to `discoveredPeers_`, adopt winning (clusterId, timestamp).
+- **Never stop for `hasCommittedOrder_`** — broadcast continues until the vehicle leaves the intersection (enables late merges and late joiners).
+
+Legacy DISCOVERY_BEACON (0x10) is still supported but CLUSTER_INVITATION is the primary channel.
 
 #### Stopping at the Intersection
 
@@ -136,13 +141,13 @@ checkClusterTrigger() (called by discoveryTimer_ when stopped):
   Fires when ALL of:
     - hasStoppedAtIntersection_ == true
     - clusterPhase_ == PHASE_DISCOVERY
-    - (NOW - timeStopped_) >= discoveryWaitMs_ + clusterFormationDelayMs_
+    - (NOW - timeStopped_) >= discoveryWaitMs_ + clusterFormationDelayMs_  (5 s total)
 
   members = discoveredPeers_ ∪ {myId_}
   → calls formCluster(members)
 ```
 
-**Simple intersection config:** `discoveryWaitMs = 5000`, `clusterFormationDelayMs = 2000` → first vehicle waits **7 s** after stopping before forming. This gives late-arriving vehicles time to stop and exchange discovery beacons so the cluster forms with all vehicles together.
+**Simple intersection config:** `discoveryWaitMs = 5000`, `clusterFormationDelayMs = 0` → first vehicle waits **5 s** after stopping before forming. Cluster invitations are sent from startup so peers can discover each other before stopping.
 
 #### `formCluster(members)`
 
@@ -155,8 +160,8 @@ checkClusterTrigger() (called by discoveryTimer_ when stopped):
 5. Set request timeout = requestTimeoutMs_
 6. clusterPhase_ = PHASE_COORDINATION
 7. timeClusterFormed_ = NOW
-8. broadcastClusterForm()            // msg type 0x11, payload=[numMembers][id0][id1]...
-9. Schedule CLUSTER_FORM retries at +300, +700, +1200, +1800 ms (handles packet loss)
+8. broadcastClusterForm()            // msg type 0x11, payload=[clusterId][timestamp][numMembers][id0][id1]...
+9. Schedule CLUSTER_FORM/EXISTS retries at +300, +700, +1200… ms — **never stop for hasCommittedOrder_**; only stop when hasPassedIntersection_
 10. onClusterFormed() → start raftPeriodicTimer_
 ```
 
@@ -174,11 +179,11 @@ Follower state:
 
 send_requestvote callback → doSendRequestVote():
   Serialize msg_requestvote_t struct
-  sendRaftUnicast(targetId, 0x20, data)   // msg type: RAFT_REQUEST_VOTE
+  sendRaftToPeer(targetId, 0x20, data)   // msg type: RAFT_REQUEST_VOTE
 
 On receiving 0x20:
   raft_recv_requestvote(server, fromNode, &msg, &response)
-  sendRaftUnicast(fromId, 0x21, response) // msg type: RAFT_REQUEST_VOTE_RESPONSE
+  sendRaftToPeer(fromId, 0x21, response) // msg type: RAFT_REQUEST_VOTE_RESPONSE
 
 On receiving 0x21:
   raft_recv_requestvote_response(server, fromNode, &response)
@@ -392,7 +397,7 @@ electionTimeoutBaseMs = 500
 electionTimeoutJitterMs = 1000
 requestTimeoutMs = 200
 discoveryWaitMs = 5000
-clusterFormationDelayMs = 2000
+clusterFormationDelayMs = 0
 intersectionStopDistance = 5m
 ```
 
@@ -407,11 +412,11 @@ raft_set_callbacks(server, &cbs, this):
 
 cbs.send_requestvote        → doSendRequestVote(server, udata, node, msg)
   Invoked when becoming candidate; serializes msg_requestvote_t
-  → sendRaftUnicast(targetId, 0x20, data)
+  → sendRaftToPeer(targetId, 0x20, data)
 
 cbs.send_appendentries      → doSendAppendEntries(server, udata, node, msg)
   Invoked by leader every requestTimeoutMs_; serializes variable-length entries
-  → sendRaftUnicast(targetId, 0x22, data)
+  → sendRaftToPeer(targetId, 0x22, data)
 
 cbs.log_offer               → doLogOffer(server, udata, entry, entryIdx)
   Called when entry is offered to log; we always accept (return 0)
@@ -437,9 +442,10 @@ cbs.log                     → raftLog(server, udata, buf)
 
 | Hex | Name | Direction | Payload |
 |-----|------|-----------|---------|
-| `0x10` | `DISCOVERY_BEACON` | Broadcast | `[int32 myId][uint8 phase]` |
-| `0x11` | `CLUSTER_FORM` | Broadcast | `[uint8 numMembers][int32 id] × N` |
+| `0x10` | `DISCOVERY_BEACON` | Broadcast | `[int32 myId][uint8 phase]` (legacy) |
+| `0x11` | `CLUSTER_FORM` | Broadcast | `[clusterId:4B][timestamp:8B][numMembers:1B][int32 id] × N` |
 | `0x12` | `CLUSTER_EXISTS` | Broadcast | Same as CLUSTER_FORM |
+| `0x13` | `CLUSTER_INVITATION` | Broadcast | `[vehicleId][clusterId][timestamp][numMembers][members...]` — discovery/merge channel |
 | `0x20` | `RAFT_REQUEST_VOTE` | Broadcast (all vehicles receive; non-target ignores) | `msg_requestvote_t` (C struct) |
 | `0x21` | `RAFT_REQUEST_VOTE_RESPONSE` | Broadcast (same) | `msg_requestvote_response_t` |
 | `0x22` | `RAFT_APPEND_ENTRIES` | Broadcast (same) | Variable — base header + log entries |
@@ -449,8 +455,9 @@ cbs.log                     → raftLog(server, udata, buf)
 | `0x33` | `COORD_VEHICLE_PASSED` | Broadcast | `[uint8 vehicleId]` |
 | `0x34` | `COORD_VEHICLE_LEFT` | Broadcast | `struct VehicleLeftEntry {vehicleId, batchId}` |
 | `0x35` | `COORD_VEHICLE_LEFT_REBROADCAST` | Broadcast | Same as 0x34 |
+| `0x40` | `LATE_JOIN_ORDER` | Unicast (app-level) | Schedule for late joiner when main cluster has committed |
 
-**All messages in both UDP and WAVE are broadcast at the network layer.** UDP uses IP multicast address `224.0.0.1`; WAVE sets `recipientAddress = -1`. `sendRaftUnicast` is a misnomer — it sends to the same broadcast destination as `sendRaftBroadcast`. The only distinction is an application-layer `targetId` field; non-target vehicles drop the packet silently after receiving it.
+**All messages in both UDP and WAVE are broadcast at the network layer.** UDP uses IP multicast address `224.0.0.1`; WAVE sets `recipientAddress = -1`. `sendRaftToPeer` is a misnomer — it sends to the same broadcast destination as `sendRaftBroadcast`. The only distinction is an application-layer `targetId` field; non-target vehicles drop the packet silently after receiving it.
 
 ---
 
@@ -497,6 +504,141 @@ OMNeT++ (via Veins `TraCIScenarioManager`) connects to `veins_launchd` on port 9
 
 ---
 
+## 5a. Phases Flowchart
+
+The process has **4 cluster phases** plus a **fallback** path. High-level flow:
+
+```
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                         RAFT INTERSECTION COORDINATION FLOW                        │
+└─────────────────────────────────────────────────────────────────────────────────┘
+
+     ┌──────────────┐
+     │   SIM START  │
+     └──────┬───────┘
+            │
+            ▼
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  PHASE 1: DISCOVERY                                                                │
+│  • Stop at intersection (dist ≤ 5 m)                                               │
+│  • Broadcast CLUSTER_INVITATION every ~0.3 s (from startup until hasPassedIntersection_) │
+│  • Add peers to discoveredPeers_                                                   │
+│  • Wait: discoveryWaitMs (5 s) + clusterFormationDelayMs (0 s) = 5 s               │
+└──────┬────────────────────────────────────────────────────────────────────────────┘
+       │
+       │  [First vehicle stopped 7 s] → checkClusterTrigger()
+       │
+       ▼
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  PHASE 2: FORMATION (brief)                                                        │
+│  • formCluster(members)                                                            │
+│  • raft_new(), raft_add_node(), raft_set_callbacks()                               │
+│  • broadcast CLUSTER_FORM (0x11)                                                   │
+│  • Start raftPeriodicTimer (20 ms)                                                 │
+└──────┬────────────────────────────────────────────────────────────────────────────┘
+       │
+       ▼
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  PHASE 3: COORDINATION                                                              │
+│  ┌─────────────────────┐                                                           │
+│  │  3a. RAFT ELECTION   │  Follower timeout → CANDIDATE → REQUEST_VOTE → LEADER     │
+│  └──────────┬──────────┘                                                           │
+│             ▼                                                                      │
+│  ┌─────────────────────┐                                                           │
+│  │  3b. STATUS REQUEST  │  Leader sends 0x30; followers respond 0x31 (VehicleProposal)│
+│  └──────────┬──────────┘                                                           │
+│             ▼                                                                      │
+│  ┌─────────────────────┐                                                           │
+│  │  3c. PASS ORDER     │  Leader sorts by lane/wait, builds conflict-free batches  │
+│  └──────────┬──────────┘                                                           │
+│             ▼                                                                      │
+│  ┌─────────────────────┐                                                           │
+│  │  3d. RAFT REPLICATE  │  raft_recv_entry(PASS_ORDER) → APPEND_ENTRIES → commit   │
+│  └──────────┬──────────┘                                                           │
+│             ▼                                                                      │
+│  ┌─────────────────────┐                                                           │
+│  │  3e. BATCH EXECUTE   │  Batch 0: resumeMovement() now; others wait for VEHICLE_LEFT│
+│  └──────────┬──────────┘                                                           │
+└─────────────┼──────────────────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  PHASE 4: PASSED                                                                   │
+│  • checkIfLeftIntersection() → on exit edge                                         │
+│  • sendVehiclePassed (0x33), sendVehicleLeft (0x34 or RAFT entry)                  │
+│  • outputMetricsJSON(), finish()                                                   │
+└───────────────────────────────────────────────────────────────────────────────────┘
+
+     [RAFT fails: max failed elections OR global timeout]
+                              │
+                              ▼
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  FALLBACK                                                                          │
+│  • coordinationMethod_ = "fallback"                                                │
+│  • wayOfSight_ OR no blocker → resumeMovement() now                                │
+│  • Else: delay = 1000 + positionInLane × 2000 ms → resumeMovement()               │
+└───────────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Mermaid flowchart (for Markdown renderers that support it)
+
+```mermaid
+flowchart TB
+    subgraph Start
+        A[Simulation Start]
+    end
+
+    subgraph Phase1["PHASE 1: DISCOVERY"]
+        B[Stop at Intersection]
+        C[Broadcast Discovery Beacons]
+        D[Collect discoveredPeers]
+        E{Stopped 7s?}
+    end
+
+    subgraph Phase2["PHASE 2: FORMATION"]
+        F[formCluster]
+        G[raft_new, raft_add_node]
+        H[broadcast CLUSTER_FORM]
+    end
+
+    subgraph Phase3["PHASE 3: COORDINATION"]
+        I[RAFT Election]
+        J[Leader elected]
+        K[Status Request/Response]
+        L[Propose Pass Order]
+        M[RAFT Replicate]
+        N[Apply Log]
+        O[Batch Execution]
+    end
+
+    subgraph Phase4["PHASE 4: PASSED"]
+        P[Vehicle exits intersection]
+        Q[VehiclePassed, VehicleLeft]
+        R[outputMetricsJSON]
+    end
+
+    subgraph Fallback["FALLBACK"]
+        S[RAFT timeout / max retries]
+        T[resumeMovement with delay]
+    end
+
+    A --> B
+    B --> C
+    C --> D
+    D --> E
+    E -->|Yes| F
+    F --> G --> H
+    H --> I
+    I --> J
+    J --> K --> L --> M --> N --> O
+    O --> P --> Q --> R
+    I -.->|Fail| S
+    N -.->|Timeout| S
+    S --> T
+```
+
+---
+
 ## 6. Full State Transition Diagram
 
 ```
@@ -504,10 +646,10 @@ t = 0 ms
 │
 ├── PHASE_DISCOVERY
 │   ├── checkTimer (50 ms): detect stop, queue advance, exit check
-│   ├── discoveryTimer (~0.3 s): when stopped, broadcast DISCOVERY_BEACON, call checkClusterTrigger()
-│   └── receive DISCOVERY_BEACON: add to discoveredPeers_
+│   ├── discoveryTimer (~0.3 s): sendClusterInvitation when !hasPassedIntersection_; when stopped, checkClusterTrigger()
+│   └── receive CLUSTER_INVITATION / CLUSTER_FORM: add to discoveredPeers_, adopt timestamp+clusterId if incoming wins
 │
-│   [when: stopped AND (NOW - timeStopped_) >= discoveryWaitMs + clusterFormationDelayMs (7 s)]
+│   [when: stopped AND (NOW - timeStopped_) >= discoveryWaitMs + clusterFormationDelayMs (5 s)]
 │
 ├── formCluster() → PHASE_COORDINATION  (~7 s after first vehicle stops)
 │   ├── raft_new(), raft_add_node() for all members
@@ -605,4 +747,8 @@ Fallback ensures vehicles never deadlock — they always eventually move, even w
 
 ### Cluster Merge Rule
 
-When receiving `CLUSTER_EXISTS` from another cluster: merge only if the incoming cluster is **strictly larger**. Equal-sized clusters do not merge (avoids deadlock; radio partitioning is handled by fallback).
+When receiving `CLUSTER_INVITATION` or `CLUSTER_EXISTS`: merge by **timestamp + clusterId**:
+
+- **Older timestamp wins.** If timestamps equal, **lower clusterId wins**.
+- Merge only if `!hasCommittedOrder_ && !hasPassedIntersection_` and union adds new members.
+- **Continuous broadcast:** cluster invitations and CLUSTER_FORM/EXISTS retries never stop for `hasCommittedOrder_` — only when `hasPassedIntersection_`. Enables late merges and late joiners (LATE_JOIN_ORDER).

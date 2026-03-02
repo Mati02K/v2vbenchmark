@@ -3,8 +3,8 @@
 // Contains all shared state and logic; subclasses provide only transport glue.
 //
 // Derived:
-//   WillemtRaftApplication     — UDP (INET) transport
-//   WillemtRaftWaveApplication — WAVE (Veins 802.11p) transport
+//   UdpRaftApplication   — UDP (INET) transport
+//   WaveRaftApplication  — WAVE (Veins 802.11p) transport
 
 #include "raft/RaftShared.h"
 #include "raft/RaftMetrics.h"
@@ -55,6 +55,8 @@ protected:
     // ============ DISCOVERY STATE ============
     std::set<int> discoveredPeers_;
     double        discoveryBeaconInterval_;
+    int          myClusterId_;           // Initially myId_; becomes min(id) after merges (timestamp+clusterId rule)
+    double       myClusterTimestamp_;    // Initially simTime at first send; becomes min(ts) after merges
     double        clusterTriggerDistance_;
     bool          clusterFormed_;
     bool          clusterFormationScheduled_;  // guard: don't schedule formation twice
@@ -115,6 +117,7 @@ protected:
     int    statusCollectionTimeoutMs_;
     int    discoveryWaitMs_;  // Time first stopped vehicle waits before forming cluster (allows far vehicles to arrive)
     int    clusterFormationDelayMs_;  // Extra delay after first stop before any vehicle can form cluster (lets others arrive and stop)
+    int    mergeCooldownMs_;  // Minimum ms between merges to prevent merge storms
     std::string resultsFileName_;
     std::string transportName_;  // "udp" or "wave"
 
@@ -139,6 +142,7 @@ protected:
     int       logEntriesCommitted_;
     bool      metricsWritten_;
     simtime_t lastRaftPeriodicRun_;
+    simtime_t lastMergeTime_;  // When we last merged (for cooldown)
     simtime_t lastStopDebugPrint_;   // per-vehicle throttle for POS debug print
     simtime_t lastQueueDebugPrint_;  // per-vehicle throttle for QUEUE_ADV_CHECK print
     std::string prevRoadId_;         // previous road ID for transition detection
@@ -147,7 +151,7 @@ protected:
     // Subclasses implement these; everything else is in the base.
 
     /** Send a unicast RAFT message to a specific vehicle. */
-    virtual void sendRaftUnicast(int targetVehicleId,
+    virtual void sendRaftToPeer(int targetVehicleId,
                                  int msgType,
                                  const std::vector<uint8_t>& data) = 0;
 
@@ -167,6 +171,8 @@ protected:
     // Cluster formation
     void sendDiscoveryBeacon();
     void handleDiscoveryBeacon(int senderId, uint8_t senderPhase);
+    void sendClusterInvitation();
+    void handleClusterInvitation(const std::vector<uint8_t>& data, int senderId);
     void checkClusterTrigger();
     void broadcastClusterForm();
     void handleClusterForm(const std::vector<uint8_t>& data, int senderId);
@@ -175,6 +181,8 @@ protected:
     void mergeIntoLargerCluster(const std::set<int>& mergedMembers);
     void broadcastClusterExists();
     void formCluster(const std::set<int>& members);
+    void sendLateJoinOrderTo(int targetVehicleId);
+    void handleLateJoinOrder(const std::vector<uint8_t>& data, int senderId);
 
     // RAFT periodic + callbacks
     void processRaftPeriodic();

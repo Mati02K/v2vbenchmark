@@ -1,5 +1,5 @@
 #pragma once
-// WillemtRaftApplication.h — UDP/INET transport subclass of RaftAppBase
+// UdpRaftApplication.h — UDP/INET transport subclass of RaftAppBase
 // Only contains UDP-specific transport glue; all shared logic is in RaftAppBase.
 
 #include "veins_inet/VeinsInetApplicationBase.h"
@@ -8,13 +8,13 @@
 
 using namespace inet;
 
-class WillemtRaftApplication
+class UdpRaftApplication
     : public veins::VeinsInetApplicationBase
     , public RaftAppBase
 {
 public:
-    WillemtRaftApplication();
-    virtual ~WillemtRaftApplication();
+    UdpRaftApplication();
+    virtual ~UdpRaftApplication();
 
 protected:
     // OMNeT++ application lifecycle (INET)
@@ -48,7 +48,7 @@ private:
     int extractSenderFromPacketName(const std::string&);
 
     // ── RaftAppBase pure-virtual implementations ───────────────────────
-    void sendRaftUnicast(int targetVehicleId,
+    void sendRaftToPeer(int targetVehicleId,
                          int msgType,
                          const std::vector<uint8_t>& data) override;
     void sendRaftBroadcast(int msgType, const std::vector<uint8_t>& data) override;

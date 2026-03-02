@@ -1,11 +1,12 @@
 package benchmark.raft;
 
-import benchmark.veins_inet.VeinsInetApplicationBase;
+import org.car2x.veins.modules.application.ieee80211p.DemoBaseApplLayer;
 
-simple WillemtRaftApplication extends VeinsInetApplicationBase
+// RAFT intersection coordination over WAVE/802.11p transport
+simple WaveRaftApplication extends DemoBaseApplLayer
 {
     parameters:
-        @class(WillemtRaftApplication);
+        @class(WaveRaftApplication);
         
         // Vehicle configuration
         int totalVehicles = default(4);
@@ -23,16 +24,17 @@ simple WillemtRaftApplication extends VeinsInetApplicationBase
         // Pass confirmation time (milliseconds)
         int passConfirmationMs = default(300);
         
-        // Status collection timeout (milliseconds)
-        int statusCollectionTimeoutMs = default(200);
+        // Status collection timeout (milliseconds) - increased for WAVE wireless delays
+        int statusCollectionTimeoutMs = default(1000);
         
         // Distance-based intersection stopping
         double intersectionStopDistance @unit(m) = default(25m);  // Stop within this distance of junction
         int arrivalWaitTimeMs = default(3000);  // Wait time for vehicles to gather before scheduling
         int discoveryWaitMs = default(3000);    // Time first stopped vehicle waits before forming cluster (increase for far-start scenarios)
         int clusterFormationDelayMs = default(0); // Extra delay after first stop before forming (lets others arrive)
+        int mergeCooldownMs = default(2000);     // Min ms between merges (prevents merge storms)
         
-        // Dynamic cluster formation (matching WAVE)
+        // Dynamic cluster formation
         double clusterTriggerDistance = default(100.0);  // meters from junction center
         double discoveryBeaconInterval = default(0.3);   // seconds between beacons
         
