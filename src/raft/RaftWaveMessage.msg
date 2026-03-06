@@ -28,7 +28,6 @@ enum RaftMsgType {
     COORD_STATUS_RESPONSE          = 49;  // 0x31
     COORD_VEHICLE_PASSED           = 51;  // 0x33
     COORD_VEHICLE_LEFT             = 52;  // 0x34
-    COORD_VEHICLE_LEFT_REBROADCAST = 53;  // 0x35
 
     // Late joiner: committed cluster sends schedule to vehicles that formed after commit
     LATE_JOIN_ORDER                = 64;  // 0x40

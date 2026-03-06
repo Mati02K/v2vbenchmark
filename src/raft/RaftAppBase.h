@@ -59,8 +59,6 @@ protected:
     double       myClusterTimestamp_;    // Initially simTime at first send; becomes min(ts) after merges
     double        clusterTriggerDistance_;
     bool          clusterFormed_;
-    bool          clusterFormationScheduled_;  // guard: don't schedule formation twice
-
     // ============ INTERSECTION EDGES ============
     std::set<std::string>    intersectionEdges_;
     std::vector<std::string> approachEdgeList_;
@@ -95,8 +93,12 @@ protected:
     std::set<int> proposedLeft_;      // tracks vehicles proposed-left to RAFT (per-instance)
     bool         passOrderProposed_;  // guard: prevent double proposePassOrder() calls
 
-    // Gossip for VEHICLE_LEFT: dedup by vehicleId (each vehicle leaves once)
+    // Dedup for VEHICLE_LEFT: prevent double-applying the same vehicle's exit notification
     std::set<int> gossipSeenVehicleLeft_;
+
+    /** Vehicles that passed/left before we formed our cluster (late joiners).
+     *  At formation we mark their RAFT nodes inactive so quorum = majority of remaining. */
+    std::set<int> vehiclesLeftBeforeFormed_;
 
     // ============ FALLBACK STATE ============
     bool         isFallbackMode_;
@@ -115,10 +117,13 @@ protected:
     int    fallbackWaitMaxMs_;
     int    passConfirmationMs_;
     int    statusCollectionTimeoutMs_;
-    int    discoveryWaitMs_;  // Time first stopped vehicle waits before forming cluster (allows far vehicles to arrive)
-    int    clusterFormationDelayMs_;  // Extra delay after first stop before any vehicle can form cluster (lets others arrive and stop)
+    int    discoveryWaitMs_;  // Time stopped at intersection before proposing (5s aggressive merge window)
+    int    clusterFormationDelayMs_;  // Extra delay after first stop before proposing
     int    mergeCooldownMs_;  // Minimum ms between merges to prevent merge storms
+    int    vehicleLeftTimeoutMs_;  // If no VEHICLE_LEFT within this ms, assume vehicle left (1.5s default)
+    int    invitationIntervalStoppedMs_;  // When stopped at intersection: invitation interval (10ms + jitter); configurable
     std::string resultsFileName_;
+    double      resultsFileCloseAtSec_ = 0;  // When to force-close results JSON (0 = use vehicle count only)
     std::string transportName_;  // "udp" or "wave"
 
     static constexpr double CHECK_INTERVAL       = 0.05;
@@ -132,6 +137,11 @@ protected:
     simtime_t timeOrderCommitted_;
     simtime_t timeStartedMoving_;
     simtime_t timePassed_;
+    
+    double totalRaftDecisionTimeSec_;
+    std::map<raft_index_t, simtime_t> proposedTimes_;
+    simtime_t timeStatusRequestSent_;
+    double statusCollectionTimeMs_;
     bool      waitingForVehiclesToArrive_;
     int       messagesSent_;
     int       messagesReceived_;
@@ -173,7 +183,7 @@ protected:
     void handleDiscoveryBeacon(int senderId, uint8_t senderPhase);
     void sendClusterInvitation();
     void handleClusterInvitation(const std::vector<uint8_t>& data, int senderId);
-    void checkClusterTrigger();
+    void initRaftSingleNode();  // Start RAFT at init with single-node cluster (merge forms larger)
     void broadcastClusterForm();
     void handleClusterForm(const std::vector<uint8_t>& data, int senderId);
     void handleClusterExists(const std::vector<uint8_t>& data, int senderId);
@@ -192,10 +202,12 @@ protected:
     static int  applylog(raft_server_t*, void*, raft_entry_t*, raft_index_t);
     static void raftLog(raft_server_t*, raft_node_t*, void*, const char*);
     static int  persistVote(raft_server_t*, void*, raft_node_id_t);
+    static int  logGetNodeId(raft_server_t*, void*, raft_entry_t*, raft_index_t);
     int  doSendRequestVote(raft_node_t*, msg_requestvote_t*);
     int  doSendAppendEntries(raft_node_t*, msg_appendentries_t*);
     int  doLogOffer(raft_entry_t*, raft_index_t);
     int  doApplyLog(raft_entry_t*, raft_index_t);
+    int  doLogGetNodeId(raft_entry_t*, raft_index_t);
 
     // Serialization (all 4 pairs — 100% identical in both originals)
     std::vector<uint8_t> serializeRequestVote(msg_requestvote_t*);
@@ -221,14 +233,17 @@ protected:
     void sendVehiclePassed();
     void handleVehiclePassed(int vehicleId);
     void sendVehicleLeft();
-    void handleVehicleLeft(int vehicleId);
-    void handleVehicleLeftGossip(int vehicleId, int batchId, int ttl);
+    void handleVehicleLeft(int vehicleId, int batchId);
     void proposeVehicleLeft(int vehicleId, int batchId);
     void applyVehicleLeftFromRaft(int vehicleId, int batchId);
     void checkBatchAdvance();
 
     // Scheduling helpers
     bool          movementsConflict(int laneA, int turnA, int laneB, int turnB);
+    /** Pure decision function: takes all proposals and returns a batch schedule.
+     *  Defined in RaftDecision.cc — edit that file to change the crossing policy. */
+    PassScheduleEntry computePassOrder(const std::map<int, VehicleProposal>& proposals,
+                                       const std::set<int>& activeVehicles);
     VehicleProposal buildMyProposal();
     int           detectBlockingVehicle();
     double        calculateDistanceToJunction();
@@ -255,6 +270,13 @@ protected:
     raft_node_id_t getNodeIdFromVehicleId(int v) const  { return v + 1; }
     int            getVehicleIdFromNodeId(raft_node_id_t n) const { return n - 1; }
 
+    /** Mark a vehicle's RAFT node as inactive when it leaves the intersection.
+     *  Updates quorum so remaining vehicles can reach majority. */
+    void markRaftNodeInactive(int vehicleId);
+
+    /** Schedule timeout for VEHICLE_LEFT: if vehicles in batch don't report within vehicleLeftTimeoutMs_, assume they left. */
+    void scheduleVehicleLeftTimeout(int batchIndex);
+
     // ============ TRANSPORT HELPERS (must be overridden by subclass) ============
     // Called by shared methods when they need to schedule a delayed callback.
     virtual void scheduleOneshotMs(double delayMs, std::function<void()> fn) = 0;
@@ -265,4 +287,5 @@ protected:
     /** Return a uniform random double in [lo, hi). Must use the OMNeT++ RNG
      *  so that --seed-set properly controls randomness across runs. */
     virtual double getRandomDouble(double lo, double hi) = 0;
+
 };

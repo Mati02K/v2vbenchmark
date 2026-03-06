@@ -164,26 +164,22 @@ num_vehicles = len(all_data[0])
 metrics = {'raft_decision_time': [], 'total_intersection_time': [], 'throughput': [], 'total_wait_time': [], 'transit_time': [], 'fallback_rate': []}
 
 for run_data in all_data:
-    raft_commits = [v['timestamps_ms'].get('order_committed', 0) for v in run_data if v.get('coordination_method') != 'fallback' and v['timestamps_ms'].get('order_committed', 0) > 0]
-    cluster_times = [v['timestamps_ms'].get('cluster_formed', 0) for v in run_data if v['timestamps_ms'].get('cluster_formed', 0) > 0]
-    if raft_commits and cluster_times:
-        rd = max(raft_commits) - min(cluster_times)
-        if rd > 0:
-            metrics['raft_decision_time'].append(rd)
+    # RAFT decision time: sum(commit - propose) = sum of per-vehicle raft_decision_time (each leader has sum for entries they proposed)
+    raft_vehicles = [v for v in run_data if v.get('coordination_method') != 'fallback']
+    rd_per_veh = [v['durations_ms'].get('raft_decision_time', 0) for v in raft_vehicles if v['durations_ms'].get('raft_decision_time', 0) > 0]
+    if rd_per_veh:
+        metrics['raft_decision_time'].append(sum(rd_per_veh))
     stopped = [v['timestamps_ms']['stopped'] for v in run_data]
     passed = [v['timestamps_ms']['passed'] for v in run_data]
     if stopped and passed:
         total_time = max(passed) - min(stopped)
         metrics['total_intersection_time'].append(total_time)
-    # Throughput: N / (last RAFT vehicle passed - first RAFT start)
-    raft_vehicles = [v for v in run_data if v.get('coordination_method') != 'fallback']
-    raft_starts = [v['timestamps_ms'].get('cluster_formed', 0) for v in raft_vehicles if v['timestamps_ms'].get('cluster_formed', 0) > 0]
-    raft_passed = [v['timestamps_ms']['passed'] for v in raft_vehicles]
-    if raft_starts and raft_passed:
-        raft_time_ms = max(raft_passed) - min(raft_starts)
+    # Throughput: num_RAFT / (last_RAFT_passed - first_RAFT_passed), exclude fallback
+    raft_passed = [v['timestamps_ms']['passed'] for v in raft_vehicles if v['timestamps_ms'].get('passed', 0) > 0]
+    if len(raft_passed) >= 1:
+        raft_time_ms = max(raft_passed) - min(raft_passed)
         if raft_time_ms > 0:
-            n_raft = len(raft_vehicles)
-            metrics['throughput'].append(n_raft / (raft_time_ms / 1000.0))
+            metrics['throughput'].append(len(raft_vehicles) / (raft_time_ms / 1000.0))
     fallback_count = sum(1 for v in run_data if v.get('coordination_method') == 'fallback')
     metrics['fallback_rate'].append(fallback_count / num_vehicles if num_vehicles > 0 else 0)
     for v in run_data:

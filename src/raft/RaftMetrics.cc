@@ -56,6 +56,7 @@ void RaftMetrics::writeVehicleJSON(
     double orderCommittedMs,
     double startedMovingMs,
     double passedMs,
+    double raftDecisionTimeMs,
     int messagesSent,
     int messagesReceived,
     int electionRounds,
@@ -67,13 +68,8 @@ void RaftMetrics::writeVehicleJSON(
 
     // Derived metrics
     double totalWaitTime    = (passedMs > 0 && stoppedMs > 0) ? (passedMs - stoppedMs) : 0;
-    // RAFT decision time = leader election + decision writing to quorum (excludes cluster formation)
-    double raftDecisionTime = 0;
-    if (orderCommittedMs > 0 && clusterFormedMs > 0 && orderCommittedMs >= clusterFormedMs) {
-        raftDecisionTime = orderCommittedMs - clusterFormedMs;
-    }
     double transitTime  = (passedMs > 0 && startedMovingMs > 0) ? (passedMs - startedMovingMs) : 0;
-    double throughput   = (totalWaitTime > 0) ? (1000.0 / totalWaitTime) : 0;
+    double throughput   = 0;  // intersection-level metric, computed post-hoc from aggregate stats
 
     if (vehiclesCompleted_ > 0) {
         resultsFile_ << ",\n";
@@ -95,7 +91,7 @@ void RaftMetrics::writeVehicleJSON(
     resultsFile_ << "      \"passed\": "             << passedMs << "\n";
     resultsFile_ << "    },\n";
     resultsFile_ << "    \"durations_ms\": {\n";
-    resultsFile_ << "      \"raft_decision_time\": " << raftDecisionTime << ",\n";
+    resultsFile_ << "      \"raft_decision_time\": " << raftDecisionTimeMs << ",\n";
     resultsFile_ << "      \"total_wait_time\": "    << totalWaitTime << ",\n";
     resultsFile_ << "      \"transit_time\": "       << transitTime << ",\n";
     resultsFile_ << "      \"throughput\": "         << throughput << "\n";

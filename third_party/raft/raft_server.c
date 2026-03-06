@@ -162,6 +162,7 @@ void raft_become_leader(raft_server_t* me_)
     __log(me_, NULL, "becoming leader term:%d", raft_get_current_term(me_));
 
     raft_set_state(me_, RAFT_STATE_LEADER);
+    me->voted_for = raft_get_nodeid(me_);
     me->timeout_elapsed = 0;
     for (i = 0; i < me->num_nodes; i++)
     {
@@ -940,14 +941,31 @@ int raft_send_appendentries_all(raft_server_t* me_)
 {
     raft_server_private_t* me = (raft_server_private_t*)me_;
     int i, e;
+    raft_index_t cur_idx = raft_get_current_idx(me_);
+    raft_index_t commit_idx = raft_get_commit_idx(me_);
+    int have_uncommitted = (commit_idx < cur_idx);
+
+    /* When we have uncommitted entries: only send to nodes that haven't ACKed yet
+     * (match_idx < cur_idx) to reduce channel load. Skip caught-up nodes except
+     * every 5th cycle when we send to all (heartbeat to prevent election timeout). */
+    me->appendentries_cycle++;
+    int send_to_all = !have_uncommitted || (me->appendentries_cycle % 5 == 0);
 
     me->timeout_elapsed = 0;
     for (i = 0; i < me->num_nodes; i++)
     {
-        if (me->node == me->nodes[i] || !raft_node_is_active(me->nodes[i]))
+        raft_node_t* node = me->nodes[i];
+        if (me->node == node || !raft_node_is_active(node))
             continue;
 
-        e = raft_send_appendentries(me_, me->nodes[i]);
+        if (!send_to_all)
+        {
+            raft_index_t match_idx = raft_node_get_match_idx(node);
+            if (match_idx >= cur_idx)
+                continue;  /* Skip: node already has all entries and has ACKed */
+        }
+
+        e = raft_send_appendentries(me_, node);
         if (0 != e)
             return e;
     }

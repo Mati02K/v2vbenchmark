@@ -84,12 +84,15 @@ bool UdpRaftApplication::startApplication()
     arrivalWaitTimeMs_        = par("arrivalWaitTimeMs").intValue();
     clusterTriggerDistance_   = par("clusterTriggerDistance").doubleValue();
     discoveryBeaconInterval_  = par("discoveryBeaconInterval").doubleValue();
+    invitationIntervalStoppedMs_ = par("invitationIntervalStoppedMs").intValue();
     resultsFileName_          = par("resultsFile").stdstringValue();
+    resultsFileCloseAtSec_     = par("resultsFileCloseAtSec").doubleValue();
 
     statusCollectionTimeoutMs_ = par("statusCollectionTimeoutMs").intValue();
     discoveryWaitMs_          = par("discoveryWaitMs").intValue();
     clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
     mergeCooldownMs_         = par("mergeCooldownMs").intValue();
+    vehicleLeftTimeoutMs_    = par("vehicleLeftTimeoutMs").intValue();
 
     parseEdgeParametersFromNed();
 
@@ -110,7 +113,13 @@ bool UdpRaftApplication::startApplication()
     for (int i = 0; i < totalVehicles_; i++) activeVehicles_.insert(i);
 
     RaftMetrics::setTotalVehicles(totalVehicles_);
-    if (myId_ == 0) RaftMetrics::openResultsFile(resultsFileName_);
+    if (myId_ == 0) {
+        RaftMetrics::openResultsFile(resultsFileName_);
+        if (resultsFileCloseAtSec_ > 0) {
+            closeResultsFileTimer_ = new cMessage("closeResultsFile");
+            scheduleAt(resultsFileCloseAtSec_, closeResultsFileTimer_);
+        }
+    }
 
     // Get mobility / TraCI
     mobility_     = check_and_cast<veins::VeinsInetMobility*>(
@@ -133,7 +142,9 @@ bool UdpRaftApplication::startApplication()
 
     // RAFT periodic timer
     raftPeriodicTimer_ = new cMessage("raftPeriodic");
-    // Will be scheduled manually in onClusterFormed or checked periodic
+
+    // Start RAFT single-node at init (merges form larger cluster via invitation)
+    initRaftSingleNode();
 
     return true;
 }
@@ -153,6 +164,7 @@ void UdpRaftApplication::finish()
     
     // Clean up timers
     if (checkTimer_)         { cancelEvent(checkTimer_);         delete checkTimer_;         checkTimer_ = nullptr; }
+    if (closeResultsFileTimer_) { cancelEvent(closeResultsFileTimer_); delete closeResultsFileTimer_; closeResultsFileTimer_ = nullptr; }
     if (discoveryTimer_)     { cancelEvent(discoveryTimer_);     delete discoveryTimer_;     discoveryTimer_ = nullptr; }
     if (raftPeriodicTimer_)  { cancelEvent(raftPeriodicTimer_);  delete raftPeriodicTimer_;  raftPeriodicTimer_ = nullptr; }
     for (cMessage* m : oneshotTimers_) {
@@ -178,18 +190,26 @@ void UdpRaftApplication::handleMessageWhenUp(cMessage* msg)
     else if (msg == discoveryTimer_) {
         if (!hasPassedIntersection_) {
             sendClusterInvitation();
-            if (clusterPhase_ == PHASE_DISCOVERY && hasStoppedAtIntersection_)
-                checkClusterTrigger();
-            else if (clusterPhase_ == PHASE_COORDINATION)
+            if (clusterPhase_ == PHASE_COORDINATION)
                 broadcastClusterExists();
         }
-        double nextInterval = (clusterPhase_ == PHASE_COORDINATION) ? 2.0 : uniform(0, discoveryBeaconInterval_);
+        double nextInterval;
+        if (hasStoppedAtIntersection_) {
+            nextInterval = (invitationIntervalStoppedMs_ / 1000.0) + uniform(0, 0.005);  // 10ms + jitter
+        } else {
+            nextInterval = (clusterPhase_ == PHASE_COORDINATION) ? 2.0 : uniform(0, discoveryBeaconInterval_);
+        }
         scheduleAt(simTime() + nextInterval, discoveryTimer_);
     }
     else if (msg == raftPeriodicTimer_) {
         if (raftServer_ && !hasPassedIntersection_ && !isFallbackMode_)
             processRaftPeriodic();
         scheduleAt(simTime() + RAFT_PERIODIC_INTERVAL, raftPeriodicTimer_);
+    }
+    else if (msg == closeResultsFileTimer_) {
+        RaftMetrics::closeResultsFile();
+        cancelAndDelete(closeResultsFileTimer_);
+        closeResultsFileTimer_ = nullptr;
     }
     else if (msg->isSelfMessage() && strcmp(msg->getName(), "oneshotTimer") == 0) {
         auto it = oneshotCallbacks_.find(msg);
@@ -257,17 +277,10 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
         if (bytes.size() >= 1) handleVehiclePassed((int)bytes[0]);
     }
     else if (pktName.find("coord-vehicle-left") != std::string::npos) {
-        if (bytes.size() >= sizeof(VehicleLeftEntry) + 1) {
+        if (bytes.size() >= sizeof(VehicleLeftEntry)) {
             VehicleLeftEntry e;
             memcpy(&e, bytes.data(), sizeof(e));
-            int ttl = static_cast<int>(bytes[sizeof(VehicleLeftEntry)]);
-            handleVehicleLeftGossip(e.vehicleId, e.batchId, ttl);
-        } else if (bytes.size() >= sizeof(VehicleLeftEntry)) {
-            VehicleLeftEntry e;
-            memcpy(&e, bytes.data(), sizeof(e));
-            handleVehicleLeft(e.vehicleId);
-        } else if (bytes.size() >= 1) {
-            handleVehicleLeft((int)bytes[0]);
+            handleVehicleLeft(e.vehicleId, e.batchId);
         }
     }
     // Discovery / cluster invitation
@@ -343,7 +356,6 @@ void UdpRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_
         case 0x30: name << "coord-status-request-from-" << myId_ << "-broadcast"; break;
         case 0x33: name << "coord-vehicle-passed-from-" << myId_ << "-broadcast"; break;
         case 0x34: name << "coord-vehicle-left-from-"   << myId_ << "-broadcast"; break;
-        case 0x35: name << "coord-vehicle-left-rebroadcast-from-" << myId_ << "-broadcast"; break;
         default:   name << "raft-bcast-" << msgType << "-from-" << myId_ << "-broadcast"; break;
     }
 

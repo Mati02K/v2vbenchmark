@@ -84,6 +84,11 @@ typedef struct {
      */
     raft_index_t saved_snapshot_last_idx;
     raft_term_t saved_snapshot_last_term;
+
+    /* Cycle counter for appendentries: used to send full heartbeats to
+     * caught-up nodes periodically (every 5 cycles) to prevent election timeout,
+     * while skipping them on other cycles to reduce channel load. */
+    int appendentries_cycle;
 } raft_server_private_t;
 
 int raft_election_start(raft_server_t* me);

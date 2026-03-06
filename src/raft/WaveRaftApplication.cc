@@ -89,11 +89,14 @@ void WaveRaftApplication::initialize(int stage)
             discoveryWaitMs_          = par("discoveryWaitMs").intValue();
             clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
             mergeCooldownMs_         = par("mergeCooldownMs").intValue();
+            vehicleLeftTimeoutMs_    = par("vehicleLeftTimeoutMs").intValue();
             intersectionStopDistance_ = par("intersectionStopDistance").doubleValue();
             arrivalWaitTimeMs_        = par("arrivalWaitTimeMs").intValue();
             clusterTriggerDistance_   = par("clusterTriggerDistance").doubleValue();
             discoveryBeaconInterval_  = par("discoveryBeaconInterval").doubleValue();
+            invitationIntervalStoppedMs_ = par("invitationIntervalStoppedMs").intValue();
             resultsFileName_          = par("resultsFile").stdstringValue();
+            resultsFileCloseAtSec_    = par("resultsFileCloseAtSec").doubleValue();
         } catch (std::exception& e) {
             std::cerr << "Vehicle " << myId_ << " ERROR reading params: " << e.what() << std::endl;
         }
@@ -133,6 +136,10 @@ void WaveRaftApplication::initialize(int stage)
             isGlobalInitialized_ = true;
             RaftMetrics::setTotalVehicles(totalVehicles_);
             RaftMetrics::openResultsFile(resultsFileName_);
+            if (resultsFileCloseAtSec_ > 0) {
+                closeResultsFileTimer_ = new cMessage("closeResultsFile");
+                scheduleAt(resultsFileCloseAtSec_, closeResultsFileTimer_);
+            }
         }
 
         timeArrived_ = simTime();
@@ -145,6 +152,9 @@ void WaveRaftApplication::initialize(int stage)
 
         scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
         scheduleAt(simTime() + uniform(0, discoveryBeaconInterval_), discoveryTimer_);
+
+        // Start RAFT single-node at init (merges form larger cluster via invitation)
+        initRaftSingleNode();
     }
 }
 
@@ -158,6 +168,7 @@ void WaveRaftApplication::finish()
 
     cancelAndDelete(checkTimer_);
     cancelAndDelete(raftPeriodicTimer_);
+    if (closeResultsFileTimer_) { cancelEvent(closeResultsFileTimer_); delete closeResultsFileTimer_; closeResultsFileTimer_ = nullptr; }
     if (discoveryTimer_)     cancelAndDelete(discoveryTimer_);
     if (statusTimeoutTimer_) { cancelEvent(statusTimeoutTimer_); delete statusTimeoutTimer_; }
     if (passOrderTimer_)     { cancelEvent(passOrderTimer_);     delete passOrderTimer_; }
@@ -212,12 +223,15 @@ void WaveRaftApplication::handleSelfMsg(cMessage* msg)
     else if (msg == discoveryTimer_) {
         if (!hasPassedIntersection_) {
             sendClusterInvitation();
-            if (clusterPhase_ == PHASE_DISCOVERY && hasStoppedAtIntersection_)
-                checkClusterTrigger();
-            else if (clusterPhase_ == PHASE_COORDINATION)
+            if (clusterPhase_ == PHASE_COORDINATION)
                 broadcastClusterExists();
         }
-        double nextInterval = (clusterPhase_ == PHASE_COORDINATION) ? 2.0 : uniform(0, discoveryBeaconInterval_);
+        double nextInterval;
+        if (hasStoppedAtIntersection_) {
+            nextInterval = (invitationIntervalStoppedMs_ / 1000.0) + uniform(0, 0.005);  // 10ms + jitter
+        } else {
+            nextInterval = (clusterPhase_ == PHASE_COORDINATION) ? 2.0 : uniform(0, discoveryBeaconInterval_);
+        }
         scheduleAt(simTime() + nextInterval, discoveryTimer_);
     }
     else if (msg == raftPeriodicTimer_) {
@@ -259,75 +273,70 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
     int senderId = wsm->getSenderId();
     int targetId = wsm->getTargetId();
 
-    if (targetId != -1 && targetId != myId_) return;
-
     // Extract payload bytes
     std::vector<uint8_t> payload;
     unsigned int pLen = wsm->getPayloadLen();
     payload.resize(pLen);
     for (unsigned int i = 0; i < pLen; i++) payload[i] = wsm->getPayload(i);
 
+    // Not our unicast — drop (no relay)
+    if (targetId != -1 && targetId != myId_) return;
+
     messagesReceived_++;
+
+    int protocolSender = senderId;
 
     switch (msgType) {
         case benchmark::CLUSTER_INVITATION:
-            handleClusterInvitation(payload, senderId);
+            handleClusterInvitation(payload, protocolSender);
             break;
         case benchmark::DISCOVERY_BEACON: {
             uint8_t senderPhase = (payload.size() >= sizeof(int)+1) ? payload[sizeof(int)] : 0;
             if (senderPhase == PHASE_DISCOVERY)
-                handleDiscoveryBeacon(senderId, senderPhase);
+                handleDiscoveryBeacon(protocolSender, senderPhase);
             else
-                discoveredPeers_.erase(senderId);
+                discoveredPeers_.erase(protocolSender);
             break;
         }
         case benchmark::CLUSTER_FORM:
-            handleClusterForm(payload, senderId);
+            handleClusterForm(payload, protocolSender);
             break;
         case benchmark::CLUSTER_EXISTS:
-            handleClusterExists(payload, senderId);
+            handleClusterExists(payload, protocolSender);
             break;
         case benchmark::RAFT_REQUEST_VOTE:
-            if (raftServer_) handleRequestVote(payload, senderId);
+            if (raftServer_) handleRequestVote(payload, protocolSender);
             break;
         case benchmark::RAFT_REQUEST_VOTE_RESPONSE:
-            if (raftServer_) handleRequestVoteResponse(payload, senderId);
+            if (raftServer_) handleRequestVoteResponse(payload, protocolSender);
             break;
         case benchmark::RAFT_APPEND_ENTRIES:
-            if (raftServer_) handleAppendEntries(payload, senderId);
+            if (raftServer_) handleAppendEntries(payload, protocolSender);
             break;
         case benchmark::RAFT_APPEND_ENTRIES_RESPONSE:
-            if (raftServer_) handleAppendEntriesResponse(payload, senderId);
+            if (raftServer_) handleAppendEntriesResponse(payload, protocolSender);
             break;
         case benchmark::COORD_STATUS_REQUEST:
-            handleStatusRequest(senderId);
+            handleStatusRequest(protocolSender);
             break;
         case benchmark::COORD_STATUS_RESPONSE:
             if (payload.size() >= sizeof(VehicleProposal)) {
                 VehicleProposal proposal;
                 memcpy(&proposal, payload.data(), sizeof(VehicleProposal));
-                handleStatusResponseProposal(senderId, proposal);
+                handleStatusResponseProposal(protocolSender, proposal);
             }
             break;
         case benchmark::COORD_VEHICLE_PASSED:
             if (payload.size() >= 1) handleVehiclePassed((int)payload[0]);
             break;
         case benchmark::LATE_JOIN_ORDER:
-            handleLateJoinOrder(payload, senderId);
+            handleLateJoinOrder(payload, protocolSender);
             break;
         case benchmark::COORD_VEHICLE_LEFT:
-        case benchmark::COORD_VEHICLE_LEFT_REBROADCAST:
-            if (payload.size() >= sizeof(VehicleLeftEntry) + 1) {
+            if (payload.size() >= sizeof(VehicleLeftEntry)) {
                 VehicleLeftEntry e;
                 memcpy(&e, payload.data(), sizeof(e));
-                int ttl = static_cast<int>(payload[sizeof(VehicleLeftEntry)]);
-                handleVehicleLeftGossip(e.vehicleId, e.batchId, ttl);
-            } else if (payload.size() >= sizeof(VehicleLeftEntry)) {
-                VehicleLeftEntry e;
-                memcpy(&e, payload.data(), sizeof(e));
-                handleVehicleLeft(e.vehicleId);
-            } else if (payload.size() >= 1) {
-                handleVehicleLeft((int)payload[0]);
+                handleVehicleLeft(e.vehicleId, e.batchId);
             }
             break;
     }

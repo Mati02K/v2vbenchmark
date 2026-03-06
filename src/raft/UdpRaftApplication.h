@@ -30,6 +30,7 @@ private:
     // Timers
     omnetpp::cMessage* checkTimer_{nullptr};
     omnetpp::cMessage* discoveryTimer_{nullptr};
+    omnetpp::cMessage* closeResultsFileTimer_{nullptr};
     omnetpp::cMessage* raftPeriodicTimer_{nullptr};
 
     std::vector<omnetpp::cMessage*> oneshotTimers_;

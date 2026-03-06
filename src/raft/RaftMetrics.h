@@ -27,6 +27,7 @@ public:
         double orderCommittedMs,
         double startedMovingMs,
         double passedMs,
+        double raftDecisionTimeMs,
         int messagesSent,
         int messagesReceived,
         int electionRounds,

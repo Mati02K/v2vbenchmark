@@ -32,6 +32,8 @@ simple UdpRaftApplication extends VeinsInetApplicationBase
         int discoveryWaitMs = default(3000);    // Time first stopped vehicle waits before forming cluster (increase for far-start scenarios)
         int clusterFormationDelayMs = default(0); // Extra delay after first stop before forming (lets others arrive)
         int mergeCooldownMs = default(2000);     // Min ms between merges (prevents merge storms)
+        int vehicleLeftTimeoutMs = default(1500); // If no VEHICLE_LEFT within this ms, assume vehicle left
+        int invitationIntervalStoppedMs = default(10);   // When stopped: invitation interval ms (10ms + jitter); configurable
         
         // Dynamic cluster formation (matching WAVE)
         double clusterTriggerDistance = default(100.0);  // meters from junction center
@@ -45,4 +47,7 @@ simple UdpRaftApplication extends VeinsInetApplicationBase
         
         // Output file name
         string resultsFile = default("raft_results.json");
+        // When to force-close results file (sim time in seconds). Ensures valid JSON even if not all
+        // vehicles stop before sim-time-limit. Use 0 to rely on vehicle count only. Default 299 = 1s before 300s limit.
+        double resultsFileCloseAtSec = default(299);
 }

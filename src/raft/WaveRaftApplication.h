@@ -37,6 +37,7 @@ private:
     // WAVE-specific cMessage timers
     cMessage* checkTimer_         = nullptr;
     cMessage* raftPeriodicTimer_  = nullptr;
+    cMessage* closeResultsFileTimer_ = nullptr;  // Force-close JSON at sim end (avoids truncation)
     cMessage* discoveryTimer_     = nullptr;
     cMessage* statusTimeoutTimer_ = nullptr;
     cMessage* passOrderTimer_     = nullptr;
