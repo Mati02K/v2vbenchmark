@@ -89,6 +89,7 @@ bool UdpRaftApplication::startApplication()
     resultsFileCloseAtSec_     = par("resultsFileCloseAtSec").doubleValue();
 
     statusCollectionTimeoutMs_ = par("statusCollectionTimeoutMs").intValue();
+    fallbackClusterTimeoutMs_  = par("fallbackClusterTimeoutMs").intValue();
     discoveryWaitMs_          = par("discoveryWaitMs").intValue();
     clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
     mergeCooldownMs_         = par("mergeCooldownMs").intValue();
@@ -276,6 +277,9 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             handleVehicleLeft(e.vehicleId, e.batchId);
         }
     }
+    // Pass order broadcast to non-cluster (queued) vehicles
+    else if (pktName.find("coord-pass-order-broadcast") != std::string::npos)
+        handlePassOrderBroadcast(bytes);
     // Discovery
     else if (pktName.find("peer-beacon") != std::string::npos)
         handlePeerBeacon(bytes, extractSenderFromPacketName(pktName));
@@ -334,8 +338,9 @@ void UdpRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_
         case 0x10: name << "peer-beacon-from-"          << myId_ << "-broadcast"; break;
         case 0x14: name << "leader-db-exchange-from-"   << myId_ << "-broadcast"; break;
         case 0x30: name << "coord-status-request-from-" << myId_ << "-broadcast"; break;
-        case 0x33: name << "coord-vehicle-passed-from-" << myId_ << "-broadcast"; break;
-        case 0x34: name << "coord-vehicle-left-from-"   << myId_ << "-broadcast"; break;
+        case 0x33: name << "coord-vehicle-passed-from-"       << myId_ << "-broadcast"; break;
+        case 0x34: name << "coord-vehicle-left-from-"         << myId_ << "-broadcast"; break;
+        case 0x35: name << "coord-pass-order-broadcast-from-" << myId_ << "-broadcast"; break;
         default:   name << "raft-bcast-" << msgType << "-from-" << myId_ << "-broadcast"; break;
     }
 

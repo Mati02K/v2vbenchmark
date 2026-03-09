@@ -26,6 +26,9 @@ simple WaveRaftApplication extends DemoBaseApplLayer
         
         // Status collection timeout (milliseconds) - increased for WAVE wireless delays
         int statusCollectionTimeoutMs = default(1000);
+
+        // Cluster formation fallback timeout (milliseconds) — if RAFT cluster not formed by this time after stopping, activate fallback
+        int fallbackClusterTimeoutMs = default(30000);
         
         // Distance-based intersection stopping
         double intersectionStopDistance @unit(m) = default(25m);  // Stop within this distance of junction

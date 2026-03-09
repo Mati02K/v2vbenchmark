@@ -25,6 +25,9 @@ simple UdpRaftApplication extends VeinsInetApplicationBase
         
         // Status collection timeout (milliseconds)
         int statusCollectionTimeoutMs = default(200);
+
+        // Cluster formation fallback timeout (milliseconds) — if RAFT cluster not formed by this time after stopping, activate fallback
+        int fallbackClusterTimeoutMs = default(30000);
         
         // Distance-based intersection stopping
         double intersectionStopDistance @unit(m) = default(25m);  // Stop within this distance of junction

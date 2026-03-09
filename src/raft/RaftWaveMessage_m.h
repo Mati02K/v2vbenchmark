@@ -57,6 +57,7 @@ namespace benchmark {
  *     COORD_STATUS_RESPONSE = 49;  // 0x31
  *     COORD_VEHICLE_PASSED = 51;  // 0x33
  *     COORD_VEHICLE_LEFT = 52;  // 0x34
+ *     COORD_PASS_ORDER_BROADCAST = 53;  // 0x35 — broadcast from RAFT cluster to non-cluster vehicles
  * }
  * </pre>
  */
@@ -71,11 +72,12 @@ enum RaftMsgType {
     COORD_STATUS_REQUEST = 48,
     COORD_STATUS_RESPONSE = 49,
     COORD_VEHICLE_PASSED = 51,
-    COORD_VEHICLE_LEFT = 52
+    COORD_VEHICLE_LEFT = 52,
+    COORD_PASS_ORDER_BROADCAST = 53
 };
 
 /**
- * Class generated from <tt>raft/RaftWaveMessage.msg:37</tt> by nedtool.
+ * Class generated from <tt>raft/RaftWaveMessage.msg:38</tt> by nedtool.
  * <pre>
  * // RAFT WAVE message with binary payload
  * packet RaftWaveMessage extends veins::BaseFrame1609_4

@@ -129,6 +129,7 @@ protected:
     int    fallbackWaitMaxMs_;
     int    passConfirmationMs_;
     int    statusCollectionTimeoutMs_;
+    int    fallbackClusterTimeoutMs_;
     int    discoveryWaitMs_;
     int    clusterFormationDelayMs_;
     int    mergeCooldownMs_;
@@ -236,6 +237,8 @@ protected:
     void proposePassOrder();
     void executePassOrder();
     void applyCommittedPassOrder();
+    void sendPassOrderBroadcast();
+    void handlePassOrderBroadcast(const std::vector<uint8_t>& data);
     void sendVehiclePassed();
     void handleVehiclePassed(int vehicleId);
     void sendVehicleLeft();

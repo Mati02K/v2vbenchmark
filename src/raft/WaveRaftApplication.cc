@@ -86,6 +86,7 @@ void WaveRaftApplication::initialize(int stage)
             fallbackWaitMaxMs_        = par("fallbackWaitMaxMs").intValue();
             passConfirmationMs_       = par("passConfirmationMs").intValue();
             statusCollectionTimeoutMs_ = par("statusCollectionTimeoutMs").intValue();
+            fallbackClusterTimeoutMs_  = par("fallbackClusterTimeoutMs").intValue();
             discoveryWaitMs_          = par("discoveryWaitMs").intValue();
             clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
             mergeCooldownMs_         = par("mergeCooldownMs").intValue();
@@ -323,6 +324,9 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
                 memcpy(&e, payload.data(), sizeof(e));
                 handleVehicleLeft(e.vehicleId, e.batchId);
             }
+            break;
+        case benchmark::COORD_PASS_ORDER_BROADCAST:
+            handlePassOrderBroadcast(payload);
             break;
     }
 }

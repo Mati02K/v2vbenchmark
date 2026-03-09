@@ -15,6 +15,13 @@
 void RaftAppBase::handleStatusRequest(int fromLeader)
 {
     if (hasPassedIntersection_) return;
+    // Only RAFT cluster members (lane leaders) respond to STATUS_REQUEST.
+    // Queued vehicles are passive and wait for COORD_PASS_ORDER_BROADCAST instead.
+    if (!raftServer_) {
+        std::cout << simTime() << " [DBG][V" << myId_ << "] STATUS_REQUEST from V" << fromLeader
+                  << " ignored — not a RAFT cluster member (queued vehicle)" << std::endl;
+        return;
+    }
     sendStatusResponse(fromLeader);
 }
 
@@ -71,6 +78,43 @@ void RaftAppBase::collectStatusAndDecide()
 
     RAFT_LOG_LEADER("collected status from " << collectedWayOfSight_.size() << " vehicles");
     proposeStatusReport();
+}
+
+// ============ PASS ORDER BROADCAST (non-cluster vehicles) ============
+
+// Non-cluster (queued) vehicles receive the committed schedule here.
+// RAFT cluster members apply the schedule via doApplyLog() — they skip this.
+void RaftAppBase::handlePassOrderBroadcast(const std::vector<uint8_t>& data)
+{
+    if (hasPassedIntersection_) return;
+    if (hasCommittedOrder_) return;  // already have the schedule (duplicate broadcast)
+    if (raftServer_) {
+        // RAFT cluster member: schedule arrives via log replication, not broadcast.
+        // Accept it here only as a fallback if log not yet applied.
+        if (hasCommittedOrder_) return;
+    }
+    if (data.size() < sizeof(PassScheduleEntry)) {
+        std::cout << simTime() << " [WARN][V" << myId_
+                  << "] PASS_ORDER_BROADCAST: payload too small (" << data.size()
+                  << " < " << sizeof(PassScheduleEntry) << ")" << std::endl;
+        return;
+    }
+
+    PassScheduleEntry schedule;
+    memcpy(&schedule, data.data(), sizeof(PassScheduleEntry));
+
+    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST received: "
+              << schedule.numBatches << " batches (raftServer_=" << (raftServer_ != nullptr) << ")" << std::endl;
+
+    memcpy(&committedSchedule_, &schedule, sizeof(PassScheduleEntry));
+    hasCommittedOrder_ = true;
+    coordinationMethod_ = "raft";
+
+    if (hasStoppedAtIntersection_ && timeStopped_ > SIMTIME_ZERO)
+        timeOrderCommitted_ = NOW;
+
+    RAFT_LOG("PASS_ORDER_BROADCAST applied (" << committedSchedule_.numBatches << " batches)");
+    applyCommittedPassOrder();
 }
 
 // ============ VEHICLE PASSED / LEFT (follower-side) ============

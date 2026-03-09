@@ -213,20 +213,19 @@ def main():
                         'estimated_loss_rate': stats.get('estimated_loss_rate', {'mean': 0, 'std': 0})
                     }
     
-    # Create figure: 1 row x 2 columns (RAFT Decision Time, Throughput)
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    axes = axes.flatten()
+    # Create figure: 1 column (Throughput only)
+    fig, ax_throughput = plt.subplots(1, 1, figsize=(7, 5))
+    axes = [ax_throughput]
     fig.suptitle(
         f'RAFT Intersection Coordination: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a){title_note}\n'
         'Industry-Realistic PHY: α=2.75 NLOS, LogNormal Shadowing σ=4dB, Tx=20mW, 6 Mbps',
         fontsize=14, fontweight='bold'
     )
 
-    # Metrics to plot: RAFT Decision Time, Throughput
+    # Metrics to plot: Throughput only
     # (metric_key, title, ylabel, col, scale) - scale optional, default 1
     plot_configs = [
-        ('raft_decision_time', 'RAFT Decision Time', 'Time (ms)', 0),
-        ('throughput', 'System Throughput', 'Vehicles/second', 1),
+        ('throughput', 'System Throughput', 'Vehicles/second', 0),
     ]
     
     bar_width = 0.35
@@ -427,6 +426,8 @@ def main():
                     run_num += 1
                     continue
                 for v in d:
+                    if v.get('coordination_method') == 'fallback':
+                        continue  # exclude fallback vehicles (consistent with throughput)
                     wt = v['durations_ms'].get('total_wait_time', 0)
                     if wt > 0:
                         times.append(wt / 1000.0)  # convert to seconds
@@ -435,7 +436,7 @@ def main():
 
     fig_cdf, axes_cdf = plt.subplots(1, len(vehicle_counts), figsize=(14, 5), sharey=True)
     fig_cdf.suptitle(
-        f'CDF of Total Wait Time per Vehicle{title_note}\n'
+        f'CDF of Total Wait Time per Vehicle (RAFT-coordinated only){title_note}\n'
         'Time from vehicle first stopping to crossing the intersection',
         fontsize=13, fontweight='bold'
     )

@@ -188,13 +188,15 @@ void RaftAppBase::handleLeaderDbExchange(const std::vector<uint8_t>& data, int s
               << numEntries << " entries. Have "
               << receivedLeaderDBs_.size() << "/" << numLanes << " leader DBs." << std::endl;
 
-    if ((int)receivedLeaderDBs_.size() >= numLanes)
+    // Only lane leaders react: non-lane-leaders wait for COORD_PASS_ORDER_BROADCAST
+    if ((int)receivedLeaderDBs_.size() >= numLanes && isLaneLeader_)
         tryFormRaftFromLeaderDBs();
 }
 
-// Compute RAFT cluster membership from all received leader DBs and send invites.
-// Membership = strict intersection of all leader DBs, with all lane leader senders
-// force-included (so the cluster always has at least one vehicle per lane).
+// Compute RAFT cluster membership (lane leaders only) and send invites.
+// Only the 4 lane-leader vehicles (front of each approach lane) participate in
+// RAFT election and log replication.  All other vehicles are passive listeners
+// that receive the committed schedule via COORD_PASS_ORDER_BROADCAST.
 void RaftAppBase::tryFormRaftFromLeaderDBs()
 {
     if (raftStarted_) return;
@@ -216,47 +218,24 @@ void RaftAppBase::tryFormRaftFromLeaderDBs()
         std::cout << "] — proceeding with available DBs." << std::endl;
     }
 
-    // Collect all lane leader sender vehicle IDs (force-included in cluster)
+    // RAFT cluster = ONLY the lane leaders (front vehicle of each approach lane).
+    // Queued vehicles are passive: they receive the schedule via COORD_PASS_ORDER_BROADCAST.
     std::set<int> laneLeaderIds;
     for (auto& kv : receivedLeaderSenderIds_) laneLeaderIds.insert(kv.second);
-    laneLeaderIds.insert(myId_);  // include self
+    laneLeaderIds.insert(myId_);  // include self (we are a lane leader)
 
-    // Strict intersection of all received leader DBs
-    std::set<int> intersection;
-    bool first = true;
-    for (auto& kv : receivedLeaderDBs_) {
-        std::set<int> thisSet;
-        for (auto& e : kv.second) thisSet.insert(e.first);
-        if (first) {
-            intersection = thisSet;
-            first = false;
-        } else {
-            std::set<int> tmp;
-            for (int v : intersection)
-                if (thisSet.count(v)) tmp.insert(v);
-            intersection = tmp;
-        }
-    }
-
-    // Force-include all lane leaders
-    for (int lid : laneLeaderIds) intersection.insert(lid);
-
-    if (intersection.empty()) {
-        std::cout << NOW << " [WARN][V" << myId_ << "] TRY_FORM_RAFT: intersection is empty! Aborting." << std::endl;
+    if (laneLeaderIds.empty()) {
+        std::cout << NOW << " [WARN][V" << myId_ << "] TRY_FORM_RAFT: no lane leaders found! Aborting." << std::endl;
         return;
     }
 
-    std::cout << NOW << " [DBG][V" << myId_ << "] TRY_FORM_RAFT: RAFT cluster members ["
-              << intersection.size() << "]: [";
-    for (int v : intersection) std::cout << v << " ";
-    std::cout << "]" << std::endl;
+    std::cout << NOW << " [DBG][V" << myId_ << "] TRY_FORM_RAFT: RAFT cluster = lane leaders only ["
+              << laneLeaderIds.size() << "]: [";
+    for (int v : laneLeaderIds) std::cout << v << " ";
+    std::cout << "] (vehicleDB_ has " << vehicleDB_.size() << " total vehicles)" << std::endl;
 
-    // Only lane leaders send invites (all 4 send; recipient takes first, ignores duplicates)
-    if (isLaneLeader_) {
-        sendClusterJoinInvite(intersection);
-    }
-    // Non-leaders wait for a CLUSTER_JOIN_INVITE (handled in handleClusterJoinInvite).
-    // If they are also in the intersection set they will receive an invite from a lane leader.
+    // All lane leaders send unicast invites to each other and form the cluster.
+    sendClusterJoinInvite(laneLeaderIds);
 }
 
 // Lane leader sends unicast CLUSTER_JOIN_INVITE to each member and forms cluster itself.

@@ -31,6 +31,7 @@ enum RaftMsgType {
     COORD_STATUS_RESPONSE          = 49;  // 0x31
     COORD_VEHICLE_PASSED           = 51;  // 0x33
     COORD_VEHICLE_LEFT             = 52;  // 0x34
+    COORD_PASS_ORDER_BROADCAST     = 53;  // 0x35 — broadcast from RAFT cluster to non-cluster vehicles
 }
 
 // RAFT WAVE message with binary payload

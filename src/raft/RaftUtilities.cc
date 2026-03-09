@@ -64,11 +64,11 @@ void RaftAppBase::onFirstStoppedAtIntersection()
         scheduleLeaderDbExchangeLoop();
     }
 
-    // 10-second fallback: if RAFT hasn't formed yet, log what's missing and activate fallback
-    scheduleOneshotMs(10000.0, [this]() {
+    // Fallback: if RAFT cluster hasn't formed within fallbackClusterTimeoutMs_, activate fallback
+    scheduleOneshotMs((double)fallbackClusterTimeoutMs_, [this]() {
         if (!raftStarted_ && !hasPassedIntersection_) {
             int numLanes = (int)approachEdgeList_.size();
-            std::cout << NOW << " [WARN][V" << myId_ << "] 10s TIMEOUT: received "
+            std::cout << NOW << " [WARN][V" << myId_ << "] CLUSTER_TIMEOUT (" << fallbackClusterTimeoutMs_ << "ms): received "
                       << receivedLeaderDBs_.size() << "/" << numLanes
                       << " leader DBs. Missing lanes: [";
             for (int i = 0; i < numLanes; i++)

@@ -270,6 +270,9 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
         }
 
         executePassOrder();
+        // Broadcast committed schedule to non-cluster (queued) vehicles.
+        // All RAFT members do this for redundancy; receivers use hasCommittedOrder_ to dedup.
+        sendPassOrderBroadcast();
         return 0;
     }
 
@@ -517,7 +520,7 @@ void RaftAppBase::proposePassOrder()
     VehicleProposal myProp = buildMyProposal();
     collectedProposals_[myId_] = myProp;
 
-    // Add default proposals for any active vehicles whose UDP response was lost
+    // Add default proposals for any lane leaders (activeVehicles_) whose status response was lost
     int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
     for (int vid : activeVehicles_) {
         if (collectedProposals_.count(vid) == 0) {
@@ -531,12 +534,57 @@ void RaftAppBase::proposePassOrder()
             dflt.waitingTimeMs      = 99999.0; // ensure it's not starved
             dflt.distanceToJunction = 0.0;
             collectedProposals_[vid] = dflt;
-            RAFT_LOG_LEADER("vehicle " << vid << " response lost — using default proposal");
+            RAFT_LOG_LEADER("lane leader " << vid << " response lost — using default proposal");
         }
     }
 
+    // Build schedule covering ALL vehicles (lane leaders + queued vehicles behind them).
+    // Lane leaders contributed proposals via STATUS_RESPONSE (collectedProposals_).
+    // Queued vehicles use their latest beacon data from vehicleDB_.
+    std::map<int, VehicleProposal> allProposals = collectedProposals_;
+    std::set<int> allVehicleIds;
+    for (int vid : activeVehicles_) allVehicleIds.insert(vid);
+
+    for (auto& kv : vehicleDB_) {
+        int vid = kv.first;
+        allVehicleIds.insert(vid);
+        if (allProposals.count(vid) == 0) {
+            // Queued vehicle: use its beacon data (has correct laneIndex, blockedByVehicleId, dist)
+            allProposals[vid] = kv.second;
+            RAFT_LOG_LEADER("queued vehicle " << vid << " added from vehicleDB_ (lane="
+                            << kv.second.laneIndex << " dist=" << kv.second.distanceToJunction << "m)");
+        }
+    }
+
+    // Safety: if vehicleDB_ is missing entries, add defaults for all expected vehicles
+    if ((int)allVehicleIds.size() < totalVehicles_) {
+        std::cout << simTime() << " [WARN][V" << myId_ << "] vehicleDB_ has " << vehicleDB_.size()
+                  << " of " << totalVehicles_ << " vehicles — adding defaults for missing" << std::endl;
+        for (int vid = 0; vid < totalVehicles_; vid++) {
+            if (allVehicleIds.count(vid) == 0) {
+                allVehicleIds.insert(vid);
+                VehicleProposal dflt;
+                memset(&dflt, 0, sizeof(dflt));
+                dflt.vehicleId          = vid;
+                dflt.laneIndex          = (vid / vehiclesPerSide) % 4;
+                dflt.intendedTurn       = 0;
+                dflt.isFirstInLane      = (vid % vehiclesPerSide == 0);
+                int posInLane           = vid % vehiclesPerSide;
+                dflt.blockedByVehicleId = (posInLane > 0) ? vid - 1 : -1;
+                dflt.waitingTimeMs      = 99999.0;
+                dflt.distanceToJunction = posInLane * 10.0;
+                allProposals[vid]       = dflt;
+                RAFT_LOG_LEADER("vehicle " << vid << " missing from vehicleDB_ — using default");
+            }
+        }
+    }
+
+    std::cout << simTime() << " [DBG][V" << myId_ << "] proposePassOrder: scheduling "
+              << allVehicleIds.size() << " vehicles (activeVehicles_=" << activeVehicles_.size()
+              << " vehicleDB_=" << vehicleDB_.size() << ")" << std::endl;
+
     // Call the decision algorithm (defined in RaftDecision.cc)
-    PassScheduleEntry schedule = computePassOrder(collectedProposals_, activeVehicles_);
+    PassScheduleEntry schedule = computePassOrder(allProposals, allVehicleIds);
 
     if (schedule.numBatches == 0) return;
 
@@ -683,4 +731,22 @@ void RaftAppBase::onLostLeadership()
 {
     RAFT_LOG("LOST leadership");
     waitingForStatus_ = false;
+}
+
+// ============ PASS ORDER BROADCAST (to non-cluster vehicles) ============
+
+// Called by all RAFT cluster members after PASS_ORDER is committed.
+// Non-cluster (queued) vehicles receive this and apply the schedule.
+void RaftAppBase::sendPassOrderBroadcast()
+{
+    if (!hasCommittedOrder_) return;
+
+    std::vector<uint8_t> data(sizeof(PassScheduleEntry));
+    memcpy(data.data(), &committedSchedule_, sizeof(PassScheduleEntry));
+    sendRaftBroadcast(/*COORD_PASS_ORDER_BROADCAST*/ 0x35, data);
+    messagesSent_++;
+
+    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST sent: "
+              << committedSchedule_.numBatches << " batches to non-cluster vehicles" << std::endl;
+    RAFT_LOG("PASS_ORDER_BROADCAST sent (" << committedSchedule_.numBatches << " batches)");
 }
