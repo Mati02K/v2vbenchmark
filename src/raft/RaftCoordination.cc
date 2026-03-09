@@ -48,9 +48,10 @@ void RaftAppBase::handleStatusResponseProposal(int fromVehicle, const VehiclePro
     collectedProposals_[fromVehicle] = proposal;
     collectedWayOfSight_[fromVehicle] = proposal.isFirstInLane;
     statusResponseCount_++;
+    int expectedResponses = std::max(1, (int)activeVehicles_.size() - 1);
     std::cout << simTime() << " [DBG][V" << myId_ << "] STATUS collected " << statusResponseCount_
-              << "/" << (totalVehicles_-1) << " (need " << (totalVehicles_-1) << ")" << std::endl;
-    if (statusResponseCount_ >= totalVehicles_ - 1) {
+              << "/" << expectedResponses << " (need " << expectedResponses << ")" << std::endl;
+    if (statusResponseCount_ >= expectedResponses) {
         waitingForStatus_ = false;
         if (timeStatusRequestSent_ > SIMTIME_ZERO) {
             statusCollectionTimeMs_ += (NOW - timeStatusRequestSent_).dbl() * 1000.0;
@@ -118,4 +119,11 @@ void RaftAppBase::handleVehicleLeft(int vehicleId, int batchId)
     activeVehicles_.erase(vehicleId);
     vehiclesLeftInBatch_.insert(vehicleId);
     checkBatchAdvance();
+
+    // Remove from vehicleDB_ after 2 seconds so lane leader flag stays fresh
+    scheduleOneshotMs(2000.0, [this, vehicleId]() {
+        vehicleDB_.erase(vehicleId);
+        std::cout << simTime() << " [DBG][V" << myId_ << "] vehicleDB_ cleaned V"
+                  << vehicleId << " (2s post-exit)" << std::endl;
+    });
 }

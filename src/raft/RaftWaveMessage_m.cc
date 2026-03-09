@@ -210,10 +210,9 @@ inline std::ostream& operator<<(std::ostream& out, const std::vector<T,A>& vec)
 EXECUTE_ON_STARTUP(
     omnetpp::cEnum *e = omnetpp::cEnum::find("benchmark::RaftMsgType");
     if (!e) omnetpp::enums.getInstance()->add(e = new omnetpp::cEnum("benchmark::RaftMsgType"));
-    e->insert(DISCOVERY_BEACON, "DISCOVERY_BEACON");
-    e->insert(CLUSTER_FORM, "CLUSTER_FORM");
-    e->insert(CLUSTER_EXISTS, "CLUSTER_EXISTS");
-    e->insert(CLUSTER_INVITATION, "CLUSTER_INVITATION");
+    e->insert(PEER_BEACON, "PEER_BEACON");
+    e->insert(LEADER_DB_EXCHANGE, "LEADER_DB_EXCHANGE");
+    e->insert(CLUSTER_JOIN_INVITE, "CLUSTER_JOIN_INVITE");
     e->insert(RAFT_REQUEST_VOTE, "RAFT_REQUEST_VOTE");
     e->insert(RAFT_REQUEST_VOTE_RESPONSE, "RAFT_REQUEST_VOTE_RESPONSE");
     e->insert(RAFT_APPEND_ENTRIES, "RAFT_APPEND_ENTRIES");
@@ -222,7 +221,6 @@ EXECUTE_ON_STARTUP(
     e->insert(COORD_STATUS_RESPONSE, "COORD_STATUS_RESPONSE");
     e->insert(COORD_VEHICLE_PASSED, "COORD_VEHICLE_PASSED");
     e->insert(COORD_VEHICLE_LEFT, "COORD_VEHICLE_LEFT");
-    e->insert(LATE_JOIN_ORDER, "LATE_JOIN_ORDER");
 )
 
 Register_Class(RaftWaveMessage)

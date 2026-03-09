@@ -31,7 +31,7 @@ public:
 protected:
     // ============ CLUSTER PHASES ============
     enum ClusterPhase {
-        PHASE_DISCOVERY,    // Broadcasting/receiving beacons
+        PHASE_DISCOVERY,    // Broadcasting/receiving peer beacons, building vehicleDB_
         PHASE_FORMATION,    // Cluster forming, RAFT initialising
         PHASE_COORDINATION, // RAFT running, scheduling passes
         PHASE_PASSED        // Vehicle has exited intersection
@@ -53,12 +53,25 @@ protected:
     veins::TraCICommandInterface::Vehicle* traciVehicle_   = nullptr;
 
     // ============ DISCOVERY STATE ============
-    std::set<int> discoveredPeers_;
+    // vehicleDB_: all known vehicles (including self). Built from received PEER_BEACONs.
+    // Key = vehicleId, Value = latest VehicleProposal from that vehicle.
+    std::map<int, VehicleProposal> vehicleDB_;
+
+    // isLaneLeader_: true if this vehicle has the smallest distanceToJunction in its lane.
+    // Recomputed dynamically every check interval from vehicleDB_.
+    bool isLaneLeader_;
+
+    // receivedLeaderDBs_: leader DBs received at intersection, key = senderLaneIndex.
+    std::map<int, std::map<int, VehicleProposal>> receivedLeaderDBs_;
+    // senderVehicleId for each received leader DB, key = laneIndex
+    std::map<int, int> receivedLeaderSenderIds_;
+
+    // raftStarted_: true once formCluster() has been called. Guards against double-formation.
+    bool raftStarted_;
+
     double        discoveryBeaconInterval_;
-    int          myClusterId_;           // Initially myId_; becomes min(id) after merges (timestamp+clusterId rule)
-    double       myClusterTimestamp_;    // Initially simTime at first send; becomes min(ts) after merges
-    double        clusterTriggerDistance_;
-    bool          clusterFormed_;
+    double        clusterTriggerDistance_;  // kept for NED param compat, not used for formation
+
     // ============ INTERSECTION EDGES ============
     std::set<std::string>    intersectionEdges_;
     std::vector<std::string> approachEdgeList_;
@@ -96,8 +109,7 @@ protected:
     // Dedup for VEHICLE_LEFT: prevent double-applying the same vehicle's exit notification
     std::set<int> gossipSeenVehicleLeft_;
 
-    /** Vehicles that passed/left before we formed our cluster (late joiners).
-     *  At formation we mark their RAFT nodes inactive so quorum = majority of remaining. */
+    /** Vehicles that passed/left before we formed our cluster. */
     std::set<int> vehiclesLeftBeforeFormed_;
 
     // ============ FALLBACK STATE ============
@@ -117,16 +129,16 @@ protected:
     int    fallbackWaitMaxMs_;
     int    passConfirmationMs_;
     int    statusCollectionTimeoutMs_;
-    int    discoveryWaitMs_;  // Time stopped at intersection before proposing (5s aggressive merge window)
-    int    clusterFormationDelayMs_;  // Extra delay after first stop before proposing
-    int    mergeCooldownMs_;  // Minimum ms between merges to prevent merge storms
-    int    vehicleLeftTimeoutMs_;  // If no VEHICLE_LEFT within this ms, assume vehicle left (1.5s default)
-    int    invitationIntervalStoppedMs_;  // When stopped at intersection: invitation interval (10ms + jitter); configurable
+    int    discoveryWaitMs_;
+    int    clusterFormationDelayMs_;
+    int    mergeCooldownMs_;
+    int    vehicleLeftTimeoutMs_;
+    int    invitationIntervalStoppedMs_;
     std::string resultsFileName_;
-    double      resultsFileCloseAtSec_ = 0;  // When to force-close results JSON (0 = use vehicle count only)
-    std::string transportName_;  // "udp" or "wave"
+    double      resultsFileCloseAtSec_ = 0;
+    std::string transportName_;
 
-    static constexpr double CHECK_INTERVAL       = 0.05;
+    static constexpr double CHECK_INTERVAL         = 0.05;
     static constexpr double RAFT_PERIODIC_INTERVAL = 0.02;
 
     // ============ METRICS ============
@@ -137,7 +149,7 @@ protected:
     simtime_t timeOrderCommitted_;
     simtime_t timeStartedMoving_;
     simtime_t timePassed_;
-    
+
     double totalRaftDecisionTimeSec_;
     std::map<raft_index_t, simtime_t> proposedTimes_;
     simtime_t timeStatusRequestSent_;
@@ -152,47 +164,41 @@ protected:
     int       logEntriesCommitted_;
     bool      metricsWritten_;
     simtime_t lastRaftPeriodicRun_;
-    simtime_t lastMergeTime_;  // When we last merged (for cooldown)
-    simtime_t lastStopDebugPrint_;   // per-vehicle throttle for POS debug print
-    simtime_t lastQueueDebugPrint_;  // per-vehicle throttle for QUEUE_ADV_CHECK print
-    std::string prevRoadId_;         // previous road ID for transition detection
+    simtime_t lastMergeTime_;
+    simtime_t lastStopDebugPrint_;
+    simtime_t lastQueueDebugPrint_;
+    std::string prevRoadId_;
 
-    // ============ PURE-VIRTUAL TRANSPORT INTERFACE (3 methods only) ============
-    // Subclasses implement these; everything else is in the base.
-
-    /** Send a unicast RAFT message to a specific vehicle. */
+    // ============ PURE-VIRTUAL TRANSPORT INTERFACE ============
     virtual void sendRaftToPeer(int targetVehicleId,
                                  int msgType,
                                  const std::vector<uint8_t>& data) = 0;
-
-    /** Broadcast a RAFT message to all vehicles. */
     virtual void sendRaftBroadcast(int msgType,
                                    const std::vector<uint8_t>& data) = 0;
-
-    /** Return distance to junction centre (m). Returns large value when unknown. */
     virtual double getDistanceToJunction() const = 0;
 
-    // ============ SHARED METHODS (implemented in RaftAppBase.cc) ============
+    // ============ SHARED METHODS ============
 
-    // Initialisation helpers
     void parseEdgeParameters();
-    void initVehicleIdentity();  // Sets myLane_, myRoute_, wayOfSight_, activeVehicles_
+    void initVehicleIdentity();
 
-    // Cluster formation
-    void sendDiscoveryBeacon();
-    void handleDiscoveryBeacon(int senderId, uint8_t senderPhase);
-    void sendClusterInvitation();
-    void handleClusterInvitation(const std::vector<uint8_t>& data, int senderId);
-    void initRaftSingleNode();  // Start RAFT at init with single-node cluster (merge forms larger)
-    void broadcastClusterForm();
-    void handleClusterForm(const std::vector<uint8_t>& data, int senderId);
-    void handleClusterExists(const std::vector<uint8_t>& data, int senderId);
-    void mergeIntoCluster(const std::set<int>& members);
-    void mergeIntoLargerCluster(const std::set<int>& mergedMembers);
-    void broadcastClusterExists();
+    // Pre-intersection discovery (peer beacons)
+    void sendPeerBeacon();
+    void handlePeerBeacon(const std::vector<uint8_t>& data, int senderId);
+
+    // Lane leader flag — recomputed from vehicleDB_ every check interval
+    void updateLaneLeaderFlag();
+
+    // Intersection phase: leader DB exchange + RAFT cluster formation
+    void sendLeaderDbExchange();
+    void handleLeaderDbExchange(const std::vector<uint8_t>& data, int senderId);
+    void tryFormRaftFromLeaderDBs();
+    void sendClusterJoinInvite(const std::set<int>& members);
+    void handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId);
+    void scheduleLeaderDbExchangeLoop();
+
+    // Core cluster formation (called once per RAFT lifecycle)
     void formCluster(const std::set<int>& members);
-    void sendLateJoinOrderTo(int targetVehicleId);
-    void handleLateJoinOrder(const std::vector<uint8_t>& data, int senderId);
 
     // RAFT periodic + callbacks
     void processRaftPeriodic();
@@ -209,7 +215,7 @@ protected:
     int  doApplyLog(raft_entry_t*, raft_index_t);
     int  doLogGetNodeId(raft_entry_t*, raft_index_t);
 
-    // Serialization (all 4 pairs — 100% identical in both originals)
+    // Serialization
     std::vector<uint8_t> serializeRequestVote(msg_requestvote_t*);
     std::vector<uint8_t> serializeRequestVoteResponse(msg_requestvote_response_t*);
     std::vector<uint8_t> serializeAppendEntries(msg_appendentries_t*);
@@ -240,8 +246,6 @@ protected:
 
     // Scheduling helpers
     bool          movementsConflict(int laneA, int turnA, int laneB, int turnB);
-    /** Pure decision function: takes all proposals and returns a batch schedule.
-     *  Defined in RaftDecision.cc — edit that file to change the crossing policy. */
     PassScheduleEntry computePassOrder(const std::map<int, VehicleProposal>& proposals,
                                        const std::set<int>& activeVehicles);
     VehicleProposal buildMyProposal();
@@ -251,7 +255,8 @@ protected:
 
     // Intersection state helpers
     void checkAndStopAtIntersection();
-    void checkAndAdvanceInQueue();   // TraCI-based: advance queued vehicle when gap opens
+    void onFirstStoppedAtIntersection();  // called once when vehicle first stops
+    void checkAndAdvanceInQueue();
     bool isAtIntersection() const;
     bool isNearJunction() const;
     bool hasPassedIntersectionEdge() const;
@@ -270,22 +275,11 @@ protected:
     raft_node_id_t getNodeIdFromVehicleId(int v) const  { return v + 1; }
     int            getVehicleIdFromNodeId(raft_node_id_t n) const { return n - 1; }
 
-    /** Mark a vehicle's RAFT node as inactive when it leaves the intersection.
-     *  Updates quorum so remaining vehicles can reach majority. */
     void markRaftNodeInactive(int vehicleId);
-
-    /** Schedule timeout for VEHICLE_LEFT: if vehicles in batch don't report within vehicleLeftTimeoutMs_, assume they left. */
     void scheduleVehicleLeftTimeout(int batchIndex);
 
-    // ============ TRANSPORT HELPERS (must be overridden by subclass) ============
-    // Called by shared methods when they need to schedule a delayed callback.
+    // ============ TRANSPORT HELPERS ============
     virtual void scheduleOneshotMs(double delayMs, std::function<void()> fn) = 0;
-
-    /** Hook called when the RAFT cluster has been successfully formed */
     virtual void onClusterFormed() = 0;
-
-    /** Return a uniform random double in [lo, hi). Must use the OMNeT++ RNG
-     *  so that --seed-set properly controls randomness across runs. */
     virtual double getRandomDouble(double lo, double hi) = 0;
-
 };

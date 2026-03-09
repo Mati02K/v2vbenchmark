@@ -4,6 +4,7 @@
 
 #include <fstream>
 #include <string>
+#include <vector>
 
 class RaftMetrics {
 public:
@@ -33,7 +34,8 @@ public:
         int electionRounds,
         int logEntriesProposed,
         int logEntriesCommitted,
-        int myBatch
+        int myBatch,
+        const std::vector<int>& clusterMembers
     );
 
     // Accessors for static state

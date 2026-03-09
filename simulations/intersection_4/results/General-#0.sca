@@ -1,25 +1,25 @@
 version 2
-run General-0-20260303-00:45:08-420793
+run General-0-20260306-17:15:46-800101
 attr configname General
-attr datetime 20260303-00:45:08
+attr datetime 20260306-17:15:46
 attr experiment General
 attr inifile omnetpp_udp.ini
 attr iterationvars ""
 attr iterationvarsf ""
 attr measurement ""
 attr network IntersectionScenarioInet
-attr processid 420793
+attr processid 800101
 attr repetition 0
 attr replication #0
 attr resultdir results
 attr runnumber 0
-attr seedset 2
+attr seedset 1
 param **.app[0].arrivalWaitTimeMs 300
 param **.app[0].electionTimeoutBaseMs 280
 param **.app[0].electionTimeoutJitterMs 160
 param **.app[0].intersectionStopDistance 25m
 param **.app[0].requestTimeoutMs 100
-param **.app[0].resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/bench_udp_4/run_2/raft_results.json\""
+param **.app[0].resultsFile "\"/home/mathesh/omnetpp-workspace/benchmark/results/test_lane_leader_udp/run_1/raft_results.json\""
 param **.app[0].statusCollectionTimeoutMs 350
 param *.manager.updateInterval 0.1s
 param *.manager.host "\"localhost\""

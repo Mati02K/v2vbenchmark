@@ -62,7 +62,8 @@ void RaftMetrics::writeVehicleJSON(
     int electionRounds,
     int logEntriesProposed,
     int logEntriesCommitted,
-    int myBatch)
+    int myBatch,
+    const std::vector<int>& clusterMembers)
 {
     if (!resultsFileOpened_) return;
 
@@ -100,6 +101,13 @@ void RaftMetrics::writeVehicleJSON(
     resultsFile_ << "      \"sent\": "               << messagesSent << ",\n";
     resultsFile_ << "      \"received\": "           << messagesReceived << "\n";
     resultsFile_ << "    },\n";
+    resultsFile_ << "    \"cluster_size\": "         << clusterMembers.size() << ",\n";
+    resultsFile_ << "    \"cluster_members\": [";
+    for (size_t i = 0; i < clusterMembers.size(); i++) {
+        if (i > 0) resultsFile_ << ", ";
+        resultsFile_ << clusterMembers[i];
+    }
+    resultsFile_ << "],\n";
     resultsFile_ << "    \"raft_stats\": {\n";
     resultsFile_ << "      \"election_rounds\": "    << electionRounds << ",\n";
     resultsFile_ << "      \"entries_proposed\": "   << logEntriesProposed << ",\n";

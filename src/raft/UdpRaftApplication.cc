@@ -107,10 +107,11 @@ bool UdpRaftApplication::startApplication()
     myRoute_ = routeNames[dirIndex % 4];
     myLaneIndex_ = sideIndex % 4;
 
-    vehicleInFrontOfMe_ = (posInLane > 0) ? myId_ - 1 : -1;
+    vehicleInFrontOfMe_ = (posInLane > 0) ? myId_ - 1 : -1;  // initial guess, updated by updateLaneLeaderFlag
     wayOfSight_         = (posInLane == 0);
+    isLaneLeader_       = (posInLane == 0);  // initial guess, updated dynamically
 
-    for (int i = 0; i < totalVehicles_; i++) activeVehicles_.insert(i);
+    activeVehicles_.insert(myId_);  // only self until RAFT forms via leader DB exchange
 
     RaftMetrics::setTotalVehicles(totalVehicles_);
     if (myId_ == 0) {
@@ -140,11 +141,8 @@ bool UdpRaftApplication::startApplication()
     discoveryTimer_ = new cMessage("discoveryTimer");
     scheduleAt(simTime() + uniform(0, discoveryBeaconInterval_), discoveryTimer_);
 
-    // RAFT periodic timer
+    // RAFT periodic timer (started by onClusterFormed when RAFT actually forms)
     raftPeriodicTimer_ = new cMessage("raftPeriodic");
-
-    // Start RAFT single-node at init (merges form larger cluster via invitation)
-    initRaftSingleNode();
 
     return true;
 }
@@ -188,18 +186,13 @@ void UdpRaftApplication::handleMessageWhenUp(cMessage* msg)
             scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
     }
     else if (msg == discoveryTimer_) {
+        if (!hasPassedIntersection_ && !raftStarted_) {
+            sendPeerBeacon();
+        }
         if (!hasPassedIntersection_) {
-            sendClusterInvitation();
-            if (clusterPhase_ == PHASE_COORDINATION)
-                broadcastClusterExists();
+            double nextInterval = uniform(0, discoveryBeaconInterval_);
+            scheduleAt(simTime() + nextInterval, discoveryTimer_);
         }
-        double nextInterval;
-        if (hasStoppedAtIntersection_) {
-            nextInterval = (invitationIntervalStoppedMs_ / 1000.0) + uniform(0, 0.005);  // 10ms + jitter
-        } else {
-            nextInterval = (clusterPhase_ == PHASE_COORDINATION) ? 2.0 : uniform(0, discoveryBeaconInterval_);
-        }
-        scheduleAt(simTime() + nextInterval, discoveryTimer_);
     }
     else if (msg == raftPeriodicTimer_) {
         if (raftServer_ && !hasPassedIntersection_ && !isFallbackMode_)
@@ -283,25 +276,13 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             handleVehicleLeft(e.vehicleId, e.batchId);
         }
     }
-    // Discovery / cluster invitation
-    else if (pktName.find("cluster-invitation") != std::string::npos)
-        handleClusterInvitation(bytes, extractSenderFromPacketName(pktName));
-    else if (pktName.find("discovery-beacon") != std::string::npos) {
-        int senderId = extractSenderFromPacketName(pktName);
-        if (senderId != myId_ && bytes.size() >= sizeof(int) + 1) {
-            uint8_t senderPhase = bytes[sizeof(int)];
-            if (senderPhase == PHASE_DISCOVERY)
-                handleDiscoveryBeacon(senderId, senderPhase);
-            else
-                discoveredPeers_.erase(senderId);
-        }
-    }
-    else if (pktName.find("cluster-form") != std::string::npos)
-        handleClusterForm(bytes, extractSenderFromPacketName(pktName));
-    else if (pktName.find("cluster-exists") != std::string::npos)
-        handleClusterExists(bytes, extractSenderFromPacketName(pktName));
-    else if (pktName.find("late-join-order") != std::string::npos)
-        handleLateJoinOrder(bytes, extractSenderFromPacketName(pktName));
+    // Discovery
+    else if (pktName.find("peer-beacon") != std::string::npos)
+        handlePeerBeacon(bytes, extractSenderFromPacketName(pktName));
+    else if (pktName.find("leader-db-exchange") != std::string::npos)
+        handleLeaderDbExchange(bytes, extractSenderFromPacketName(pktName));
+    else if (pktName.find("cluster-join-invite") != std::string::npos)
+        handleClusterJoinInvite(bytes, extractSenderFromPacketName(pktName));
 }
 
 // ============ PACKET NAME HELPERS ============
@@ -334,8 +315,8 @@ void UdpRaftApplication::sendRaftToPeer(int targetVehicleId, int msgType,
         case 0x21: name << "raft-requestvote-response-from-" << myId_ << "-node-" << myRaftNodeId_ << "-to-" << targetVehicleId; break;
         case 0x22: name << "raft-appendentries-from-"       << myId_ << "-to-" << targetVehicleId; break;
         case 0x23: name << "raft-appendentries-response-from-" << myId_ << "-node-" << myRaftNodeId_ << "-to-" << targetVehicleId; break;
+        case 0x15: name << "cluster-join-invite-from-"      << myId_ << "-to-" << targetVehicleId; break;
         case 0x31: name << "coord-status-response-from-"    << myId_ << "-to-" << targetVehicleId; break;
-        case 0x40: name << "late-join-order-from-"         << myId_ << "-to-" << targetVehicleId; break;
         default:   name << "raft-msg-" << msgType << "-from-" << myId_ << "-to-" << targetVehicleId; break;
     }
 
@@ -350,9 +331,8 @@ void UdpRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_
 {
     std::ostringstream name;
     switch (msgType) {
-        case 0x10: name << "discovery-beacon-from-" << myId_; break;
-        case 0x11: name << "cluster-form-from-"     << myId_ << "-broadcast"; break;
-        case 0x13: name << "cluster-invitation-from-" << myId_ << "-broadcast"; break;
+        case 0x10: name << "peer-beacon-from-"          << myId_ << "-broadcast"; break;
+        case 0x14: name << "leader-db-exchange-from-"   << myId_ << "-broadcast"; break;
         case 0x30: name << "coord-status-request-from-" << myId_ << "-broadcast"; break;
         case 0x33: name << "coord-vehicle-passed-from-" << myId_ << "-broadcast"; break;
         case 0x34: name << "coord-vehicle-left-from-"   << myId_ << "-broadcast"; break;

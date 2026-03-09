@@ -11,26 +11,26 @@ namespace benchmark;
 
 // Message types for RAFT protocol
 enum RaftMsgType {
-    // Dynamic cluster discovery
-    DISCOVERY_BEACON               = 16;  // 0x10 (legacy)
-    CLUSTER_FORM                   = 17;  // 0x11
-    CLUSTER_EXISTS                 = 18;  // 0x12
-    CLUSTER_INVITATION             = 19;  // 0x13 — discovery/merge: (vehicleId, clusterId, timestamp, members)
-    
+    // Discovery: each vehicle broadcasts its own VehicleProposal
+    PEER_BEACON                    = 16;  // 0x10
+
+    // Intersection leader exchange: lane leader broadcasts full vehicleDB_
+    LEADER_DB_EXCHANGE             = 20;  // 0x14
+
+    // Cluster join invitation: lane leader unicasts RAFT member list to a vehicle
+    CLUSTER_JOIN_INVITE            = 21;  // 0x15
+
     // RAFT Core
     RAFT_REQUEST_VOTE              = 32;  // 0x20
     RAFT_REQUEST_VOTE_RESPONSE     = 33;  // 0x21
     RAFT_APPEND_ENTRIES            = 34;  // 0x22
     RAFT_APPEND_ENTRIES_RESPONSE   = 35;  // 0x23
-    
+
     // Coordination
     COORD_STATUS_REQUEST           = 48;  // 0x30
     COORD_STATUS_RESPONSE          = 49;  // 0x31
     COORD_VEHICLE_PASSED           = 51;  // 0x33
     COORD_VEHICLE_LEFT             = 52;  // 0x34
-
-    // Late joiner: committed cluster sends schedule to vehicles that formed after commit
-    LATE_JOIN_ORDER                = 64;  // 0x40
 }
 
 // RAFT WAVE message with binary payload

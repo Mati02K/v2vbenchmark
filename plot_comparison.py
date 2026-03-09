@@ -389,7 +389,207 @@ def main():
     fig_msg.savefig(messages_pdf, bbox_inches='tight')
     plt.close(fig_msg)
     print(f"Messages plot saved to: {messages_png}")
-    
+
+    # --- CDF: Total Wait Time per vehicle ---
+    # Collect raw per-vehicle wait times (one value per vehicle per run)
+    raw_wait = {protocol: {} for protocol in protocols}
+    for protocol in protocols:
+        prefix = folder_prefix[protocol]
+        for vc in vehicle_counts:
+            result_name = f"{prefix}_{vc}veh" if args.simple else None
+            if not args.simple:
+                for suffix in ['_fixed2', '_report', '']:
+                    candidate = f"{prefix}_{vc}veh{suffix}"
+                    if os.path.isdir(os.path.join(RESULTS_DIR, candidate)):
+                        result_name = candidate
+                        break
+                else:
+                    result_name = f"{prefix}_{vc}veh"
+            result_dir = os.path.join(RESULTS_DIR, result_name)
+            times = []
+            run_num = 1
+            while True:
+                json_file = os.path.join(result_dir, f'run_{run_num}', 'raft_results.json')
+                if not os.path.exists(json_file):
+                    break
+                try:
+                    with open(json_file) as f:
+                        raw = f.read()
+                    d = json.loads(raw)
+                except json.JSONDecodeError:
+                    try:
+                        s = raw.rstrip()
+                        d = json.loads((s + '\n]') if s.endswith('}') else (s.rstrip(',') + '\n]'))
+                    except Exception:
+                        run_num += 1
+                        continue
+                except Exception:
+                    run_num += 1
+                    continue
+                for v in d:
+                    wt = v['durations_ms'].get('total_wait_time', 0)
+                    if wt > 0:
+                        times.append(wt / 1000.0)  # convert to seconds
+                run_num += 1
+            raw_wait[protocol][vc] = times
+
+    fig_cdf, axes_cdf = plt.subplots(1, len(vehicle_counts), figsize=(14, 5), sharey=True)
+    fig_cdf.suptitle(
+        f'CDF of Total Wait Time per Vehicle{title_note}\n'
+        'Time from vehicle first stopping to crossing the intersection',
+        fontsize=13, fontweight='bold'
+    )
+    linestyles = {'wave': '-', 'udp': '--'}
+
+    for col, vc in enumerate(vehicle_counts):
+        ax = axes_cdf[col]
+        for protocol in protocols:
+            times = raw_wait[protocol].get(vc, [])
+            if not times:
+                continue
+            sorted_t = np.sort(times)
+            cdf = np.arange(1, len(sorted_t) + 1) / len(sorted_t)
+            ax.plot(sorted_t, cdf,
+                    color=colors[protocol],
+                    linestyle=linestyles[protocol],
+                    linewidth=2,
+                    label=f"{labels[protocol]} (n={len(times)})")
+        ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
+        ax.set_xlabel('Total Wait Time (s)', fontsize=10)
+        if col == 0:
+            ax.set_ylabel('CDF', fontsize=10)
+        ax.set_ylim(0, 1.05)
+        ax.set_xlim(left=0)
+        ax.legend(fontsize=8)
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    cdf_png = os.path.join(RESULTS_DIR, f'{output_prefix}cdf_wait_time.png')
+    cdf_pdf = os.path.join(RESULTS_DIR, f'{output_prefix}cdf_wait_time.pdf')
+    fig_cdf.savefig(cdf_png, dpi=150, bbox_inches='tight')
+    fig_cdf.savefig(cdf_pdf, bbox_inches='tight')
+    plt.close(fig_cdf)
+    print(f"CDF plot saved to: {cdf_png}")
+
+    # --- Cluster Size per Election plot ---
+    # One row, 3 subplots (4/8/16 veh).
+    # X-axis: WAVE elections grouped left, UDP elections grouped right.
+    # Each bar = one run where a RAFT election happened; Y = vehicles in that election.
+    # Only runs with at least one vehicle doing RAFT get a bar.
+
+    # Collect per-run cluster sizes (only runs with actual RAFT elections)
+    election_sizes = {protocol: {} for protocol in protocols}
+    for protocol in protocols:
+        prefix = folder_prefix[protocol]
+        for vc in vehicle_counts:
+            result_name = f"{prefix}_{vc}veh" if args.simple else None
+            if not args.simple:
+                for suffix in ['_fixed2', '_report', '']:
+                    candidate = f"{prefix}_{vc}veh{suffix}"
+                    if os.path.isdir(os.path.join(RESULTS_DIR, candidate)):
+                        result_name = candidate
+                        break
+                else:
+                    result_name = f"{prefix}_{vc}veh"
+            result_dir = os.path.join(RESULTS_DIR, result_name)
+            sizes = []
+            run_num = 1
+            while True:
+                json_file = os.path.join(result_dir, f'run_{run_num}', 'raft_results.json')
+                if not os.path.exists(json_file):
+                    break
+                try:
+                    with open(json_file) as f:
+                        raw = f.read()
+                    d = json.loads(raw)
+                except json.JSONDecodeError:
+                    try:
+                        s = raw.rstrip()
+                        d = json.loads((s + '\n]') if s.endswith('}') else (s.rstrip(',') + '\n]'))
+                    except Exception:
+                        run_num += 1
+                        continue
+                except Exception:
+                    run_num += 1
+                    continue
+                # Only include runs where a RAFT election actually happened
+                cluster_size = sum(1 for v in d if v.get('coordination_method') == 'raft')
+                if cluster_size > 0:
+                    sizes.append(cluster_size)
+                run_num += 1
+            election_sizes[protocol][vc] = sizes
+
+    fig_cl, axes_cl = plt.subplots(1, len(vehicle_counts), figsize=(14, 5))
+    fig_cl.suptitle(
+        f'RAFT Election Cluster Size per Run{title_note}\n'
+        'Each bar = one intersection event; height = vehicles that participated in that election',
+        fontsize=12, fontweight='bold'
+    )
+
+    bar_w = 0.6
+    gap   = 1.5  # gap between WAVE group and UDP group
+
+    for col, vc in enumerate(vehicle_counts):
+        ax = axes_cl[col]
+
+        wave_sizes = election_sizes['wave'].get(vc, [])
+        udp_sizes  = election_sizes['udp'].get(vc, [])
+
+        # WAVE bars: positions 0..n_wave-1
+        # UDP bars: positions n_wave+gap .. n_wave+gap+n_udp-1
+        wave_x = np.arange(len(wave_sizes), dtype=float)
+        udp_x  = np.arange(len(udp_sizes),  dtype=float) + len(wave_sizes) + gap
+
+        if len(wave_sizes):
+            ax.bar(wave_x, wave_sizes, width=bar_w,
+                   color=colors['wave'], alpha=0.85, edgecolor='black', linewidth=0.5,
+                   label=labels['wave'])
+            for x, s in zip(wave_x, wave_sizes):
+                ax.text(x, s + 0.1, str(s), ha='center', va='bottom', fontsize=8)
+
+        if len(udp_sizes):
+            ax.bar(udp_x, udp_sizes, width=bar_w,
+                   color=colors['udp'], alpha=0.85, edgecolor='black', linewidth=0.5,
+                   label=labels['udp'])
+            for x, s in zip(udp_x, udp_sizes):
+                ax.text(x, s + 0.1, str(s), ha='center', va='bottom', fontsize=8)
+
+        # Group labels on x-axis
+        all_x    = list(wave_x) + list(udp_x)
+        all_lbl  = [f'W{i+1}' for i in range(len(wave_sizes))] + \
+                   [f'U{i+1}' for i in range(len(udp_sizes))]
+        ax.set_xticks(all_x)
+        ax.set_xticklabels(all_lbl, fontsize=7)
+
+        # Underline group labels with a bracket / annotation
+        if len(wave_sizes):
+            mid_w = float(np.mean(wave_x))
+            ax.annotate('WAVE', xy=(mid_w, -0.12), xycoords=('data', 'axes fraction'),
+                        ha='center', va='top', fontsize=9, fontweight='bold',
+                        color=colors['wave'])
+        if len(udp_sizes):
+            mid_u = float(np.mean(udp_x))
+            ax.annotate('UDP', xy=(mid_u, -0.12), xycoords=('data', 'axes fraction'),
+                        ha='center', va='top', fontsize=9, fontweight='bold',
+                        color=colors['udp'])
+
+        ax.axhline(vc, color='gray', linestyle='--', linewidth=1, label=f'Max ({vc})')
+        ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
+        ax.set_ylim(0, vc + 2)
+        ax.set_yticks(range(0, vc + 2))
+        if col == 0:
+            ax.set_ylabel('Vehicles in RAFT Election', fontsize=10)
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.legend(fontsize=7, loc='lower right')
+
+    plt.tight_layout()
+    cluster_png = os.path.join(RESULTS_DIR, f'{output_prefix}cluster_leader.png')
+    cluster_pdf = os.path.join(RESULTS_DIR, f'{output_prefix}cluster_leader.pdf')
+    fig_cl.savefig(cluster_png, dpi=150, bbox_inches='tight')
+    fig_cl.savefig(cluster_pdf, bbox_inches='tight')
+    plt.close(fig_cl)
+    print(f"Cluster/leader plot saved to: {cluster_png}")
+
     # Print summary table
     print("\n" + "="*70)
     print("SUMMARY: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)")

@@ -165,6 +165,7 @@ void RaftAppBase::outputMetricsJSON()
         electionRounds_,
         logEntriesProposed_,
         logEntriesCommitted_,
-        myBatch_
+        myBatch_,
+        std::vector<int>(activeVehicles_.begin(), activeVehicles_.end())
     );
 }

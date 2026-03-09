@@ -127,10 +127,11 @@ void WaveRaftApplication::initialize(int stage)
         static const char* routeNames[] = {"rN","rS","rE","rW"};  // North,South,East,West (N/W swapped)
         myRoute_ = routeNames[sideIndex % 4];
 
-        vehicleInFrontOfMe_ = (posInLane > 0) ? myId_ - 1 : -1;
+        vehicleInFrontOfMe_ = (posInLane > 0) ? myId_ - 1 : -1;  // initial guess
         wayOfSight_         = (posInLane == 0);
+        isLaneLeader_       = (posInLane == 0);  // initial guess, updated dynamically
 
-        for (int i = 0; i < totalVehicles_; i++) activeVehicles_.insert(i);
+        activeVehicles_.insert(myId_);  // only self until RAFT forms via leader DB exchange
 
         if (!isGlobalInitialized_) {
             isGlobalInitialized_ = true;
@@ -153,8 +154,7 @@ void WaveRaftApplication::initialize(int stage)
         scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
         scheduleAt(simTime() + uniform(0, discoveryBeaconInterval_), discoveryTimer_);
 
-        // Start RAFT single-node at init (merges form larger cluster via invitation)
-        initRaftSingleNode();
+        // RAFT starts later via leader DB exchange at intersection (no initRaftSingleNode)
     }
 }
 
@@ -196,7 +196,6 @@ void WaveRaftApplication::handlePositionUpdate(cObject* obj)
         if (mobility_) {
             traci_        = mobility_->getCommandInterface();
             traciVehicle_ = mobility_->getVehicleCommandInterface();
-            // Print SUMO↔OMNeT++ vehicle ID mapping once at first position update
             try {
                 std::string sumoId = mobility_->getExternalId();
                 std::cout << simTime() << " [DBG] OMNeT++_V" << myId_
@@ -206,6 +205,9 @@ void WaveRaftApplication::handlePositionUpdate(cObject* obj)
             } catch (...) {}
         }
     }
+    // Update lane leader flag every position update (~100ms TraCI step)
+    if (traciVehicle_ && !hasPassedIntersection_)
+        updateLaneLeaderFlag();
 }
 
 // ============ SELF MESSAGE HANDLING ============
@@ -221,18 +223,12 @@ void WaveRaftApplication::handleSelfMsg(cMessage* msg)
             scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
     }
     else if (msg == discoveryTimer_) {
+        if (!hasPassedIntersection_ && !raftStarted_) {
+            sendPeerBeacon();
+        }
         if (!hasPassedIntersection_) {
-            sendClusterInvitation();
-            if (clusterPhase_ == PHASE_COORDINATION)
-                broadcastClusterExists();
+            scheduleAt(simTime() + uniform(0, discoveryBeaconInterval_), discoveryTimer_);
         }
-        double nextInterval;
-        if (hasStoppedAtIntersection_) {
-            nextInterval = (invitationIntervalStoppedMs_ / 1000.0) + uniform(0, 0.005);  // 10ms + jitter
-        } else {
-            nextInterval = (clusterPhase_ == PHASE_COORDINATION) ? 2.0 : uniform(0, discoveryBeaconInterval_);
-        }
-        scheduleAt(simTime() + nextInterval, discoveryTimer_);
     }
     else if (msg == raftPeriodicTimer_) {
         processRaftPeriodic();
@@ -287,22 +283,14 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
     int protocolSender = senderId;
 
     switch (msgType) {
-        case benchmark::CLUSTER_INVITATION:
-            handleClusterInvitation(payload, protocolSender);
+        case benchmark::PEER_BEACON:
+            handlePeerBeacon(payload, protocolSender);
             break;
-        case benchmark::DISCOVERY_BEACON: {
-            uint8_t senderPhase = (payload.size() >= sizeof(int)+1) ? payload[sizeof(int)] : 0;
-            if (senderPhase == PHASE_DISCOVERY)
-                handleDiscoveryBeacon(protocolSender, senderPhase);
-            else
-                discoveredPeers_.erase(protocolSender);
+        case benchmark::LEADER_DB_EXCHANGE:
+            handleLeaderDbExchange(payload, protocolSender);
             break;
-        }
-        case benchmark::CLUSTER_FORM:
-            handleClusterForm(payload, protocolSender);
-            break;
-        case benchmark::CLUSTER_EXISTS:
-            handleClusterExists(payload, protocolSender);
+        case benchmark::CLUSTER_JOIN_INVITE:
+            handleClusterJoinInvite(payload, protocolSender);
             break;
         case benchmark::RAFT_REQUEST_VOTE:
             if (raftServer_) handleRequestVote(payload, protocolSender);
@@ -328,9 +316,6 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             break;
         case benchmark::COORD_VEHICLE_PASSED:
             if (payload.size() >= 1) handleVehiclePassed((int)payload[0]);
-            break;
-        case benchmark::LATE_JOIN_ORDER:
-            handleLateJoinOrder(payload, protocolSender);
             break;
         case benchmark::COORD_VEHICLE_LEFT:
             if (payload.size() >= sizeof(VehicleLeftEntry)) {

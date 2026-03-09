@@ -48,8 +48,43 @@ double RaftAppBase::calculateDistanceToJunction()
 
 // ============ INTERSECTION DETECTION ============
 
+// Called once the first time a vehicle stops at the intersection.
+// Triggers leader DB exchange (if lane leader) and the 10-second fallback timeout.
+void RaftAppBase::onFirstStoppedAtIntersection()
+{
+    updateLaneLeaderFlag();
+
+    std::cout << NOW << " [DBG][V" << myId_ << "] FIRST_STOP:"
+              << " isLaneLeader=" << isLaneLeader_
+              << " vehicleDB_=" << vehicleDB_.size()
+              << " laneIdx=" << myLaneIndex_ << std::endl;
+
+    if (isLaneLeader_) {
+        sendLeaderDbExchange();
+        scheduleLeaderDbExchangeLoop();
+    }
+
+    // 10-second fallback: if RAFT hasn't formed yet, log what's missing and activate fallback
+    scheduleOneshotMs(10000.0, [this]() {
+        if (!raftStarted_ && !hasPassedIntersection_) {
+            int numLanes = (int)approachEdgeList_.size();
+            std::cout << NOW << " [WARN][V" << myId_ << "] 10s TIMEOUT: received "
+                      << receivedLeaderDBs_.size() << "/" << numLanes
+                      << " leader DBs. Missing lanes: [";
+            for (int i = 0; i < numLanes; i++)
+                if (!receivedLeaderDBs_.count(i)) std::cout << i << " ";
+            std::cout << "]. Activating fallback." << std::endl;
+            coordinationMethod_ = "fallback";
+            handleFallback();
+        }
+    });
+}
+
 void RaftAppBase::checkAndStopAtIntersection()
 {
+    // Update lane leader flag every check interval from vehicleDB_
+    if (!hasPassedIntersection_ && traciVehicle_) updateLaneLeaderFlag();
+
     // Never re-trigger once the vehicle has been given pass permission or has passed.
     if (hasPassedIntersection_ || !traciVehicle_) return;
     if (timeStartedMoving_ > SIMTIME_ZERO) return;  // already cleared to go
@@ -124,6 +159,7 @@ void RaftAppBase::checkAndStopAtIntersection()
                           << " wos=" << wayOfSight_
                           << " isLeader=" << isLeader_ << std::endl;
                 RAFT_LOG("STOPPED (cluster-junction) approachEdge=" << intersectionEdge_);
+                onFirstStoppedAtIntersection();
                 if (isLeader_ && !hasCommittedOrder_) {
                     double waitMs = discoveryWaitMs_ + clusterFormationDelayMs_;
                     scheduleOneshotMs(waitMs, [this]() {
@@ -183,6 +219,7 @@ void RaftAppBase::checkAndStopAtIntersection()
                           << " frontVeh=" << vehicleInFrontOfMe_
                           << " isLeader=" << isLeader_ << std::endl;
                 RAFT_LOG("STOPPED (front) at dist=" << dist << "m");
+                onFirstStoppedAtIntersection();
                 if (isLeader_ && !hasCommittedOrder_) {
                     double waitMs = discoveryWaitMs_ + clusterFormationDelayMs_;
                     scheduleOneshotMs(waitMs, [this]() {
@@ -210,6 +247,7 @@ void RaftAppBase::checkAndStopAtIntersection()
                       << " frontVeh=" << vehicleInFrontOfMe_
                       << " isLeader=" << isLeader_ << std::endl;
             RAFT_LOG("QUEUED at dist=" << dist << "m speed=" << speed << "m/s");
+            onFirstStoppedAtIntersection();
             if (isLeader_ && !hasCommittedOrder_) {
                 double waitMs = discoveryWaitMs_ + clusterFormationDelayMs_;
                 scheduleOneshotMs(waitMs, [this]() {

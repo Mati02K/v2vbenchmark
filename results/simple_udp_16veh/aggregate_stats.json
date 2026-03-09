@@ -1,0 +1,26 @@
+{
+  "raft_decision_time": {
+    "mean": 881.4,
+    "std": 0.0
+  },
+  "total_intersection_time": {
+    "mean": 29500.0,
+    "std": 0.0
+  },
+  "throughput": {
+    "mean": 1.4678899082568806,
+    "std": 0.0
+  },
+  "total_wait_time": {
+    "mean": 7093.75,
+    "std": 5127.068942144235
+  },
+  "transit_time": {
+    "mean": 581.5124999999999,
+    "std": 417.8280056958246
+  },
+  "fallback_rate": {
+    "mean": 0.0,
+    "std": 0.0
+  }
+}
