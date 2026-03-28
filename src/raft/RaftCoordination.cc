@@ -28,8 +28,24 @@ void RaftAppBase::handleStatusRequest(int fromLeader)
 void RaftAppBase::sendStatusResponse(int toLeader)
 {
     VehicleProposal proposal = buildMyProposal();
-    std::vector<uint8_t> data(sizeof(VehicleProposal));
-    memcpy(data.data(), &proposal, sizeof(VehicleProposal));
+    proposal.isPriority = false;  // never self-claim priority — receiver sets this from cert
+
+    // Build SignedProposal: serialize proposal, sign it, attach cert
+    SignedProposal sp;
+    memset(&sp, 0, sizeof(sp));
+
+    sp.proposalSize = sizeof(VehicleProposal);
+    memcpy(sp.proposalBytes, &proposal, sizeof(VehicleProposal));
+    sp.timestampMs  = (uint64_t)(simTime().dbl() * 1000.0);
+    sp.cert         = myCert_;
+
+    CryptoAuth::instance().signProposal(myPrivKey_,
+                                         sp.proposalBytes, sp.proposalSize,
+                                         sp.timestampMs,
+                                         sp.signature, sp.signatureLen);
+
+    std::vector<uint8_t> data(sizeof(SignedProposal));
+    memcpy(data.data(), &sp, sizeof(SignedProposal));
     sendRaftToPeer(toLeader, /*COORD_STATUS_RESPONSE*/ 0x31, data);
     messagesSent_++;
 }

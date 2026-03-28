@@ -591,6 +591,146 @@ def main():
     plt.close(fig_cl)
     print(f"Cluster/leader plot saved to: {cluster_png}")
 
+    # --- Ambulance vs Normal Wait Time bar plot ---
+    # Ambulance vehicle IDs per scenario size (back of North lane in each case)
+    ambulance_ids = {4: 3, 8: 7, 16: 14}
+
+    # Collect mean wait times per scenario, split by ambulance / normal
+    amb_wait   = {protocol: {} for protocol in protocols}
+    norm_wait  = {protocol: {} for protocol in protocols}
+
+    for protocol in protocols:
+        prefix = folder_prefix[protocol]
+        for vc in vehicle_counts:
+            amb_id = ambulance_ids.get(vc)
+            result_name = f"{prefix}_{vc}veh" if args.simple else None
+            if not args.simple:
+                for suffix in ['_fixed2', '_report', '']:
+                    candidate = f"{prefix}_{vc}veh{suffix}"
+                    if os.path.isdir(os.path.join(RESULTS_DIR, candidate)):
+                        result_name = candidate
+                        break
+                else:
+                    result_name = f"{prefix}_{vc}veh"
+            result_dir = os.path.join(RESULTS_DIR, result_name)
+
+            amb_times  = []
+            norm_times = []
+            run_num = 1
+            while True:
+                json_file = os.path.join(result_dir, f'run_{run_num}', 'raft_results.json')
+                if not os.path.exists(json_file):
+                    break
+                try:
+                    with open(json_file) as f:
+                        raw = f.read()
+                    d = json.loads(raw)
+                except json.JSONDecodeError:
+                    try:
+                        s = raw.rstrip()
+                        d = json.loads((s + '\n]') if s.endswith('}') else (s.rstrip(',') + '\n]'))
+                    except Exception:
+                        run_num += 1
+                        continue
+                except Exception:
+                    run_num += 1
+                    continue
+                for v in d:
+                    if v.get('coordination_method') == 'fallback':
+                        continue
+                    passed = v['timestamps_ms'].get('passed', 0)
+                    if passed <= 0:
+                        continue
+                    # Use passed timestamp as crossing time (all vehicles spawn near t=0)
+                    latency_s = passed / 1000.0
+                    if v['vehicle_id'] == amb_id:
+                        amb_times.append(latency_s)
+                    else:
+                        norm_times.append(latency_s)
+                run_num += 1
+
+            amb_wait[protocol][vc]  = np.mean(amb_times)  if amb_times  else 0.0
+            norm_wait[protocol][vc] = np.mean(norm_times) if norm_times else 0.0
+
+    # Layout: one subplot per vehicle count, grouped bars per protocol
+    fig_amb, axes_amb = plt.subplots(1, len(vehicle_counts), figsize=(14, 5), sharey=False)
+    fig_amb.suptitle(
+        f'Intersection Crossing Time: Ambulance vs Normal Vehicles{title_note}\n'
+        'Crossing time = simulation time when vehicle passed the intersection (s)',
+        fontsize=13, fontweight='bold'
+    )
+
+    bar_w = 0.3
+    # For each subplot: 2 protocol groups (WAVE, UDP), each with 2 bars (ambulance, normal)
+    group_gap   = 0.9   # gap between WAVE group and UDP group
+    amb_color   = '#e74c3c'   # red  — ambulance
+    norm_color  = '#95a5a6'   # grey — normal
+
+    for col, vc in enumerate(vehicle_counts):
+        ax = axes_amb[col]
+        x_wave = np.array([0.0, bar_w])          # WAVE: [ambulance, normal]
+        x_udp  = x_wave + bar_w + group_gap      # UDP:  [ambulance, normal]
+
+        w_amb  = amb_wait['wave'].get(vc, 0)
+        w_norm = norm_wait['wave'].get(vc, 0)
+        u_amb  = amb_wait['udp'].get(vc, 0)
+        u_norm = norm_wait['udp'].get(vc, 0)
+
+        # WAVE bars
+        ax.bar(x_wave[0], w_amb,  width=bar_w, color=amb_color,  alpha=0.9,
+               edgecolor='black', linewidth=0.7, label='Ambulance')
+        ax.bar(x_wave[1], w_norm, width=bar_w, color=norm_color, alpha=0.9,
+               edgecolor='black', linewidth=0.7, label='Normal vehicles')
+        # UDP bars (reuse same colors, hatched to distinguish protocol)
+        ax.bar(x_udp[0], u_amb,  width=bar_w, color=amb_color,  alpha=0.9,
+               edgecolor='black', linewidth=0.7, hatch='//')
+        ax.bar(x_udp[1], u_norm, width=bar_w, color=norm_color, alpha=0.9,
+               edgecolor='black', linewidth=0.7, hatch='//')
+
+        # Value labels on each bar
+        for x, val in [(x_wave[0], w_amb), (x_wave[1], w_norm),
+                        (x_udp[0],  u_amb), (x_udp[1],  u_norm)]:
+            if val > 0:
+                ax.text(x, val + 0.03, f'{val:.1f}s', ha='center', va='bottom',
+                        fontsize=8, fontweight='bold')
+
+        # Group annotations
+        mid_wave = float(np.mean(x_wave))
+        mid_udp  = float(np.mean(x_udp))
+        ax.annotate('WAVE', xy=(mid_wave, -0.09), xycoords=('data', 'axes fraction'),
+                    ha='center', va='top', fontsize=9, fontweight='bold',
+                    color=colors['wave'])
+        ax.annotate('UDP', xy=(mid_udp, -0.09), xycoords=('data', 'axes fraction'),
+                    ha='center', va='top', fontsize=9, fontweight='bold',
+                    color=colors['udp'])
+
+        ax.set_xticks([])
+        ax.set_title(f'{vc} Vehicles\n(ambulance=V{ambulance_ids[vc]})', fontsize=11, fontweight='bold')
+        if col == 0:
+            ax.set_ylabel('Mean Crossing Time (s)', fontsize=10)
+        ax.set_xlim(-bar_w * 0.8, float(x_udp[1]) + bar_w * 1.2)
+        ax.set_ylim(0, max(w_amb, w_norm, u_amb, u_norm) * 1.25 + 0.5)
+        ax.grid(True, alpha=0.3, axis='y')
+
+        # Legend only in first subplot
+        if col == 0:
+            from matplotlib.patches import Patch
+            legend_elements = [
+                Patch(facecolor=amb_color,  edgecolor='black', label='Ambulance'),
+                Patch(facecolor=norm_color, edgecolor='black', label='Normal vehicles'),
+                Patch(facecolor='white',    edgecolor='black', label='WAVE (solid)'),
+                Patch(facecolor='white',    edgecolor='black', hatch='//', label='UDP (hatched)'),
+            ]
+            ax.legend(handles=legend_elements, fontsize=8, loc='upper right')
+
+    plt.tight_layout()
+    amb_png = os.path.join(RESULTS_DIR, f'{output_prefix}ambulance_wait_time.png')
+    amb_pdf = os.path.join(RESULTS_DIR, f'{output_prefix}ambulance_wait_time.pdf')
+    fig_amb.savefig(amb_png, dpi=150, bbox_inches='tight')
+    fig_amb.savefig(amb_pdf, bbox_inches='tight')
+    plt.close(fig_amb)
+    print(f"Ambulance wait time plot saved to: {amb_png}")
+
     # Print summary table
     print("\n" + "="*70)
     print("SUMMARY: WAVE (IEEE 802.11p/ITS-G5) vs UDP (IEEE 802.11a)")

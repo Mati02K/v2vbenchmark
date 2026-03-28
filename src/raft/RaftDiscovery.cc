@@ -27,36 +27,79 @@
 
 // ============ PRE-INTERSECTION PEER BEACON ============
 
-// Broadcast own VehicleProposal so all peers can build vehicleDB_.
+// Broadcast own VehicleProposal + cert so peers can verify isPriority and build vehicleDB_.
 void RaftAppBase::sendPeerBeacon()
 {
     if (hasPassedIntersection_) return;
 
     VehicleProposal myProposal = buildMyProposal();
-    vehicleDB_[myId_] = myProposal;  // keep self entry up-to-date
+    myProposal.isPriority = false;  // receiver sets this after cert verification, not self-claim
+    vehicleDB_[myId_] = myProposal;
+    vehicleDB_[myId_].isPriority = isAmbulance_;  // self knows own role
 
-    std::vector<uint8_t> data(sizeof(VehicleProposal));
-    memcpy(data.data(), &myProposal, sizeof(VehicleProposal));
+    // Pack SignedProposal so receivers can authenticate isPriority
+    SignedProposal sp;
+    memset(&sp, 0, sizeof(sp));
+    sp.proposalSize = sizeof(VehicleProposal);
+    memcpy(sp.proposalBytes, &myProposal, sizeof(VehicleProposal));
+    sp.timestampMs  = (uint64_t)(simTime().dbl() * 1000.0);
+    sp.cert         = myCert_;
+    CryptoAuth::instance().signProposal(myPrivKey_,
+                                         sp.proposalBytes, sp.proposalSize,
+                                         sp.timestampMs, sp.signature, sp.signatureLen);
+
+    std::vector<uint8_t> data(sizeof(SignedProposal));
+    memcpy(data.data(), &sp, sizeof(SignedProposal));
     sendRaftBroadcast(/*PEER_BEACON*/ 0x10, data);
     messagesSent_++;
 }
 
-// Receive a PEER_BEACON and store the sender's proposal.
+// Receive a PEER_BEACON: verify cert, set isPriority in vehicleDB_.
 void RaftAppBase::handlePeerBeacon(const std::vector<uint8_t>& data, int senderId)
 {
     if (senderId == myId_) return;
     if (senderId < 0 || senderId >= totalVehicles_) return;
-    if (data.size() < sizeof(VehicleProposal)) return;
 
     VehicleProposal proposal;
-    memcpy(&proposal, data.data(), sizeof(VehicleProposal));
+    bool isPrio = false;
+
+    if (data.size() >= sizeof(SignedProposal)) {
+        // New authenticated beacon — verify cert and signature
+        SignedProposal sp;
+        memcpy(&sp, data.data(), sizeof(SignedProposal));
+
+        std::string role = CryptoAuth::instance().verifyCert(sp.cert);
+        bool sigOk = !role.empty() &&
+                     CryptoAuth::instance().verifyProposalSignature(
+                         sp.cert, sp.proposalBytes, sp.proposalSize,
+                         sp.timestampMs, sp.signature, sp.signatureLen);
+
+        if (!role.empty() && sigOk) {
+            isPrio = (role == "ambulance");
+            if (isPrio)
+                std::cout << NOW << " [CRYPTO][V" << myId_ << "] BEACON from V" << senderId
+                          << " verified as AMBULANCE (Emergency_CA)" << std::endl;
+        } else if (!role.empty() || !sigOk) {
+            std::cout << NOW << " [CRYPTO][V" << myId_ << "] BEACON from V" << senderId
+                      << " cert/sig INVALID — treated as normal vehicle" << std::endl;
+        }
+        memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
+    } else if (data.size() >= sizeof(VehicleProposal)) {
+        // Legacy fallback (should not happen in normal operation)
+        memcpy(&proposal, data.data(), sizeof(VehicleProposal));
+    } else {
+        return;
+    }
+
     bool wasNew = (vehicleDB_.find(senderId) == vehicleDB_.end());
+    proposal.isPriority = isPrio;  // set from cert, never from payload
     vehicleDB_[senderId] = proposal;
 
     if (wasNew) {
         std::cout << NOW << " [DBG][V" << myId_ << "] PEER_BEACON: new vehicle V" << senderId
                   << " laneIdx=" << proposal.laneIndex
                   << " dist=" << proposal.distanceToJunction << "m"
+                  << " isPriority=" << isPrio
                   << " vehicleDB_=" << vehicleDB_.size() << " total" << std::endl;
     }
 }

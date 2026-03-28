@@ -53,9 +53,10 @@ The shared RAFT protocol logic lives entirely in the `RaftAppBase` class, but is
 
 | File | Role |
 |------|------|
-| `src/raft/UdpRaftApplication.h / .cc` | **UDP subclass (~450 lines).** Extends `VeinsInetApplicationBase` (INET). Implements the 3 pure-virtual transport methods using INET `UdpSocket` on 802.11a. Handles OMNeT++ packet send/receive and dispatches received bytes to the base-class handlers. |
-| `src/raft/WaveRaftApplication.h / .cc` | **WAVE subclass (~434 lines).** Extends `DemoBaseApplLayer` (Veins). Implements the same 3 virtual methods using Veins `WaveShortMessage` (WSM) on 802.11p / DSRC. Handles Veins send/receive and gossip relay dispatch. |
-| `src/raft/RaftShared.h` | **Shared structs and enums.** Defines `ClusterPhase`, `LogEntryType`, `VehicleProposal`, `PassOrderEntry`, `PassBatch`, `PassScheduleEntry`, `VehicleLeftEntry`, `CommittedSchedule`. |
+| `src/raft/UdpRaftApplication.h / .cc` | **UDP subclass (~450 lines).** Extends `VeinsInetApplicationBase` (INET). Implements the 3 pure-virtual transport methods using INET `UdpSocket` on 802.11a. Handles OMNeT++ packet send/receive and dispatches received bytes to the base-class handlers. Reads `isAmbulance` NED param and sets vehicle colour to red in SUMO-GUI. |
+| `src/raft/WaveRaftApplication.h / .cc` | **WAVE subclass (~434 lines).** Extends `DemoBaseApplLayer` (Veins). Implements the same 3 virtual methods using Veins `WaveShortMessage` (WSM) on 802.11p / DSRC. Handles Veins send/receive and gossip relay dispatch. Reads `isAmbulance` NED param and sets vehicle colour to red in SUMO-GUI. |
+| `src/raft/RaftShared.h` | **Shared structs and enums.** Defines `ClusterPhase`, `LogEntryType`, `VehicleProposal` (includes `isPriority` field), `PassOrderEntry`, `PassBatch`, `PassScheduleEntry`, `VehicleLeftEntry`, `CommittedSchedule`. Also includes `CryptoAuth.h` for `VehicleCert` and `SignedProposal`. |
+| `src/raft/CryptoAuth.h / .cc` | **ECDSA P-256 certificate engine (OpenSSL).** Singleton. Generates `Emergency_CA` and `Vehicle_CA` keypairs at startup. Each vehicle calls `generateKeyPair()` + `issueCert()` at init. Provides `signProposal()`, `verifyCert()`, `verifyProposalSignature()`. Linked with `-lssl -lcrypto`. |
 | `src/raft/RaftMetrics.h / .cc` | **JSON output collector.** Static singleton-like class. Vehicle 0 (UDP) or first init (WAVE) opens the results file; all vehicles with `hasStoppedAtIntersection_` append their record. File closes when `vehiclesCompleted_ >= totalVehicles_` **or** at `resultsFileCloseAtSec` (default 299), which avoids truncated JSON when not all vehicles stop before sim-time-limit. |
 | `src/raft/RaftWaveMessage.msg` | **OMNeT++ message definition** for the WAVE WSM payload. Fields: `msgType`, `senderId`, `targetId`, `originalSenderId` (for relay), `gossipTtl` (hops left). Auto-generates `RaftWaveMessage_m.h/cc`. |
 | `src/raft/RaftLogger.h` | Logging macros wrapping `EV_INFO` / `EV_WARN`. |
@@ -127,8 +128,12 @@ The willemt/raft library requires 1-indexed node IDs; `myRaftNodeId_` is always 
 
 At simulation start, every vehicle:
 
-1. Reads all parameters from `.ini` (`totalVehicles`, `electionTimeoutBaseMs`, `invitationIntervalStoppedMs`, etc.)
-2. Schedules three recurring timers:
+1. Reads all parameters from `.ini` (`totalVehicles`, `electionTimeoutBaseMs`, `invitationIntervalStoppedMs`, `isAmbulance`, etc.)
+2. **Crypto init** (via `CryptoAuth` singleton):
+   - `generateKeyPair()` → own EC P-256 keypair
+   - `issueCert(pubKey, role, issuer)` → cert signed by `Emergency_CA` (if ambulance) or `Vehicle_CA` (normal)
+   - Ambulance vehicles are coloured **red** in SUMO-GUI via `traciVehicle_->setColor()`
+3. Schedules three recurring timers:
    - **`checkTimer_`** — fires every 50 ms; drives stop detection, queue advancement, exit detection
    - **`discoveryTimer_`** — sends CLUSTER_INVITATION when `!hasPassedIntersection_`; interval = `invitationIntervalStoppedMs`/1000 + jitter when **stopped**, else `discoveryBeaconInterval` (default 0.3 s)
    - **`raftPeriodicTimer_`** — fires every 20 ms; ticks the RAFT library
@@ -152,6 +157,10 @@ Payload: [vehicleId:4B][clusterId:4B][timestamp:8B][numMembers:1B][member0:4B]..
 - **Never stop for `hasCommittedOrder_`** — broadcast continues until the vehicle leaves the intersection (enables late merges and late joiners).
 
 Legacy DISCOVERY_BEACON (0x10) is still supported but CLUSTER_INVITATION is the primary channel.
+
+**PEER_BEACON authentication (0x10):**
+
+Each beacon now carries a `SignedProposal` (cert + ECDSA signature) instead of a raw `VehicleProposal`. Receivers call `verifyCert()` + `verifyProposalSignature()` and store the verified `isPriority` flag in `vehicleDB_[senderId]`. This flag then propagates to all lane leaders via LEADER_DB_EXCHANGE, so the elected RAFT leader can see ambulance status for every vehicle regardless of its position in the lane queue.
 
 #### Stopping at the Intersection
 
@@ -272,11 +281,26 @@ msg type: 0x30 (COORD_STATUS_REQUEST)
 payload:  [int32 leaderId]
 ```
 
-Each follower responds with its `VehicleProposal`:
+Each follower responds with a **`SignedProposal`** (authentication layer added):
 
 ```
 msg type: 0x31 (COORD_STATUS_RESPONSE)
-payload:  struct VehicleProposal {
+payload:  struct SignedProposal {
+    uint8_t  proposalBytes[256]   // serialized VehicleProposal
+    uint32_t proposalSize
+    uint64_t timestampMs          // simtime in ms (replay prevention)
+    VehicleCert cert {
+        uint8_t publicKey[65]     // vehicle's EC P-256 public key
+        char    role[16]          // "ambulance" or "normal"
+        char    issuer[32]        // "Emergency_CA" or "Vehicle_CA"
+        uint8_t caSignature[72]   // CA's ECDSA signature
+        uint8_t caSignatureLen
+    }
+    uint8_t  signature[72]        // vehicle's ECDSA sig over (proposal + timestamp)
+    uint8_t  signatureLen
+}
+
+struct VehicleProposal {
     int    vehicleId
     char   laneEdgeId[64]    // current SUMO edge
     double positionOnLane    // metres from lane start
@@ -287,8 +311,15 @@ payload:  struct VehicleProposal {
     int    blockedByVehicleId
     double waitingTimeMs     // time since stopped
     double distanceToJunction
+    bool   isPriority        // set by RECEIVER after cert verification — NEVER self-claimed
 }
 ```
+
+**Receiver verification (leader side):**
+1. `verifyCert(cert)` — checks CA signature against trusted `Emergency_CA` or `Vehicle_CA` public key → returns role or `""` if forged
+2. `verifyProposalSignature(cert, proposalBytes, sig)` — checks payload not tampered
+3. Sets `proposal.isPriority = (role == "ambulance")` — only from cert, not from payload
+4. Rejects (drops) message if either check fails — logged as `[CRYPTO] REJECT`
 
 If responses are lost, leader uses default proposals (`laneIndex`, `waitingTimeMs=99999`, `isFirstInLane=true`). Leader proceeds after **`statusCollectionTimeoutMs_`** expires if not all responses received.
 
@@ -306,39 +337,60 @@ proposeStatusReport():
 
 #### Step 3 — Pass Order Generation (`proposePassOrder`) and PASS_SCHEDULE (RAFT Entry #2)
 
-**Sort proposals:**
+**`computePassOrder()` in `RaftDecision.cc` — ambulance-aware priority algorithm:**
 
 ```
-Priority:
-  1. isFirstInLane (front vehicles first)
-  2. waitingTimeMs (larger wait → higher priority, only if diff > 500 ms)
-  3. laneIndex (ascending, for tie-breaking)
-  4. distanceToJunction (ascending within lane)
+STEP A — Identify priority lanes:
+  priority lanes = { laneIndex : any vehicle in lane has isPriority=true }
+  (isPriority set only after Emergency_CA cert verification — see Step 1)
+
+STEP B — Schedule priority lanes first (round-robin if multiple):
+  For each priority lane, in round-robin order:
+    Pick the next unscheduled vehicle in that lane (closest to junction first)
+    whose blocker is already scheduled.
+    Add to current batch; open new batch on movement conflict.
+    Repeat until the ambulance vehicle itself is scheduled.
+    → That lane loses priority ("priority released").
+  Continue until all priority lanes are cleared.
+
+STEP C — Normal fairness algorithm for remaining vehicles:
+  Sort pool:
+    1. isFirstInLane (front vehicles first)
+    2. waitingTimeMs (larger wait → higher priority, only if diff > 500 ms)
+    3. laneIndex (ascending, for tie-breaking)
+    4. distanceToJunction (ascending within lane)
+
+  Repeat until pool empty (max 16 batches):
+    1. Pick primary: first unblocked vehicle in sorted pool
+    2. Start new batch with primary
+    3. Scan remaining vehicles, add if:
+       a. Their blocker is already scheduled (dependency met)
+       b. No movement conflict with anyone already in this batch
+    4. Conflict check: movementsConflict(laneA, turnA, laneB, turnB)
+       - Same lane → CONFLICT
+       - Opposing lanes (laneA+laneB == 2 or 4), both STRAIGHT → NO CONFLICT
+       - Opposing lanes, both LEFT → NO CONFLICT
+       - Everything else → CONFLICT
 ```
 
-**Greedy batch construction:**
+**Effect of priority (16-vehicle example, V14 = ambulance, North lane):**
 
 ```
-Repeat until pool empty (max 16 batches):
-  1. Pick primary: first unblocked vehicle in sorted pool
-  2. Start new batch with primary
-  3. Scan remaining vehicles, add if:
-     a. Their blocker is already scheduled (dependency met)
-     b. No movement conflict with anyone already in this batch
-  4. Conflict check: movementsConflict(laneA, turnA, laneB, turnB)
-     - Same lane → CONFLICT
-     - Opposing lanes (laneA+laneB == 2 or 4), both STRAIGHT → NO CONFLICT
-     - Opposing lanes, both LEFT → NO CONFLICT
-     - Everything else → CONFLICT
+Without priority:  V14 would reach batch ~7-9 (3rd in its lane, fair scheduling)
+With priority:     V14 reaches batch 3 — ~2× faster clearance
+
+Batch 0: [V0]          // West lane leader (non-priority)
+Batch 1: [V8]          // East lane leader (non-priority, no conflict with batch 0)
+Batch 2: [V11]         // East lane 2nd (non-priority)
+Batch 3: [V14] ★       // AMBULANCE — North lane priority, V12+V13 went in batches 0-2
+Batch 4+: remaining vehicles (South, West, East tails) — normal algorithm
 ```
 
-Example output for 4 vehicles (W, S, E, N all going straight):
+**`isPriority` is propagated via two channels:**
+1. **PEER_BEACON** — every beacon carries a `SignedProposal` with cert; receivers verify and store `isPriority` in `vehicleDB_[senderId]`
+2. **LEADER_DB_EXCHANGE** — lane leaders broadcast their full `vehicleDB_` (which includes `isPriority`); all other lane leaders receive it → elected RAFT leader has `isPriority` for ALL vehicles, including non-lane-leaders (e.g. V14)
 
-```
-Batch 0: [veh0]       // West, first in lane
-Batch 1: [veh1]       // South, first in lane
-Batch 2: [veh2, veh3] // East+North — opposing pair, no conflict
-```
+This means the leader knows about ambulances in all positions (front, 2nd, 3rd…) without requiring them to be lane leaders.
 
 **RAFT replication for PASS_SCHEDULE:**
 

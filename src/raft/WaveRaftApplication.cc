@@ -98,9 +98,19 @@ void WaveRaftApplication::initialize(int stage)
             invitationIntervalStoppedMs_ = par("invitationIntervalStoppedMs").intValue();
             resultsFileName_          = par("resultsFile").stdstringValue();
             resultsFileCloseAtSec_    = par("resultsFileCloseAtSec").doubleValue();
+            isAmbulance_             = par("isAmbulance").boolValue();
         } catch (std::exception& e) {
             std::cerr << "Vehicle " << myId_ << " ERROR reading params: " << e.what() << std::endl;
         }
+
+        // ---- Crypto init: generate keypair and get cert signed by appropriate CA ----
+        memset(myPubKey_, 0, sizeof(myPubKey_));
+        memset(&myCert_,  0, sizeof(myCert_));
+        myPrivKey_ = CryptoAuth::instance().generateKeyPair(myPubKey_);
+        std::string role   = isAmbulance_ ? "ambulance" : "normal";
+        std::string issuer = isAmbulance_ ? "Emergency_CA" : "Vehicle_CA";
+        myCert_ = CryptoAuth::instance().issueCert(myPubKey_, role, issuer);
+        std::cout << "[V" << myId_ << "] Crypto init: role=" << role << " issuer=" << issuer << std::endl;
 
         parseEdgeParametersFromNed();
 
@@ -197,6 +207,13 @@ void WaveRaftApplication::handlePositionUpdate(cObject* obj)
         if (mobility_) {
             traci_        = mobility_->getCommandInterface();
             traciVehicle_ = mobility_->getVehicleCommandInterface();
+            // Colour ambulance red so it's visually distinct in SUMO-GUI
+            if (isAmbulance_) {
+                try {
+                    traciVehicle_->setColor(veins::TraCIColor(255, 0, 0, 255)); // red
+                    std::cout << "[V" << myId_ << "] Ambulance coloured RED in SUMO-GUI" << std::endl;
+                } catch (...) {}
+            }
             try {
                 std::string sumoId = mobility_->getExternalId();
                 std::cout << simTime() << " [DBG] OMNeT++_V" << myId_
@@ -309,9 +326,33 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             handleStatusRequest(protocolSender);
             break;
         case benchmark::COORD_STATUS_RESPONSE:
-            if (payload.size() >= sizeof(VehicleProposal)) {
+            if (payload.size() >= sizeof(SignedProposal)) {
+                SignedProposal sp;
+                memcpy(&sp, payload.data(), sizeof(SignedProposal));
+
+                // Step 1: verify certificate against trusted CA public keys
+                std::string role = CryptoAuth::instance().verifyCert(sp.cert);
+                if (role.empty()) {
+                    std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V"
+                              << protocolSender << " — invalid certificate" << std::endl;
+                    break;
+                }
+                // Step 2: verify message signature
+                bool sigOk = CryptoAuth::instance().verifyProposalSignature(
+                    sp.cert, sp.proposalBytes, sp.proposalSize, sp.timestampMs,
+                    sp.signature, sp.signatureLen);
+                if (!sigOk) {
+                    std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V"
+                              << protocolSender << " — signature mismatch" << std::endl;
+                    break;
+                }
+                // Step 3: set isPriority ONLY from verified cert role
                 VehicleProposal proposal;
-                memcpy(&proposal, payload.data(), sizeof(VehicleProposal));
+                memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
+                proposal.isPriority = (role == "ambulance");
+                std::cout << "[CRYPTO][V" << myId_ << "] ACCEPT STATUS_RESPONSE from V"
+                          << protocolSender << " role=" << role
+                          << " isPriority=" << proposal.isPriority << std::endl;
                 handleStatusResponseProposal(protocolSender, proposal);
             }
             break;

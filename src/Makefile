@@ -22,7 +22,7 @@ INCLUDE_PATH = -I$(INET_PROJ)/src -I$(VEINS_PROJ)/src -I.
 EXTRA_OBJS =
 
 # Additional libraries (-L, -l options)
-LIBS = $(LDFLAG_LIBPATH)$(INET_PROJ)/src $(LDFLAG_LIBPATH)$(VEINS_PROJ)/src  -lINET$(D) -lveins$(D)
+LIBS = $(LDFLAG_LIBPATH)$(INET_PROJ)/src $(LDFLAG_LIBPATH)$(VEINS_PROJ)/src  -lINET$(D) -lveins$(D) -lssl -lcrypto
 
 # Output directory
 PROJECT_OUTPUT_DIR = ../out
@@ -39,6 +39,7 @@ OBJS = \
     $O/raft/RaftExit.o \
     $O/raft/RaftUtilities.o \
     $O/raft/RaftMetrics.o \
+    $O/raft/CryptoAuth.o \
     $O/raft/UdpRaftApplication.o \
     $O/raft/WaveRaftApplication.o \
     $O/veins_inet/VeinsInetApplicationBase.o \

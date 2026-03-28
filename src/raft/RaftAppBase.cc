@@ -58,6 +58,8 @@ RaftAppBase::RaftAppBase()
     , vehicleLeftTimeoutMs_(1500)
     , invitationIntervalStoppedMs_(10)
     , transportName_("unknown")
+    , isAmbulance_(false)
+    , myPrivKey_(nullptr)
     , timeArrived_(SIMTIME_ZERO)
     , timeStopped_(SIMTIME_ZERO)
     , timeClusterFormed_(SIMTIME_ZERO)
@@ -89,6 +91,10 @@ RaftAppBase::~RaftAppBase()
     if (raftServer_) {
         raft_free(raftServer_);
         raftServer_ = nullptr;
+    }
+    if (myPrivKey_) {
+        EVP_PKEY_free(myPrivKey_);
+        myPrivKey_ = nullptr;
     }
 }
 

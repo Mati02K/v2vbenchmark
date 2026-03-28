@@ -7,6 +7,7 @@
 // batch scheduling, intersection detection, and metrics live in RaftAppBase.cc
 
 #include "raft/UdpRaftApplication.h"
+#include "veins/modules/mobility/traci/TraCIColor.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>
@@ -94,6 +95,16 @@ bool UdpRaftApplication::startApplication()
     clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
     mergeCooldownMs_         = par("mergeCooldownMs").intValue();
     vehicleLeftTimeoutMs_    = par("vehicleLeftTimeoutMs").intValue();
+    isAmbulance_             = par("isAmbulance").boolValue();
+
+    // ---- Crypto init: generate keypair and get cert signed by appropriate CA ----
+    memset(myPubKey_, 0, sizeof(myPubKey_));
+    memset(&myCert_,  0, sizeof(myCert_));
+    myPrivKey_ = CryptoAuth::instance().generateKeyPair(myPubKey_);
+    std::string role   = isAmbulance_ ? "ambulance" : "normal";
+    std::string issuer = isAmbulance_ ? "Emergency_CA" : "Vehicle_CA";
+    myCert_ = CryptoAuth::instance().issueCert(myPubKey_, role, issuer);
+    std::cout << "[V" << myId_ << "] Crypto init: role=" << role << " issuer=" << issuer << std::endl;
 
     parseEdgeParametersFromNed();
 
@@ -130,6 +141,12 @@ bool UdpRaftApplication::startApplication()
     traci_        = mobility_->getCommandInterface();
     traciVehicle_ = mobility_->getVehicleCommandInterface();
     if (!traci_ || !traciVehicle_) { EV_ERROR << "No TraCI" << endl; return false; }
+
+    // Colour ambulance red so it's visually distinct in SUMO-GUI
+    if (isAmbulance_) {
+        traciVehicle_->setColor(veins::TraCIColor(255, 0, 0, 255)); // red
+        std::cout << "[V" << myId_ << "] Ambulance coloured RED in SUMO-GUI" << std::endl;
+    }
 
     timeArrived_ = simTime();
     clusterPhase_ = PHASE_DISCOVERY;
@@ -261,9 +278,34 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
         handleStatusRequest(extractSenderFromPacketName(pktName));
     else if (pktName.find("coord-status-response") != std::string::npos) {
         int from = extractSenderFromPacketName(pktName);
-        if (bytes.size() >= sizeof(VehicleProposal)) {
+        if (bytes.size() >= sizeof(SignedProposal)) {
+            SignedProposal sp;
+            memcpy(&sp, bytes.data(), sizeof(SignedProposal));
+
+            // Step 1: verify certificate against trusted CA public keys
+            std::string role = CryptoAuth::instance().verifyCert(sp.cert);
+            if (role.empty()) {
+                std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V" << from
+                          << " — invalid certificate (possible fake ambulance)" << std::endl;
+                return;
+            }
+
+            // Step 2: verify message signature (payload not tampered)
+            bool sigOk = CryptoAuth::instance().verifyProposalSignature(
+                sp.cert, sp.proposalBytes, sp.proposalSize, sp.timestampMs,
+                sp.signature, sp.signatureLen);
+            if (!sigOk) {
+                std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V" << from
+                          << " — signature mismatch (tampered payload)" << std::endl;
+                return;
+            }
+
+            // Step 3: deserialize proposal, set isPriority ONLY from verified cert
             VehicleProposal proposal;
-            memcpy(&proposal, bytes.data(), sizeof(VehicleProposal));
+            memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
+            proposal.isPriority = (role == "ambulance");  // trust cert, not payload
+            std::cout << "[CRYPTO][V" << myId_ << "] ACCEPT STATUS_RESPONSE from V" << from
+                      << " role=" << role << " isPriority=" << proposal.isPriority << std::endl;
             handleStatusResponseProposal(from, proposal);
         }
     }

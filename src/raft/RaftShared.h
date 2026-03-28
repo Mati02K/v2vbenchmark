@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
+#include "raft/CryptoAuth.h"  // VehicleCert, SignedProposal
 
 extern "C" {
 #include "../../third_party/raft/raft_types.h"
@@ -39,12 +40,14 @@ struct VehicleProposal {
     char   laneEdgeId[64];
     double positionOnLane;
     double speed;
-    int    laneIndex;        // Direction: 0=W, 1=S, 2=E, 3=N
-    int    intendedTurn;     // 0=STRAIGHT, 1=LEFT, 2=RIGHT
+    int    laneIndex;           // Direction: 0=W, 1=S, 2=E, 3=N
+    int    intendedTurn;        // 0=STRAIGHT, 1=LEFT, 2=RIGHT
     bool   isFirstInLane;
     int    blockedByVehicleId;  // -1 = none
     double waitingTimeMs;
     double distanceToJunction;
+    // Set by receiver ONLY after cert verification — never trust from raw payload.
+    bool   isPriority;          // true = ambulance verified by Emergency_CA
 };
 
 struct PassCommandEntry {
@@ -71,3 +74,4 @@ struct VehicleLeftEntry {
     int vehicleId;
     int batchId;  // unified field name (WAVE used .batch, UDP used .batchId — now unified)
 };
+

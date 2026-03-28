@@ -8,6 +8,8 @@
 
 #include "raft/RaftShared.h"
 #include "raft/RaftMetrics.h"
+#include "raft/CryptoAuth.h"
+#include <openssl/evp.h>
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
 
 #include <fstream>
@@ -138,6 +140,13 @@ protected:
     std::string resultsFileName_;
     double      resultsFileCloseAtSec_ = 0;
     std::string transportName_;
+
+    // ============ CRYPTO / AUTHENTICATION ============
+    bool         isAmbulance_;                          // set from NED parameter
+    EVP_PKEY*    myPrivKey_;                            // vehicle's EC private key
+    uint8_t      myPubKey_[CRYPTO_PUBKEY_BYTES];        // vehicle's EC public key
+    VehicleCert  myCert_;                               // cert signed by appropriate CA
+
 
     static constexpr double CHECK_INTERVAL         = 0.05;
     static constexpr double RAFT_PERIODIC_INTERVAL = 0.02;

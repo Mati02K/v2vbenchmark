@@ -53,7 +53,7 @@ run_udp() {
         "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_udp.ini \
             --seed-set=$i \
             "--**.app[0].resultsFile=\"$results_json\"" \
-            2>&1 | tail -5
+            > "$iter_dir/console.log" 2>&1
 
         if [ -f "raft_results.json" ] && [ ! -f "$results_json" ]; then
             mv "raft_results.json" "$results_json"
@@ -79,7 +79,7 @@ run_wave() {
         "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_wave.ini \
             --seed-set=$i \
             "--**.appl.resultsFile=\"$results_json\"" \
-            2>&1 | tail -5
+            > "$iter_dir/console.log" 2>&1
 
         if [ -f "raft_results.json" ] && [ ! -f "$results_json" ]; then
             mv "raft_results.json" "$results_json"
