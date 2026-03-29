@@ -37,6 +37,10 @@ RaftAppBase::RaftAppBase()
     , currentBatch_(0)
     , myBatch_(-1)
     , passOrderProposed_(false)
+    , roundNumber_(1)
+    , seekingNewCluster_(false)
+    , qcAssembled_(false)
+    , hasPrevRoundQC_(false)
     , isFallbackMode_(false)
     , failedElectionCount_(0)
     , lastCheckedTerm_(0)
@@ -46,7 +50,7 @@ RaftAppBase::RaftAppBase()
     , requestTimeoutMs_(30)
     , intersectionStopDistance_(15.0)
     , arrivalWaitTimeMs_(1000)
-    , maxFailedElections_(15)
+    , maxFailedElections_(4)
     , fallbackWaitMinMs_(2000)
     , fallbackWaitMaxMs_(4000)
     , passConfirmationMs_(200)
@@ -84,7 +88,9 @@ RaftAppBase::RaftAppBase()
     , lastStopDebugPrint_(SIMTIME_ZERO)
     , lastQueueDebugPrint_(SIMTIME_ZERO)
     , prevRoadId_("")
-{}
+{
+    memset(&prevRoundQC_, 0, sizeof(prevRoundQC_));
+}
 
 RaftAppBase::~RaftAppBase()
 {

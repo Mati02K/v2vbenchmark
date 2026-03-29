@@ -7,6 +7,7 @@
 // batch scheduling, intersection detection, and metrics live in RaftAppBase.cc
 
 #include "raft/UdpRaftApplication.h"
+#include "raft/RaftTypes_m.h"
 #include "veins/modules/mobility/traci/TraCIColor.h"
 #include <iostream>
 #include <sstream>
@@ -259,76 +260,101 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
     auto payload = pk->peekAtFront<BytesChunk>();
     if (!payload) return;
     const auto& bytes = payload->getBytes();
-    if (bytes.size() > 10000) return;
+    if (bytes.size() < 1 || bytes.size() > 10000) return;
 
     messagesReceived_++;
 
-    // RAFT protocol
-    if      (pktName.find("raft-requestvote-response") != std::string::npos)
-        handleRequestVoteResponse(bytes, pktName);
-    else if (pktName.find("raft-requestvote") != std::string::npos)
-        handleRequestVote(bytes, pktName);
-    else if (pktName.find("raft-appendentries-response") != std::string::npos)
-        handleAppendEntriesResponse(bytes, pktName);
-    else if (pktName.find("raft-appendentries") != std::string::npos)
-        handleAppendEntries(bytes, pktName);
+    // First byte is the message type (set by sendRaftToPeer / sendRaftBroadcast)
+    uint8_t msgType = bytes[0];
+    const std::vector<uint8_t> data(bytes.begin() + 1, bytes.end());
+    int sender = extractSenderFromPacketName(pktName);
 
-    // Coordination
-    else if (pktName.find("coord-status-request") != std::string::npos)
-        handleStatusRequest(extractSenderFromPacketName(pktName));
-    else if (pktName.find("coord-status-response") != std::string::npos) {
-        int from = extractSenderFromPacketName(pktName);
-        if (bytes.size() >= sizeof(SignedProposal)) {
-            SignedProposal sp;
-            memcpy(&sp, bytes.data(), sizeof(SignedProposal));
+    switch (msgType) {
+        // ---- Discovery ----
+        case benchmark::PEER_BEACON:
+            handlePeerBeacon(data, sender);
+            break;
+        case benchmark::LEADER_DB_EXCHANGE:
+            handleLeaderDbExchange(data, sender);
+            break;
+        case benchmark::CLUSTER_JOIN_INVITE:
+            handleClusterJoinInvite(data, sender);
+            break;
 
-            // Step 1: verify certificate against trusted CA public keys
-            std::string role = CryptoAuth::instance().verifyCert(sp.cert);
-            if (role.empty()) {
-                std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V" << from
-                          << " — invalid certificate (possible fake ambulance)" << std::endl;
-                return;
+        // ---- RAFT Core ----
+        case benchmark::RAFT_REQUEST_VOTE:
+            if (raftServer_) handleRequestVote(data, pktName);
+            break;
+        case benchmark::RAFT_REQUEST_VOTE_RESPONSE:
+            if (raftServer_) handleRequestVoteResponse(data, pktName);
+            break;
+        case benchmark::RAFT_APPEND_ENTRIES:
+            if (raftServer_) handleAppendEntries(data, pktName);
+            break;
+        case benchmark::RAFT_APPEND_ENTRIES_RESPONSE:
+            if (raftServer_) handleAppendEntriesResponse(data, pktName);
+            break;
+
+        // ---- Coordination ----
+        case benchmark::COORD_STATUS_REQUEST:
+            handleStatusRequest(sender);
+            break;
+        case benchmark::COORD_STATUS_RESPONSE: {
+            if (data.size() >= sizeof(SignedProposal)) {
+                SignedProposal sp;
+                memcpy(&sp, data.data(), sizeof(SignedProposal));
+
+                std::string role = CryptoAuth::instance().verifyCert(sp.cert);
+                if (role.empty()) {
+                    std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V" << sender
+                              << " — invalid certificate (possible fake ambulance)" << std::endl;
+                    break;
+                }
+                bool sigOk = CryptoAuth::instance().verifyProposalSignature(
+                    sp.cert, sp.proposalBytes, sp.proposalSize, sp.timestampMs,
+                    sp.signature, sp.signatureLen);
+                if (!sigOk) {
+                    std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V" << sender
+                              << " — signature mismatch (tampered payload)" << std::endl;
+                    break;
+                }
+                VehicleProposal proposal;
+                memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
+                proposal.isPriority = (role == "ambulance");
+                std::cout << "[CRYPTO][V" << myId_ << "] ACCEPT STATUS_RESPONSE from V" << sender
+                          << " role=" << role << " isPriority=" << proposal.isPriority << std::endl;
+                handleStatusResponseProposal(sender, proposal);
             }
-
-            // Step 2: verify message signature (payload not tampered)
-            bool sigOk = CryptoAuth::instance().verifyProposalSignature(
-                sp.cert, sp.proposalBytes, sp.proposalSize, sp.timestampMs,
-                sp.signature, sp.signatureLen);
-            if (!sigOk) {
-                std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V" << from
-                          << " — signature mismatch (tampered payload)" << std::endl;
-                return;
+            break;
+        }
+        case benchmark::COORD_VEHICLE_PASSED:
+            if (!data.empty()) handleVehiclePassed((int)data[0]);
+            break;
+        case benchmark::COORD_VEHICLE_LEFT:
+            if (data.size() >= sizeof(VehicleLeftEntry)) {
+                VehicleLeftEntry e;
+                memcpy(&e, data.data(), sizeof(e));
+                handleVehicleLeft(e.vehicleId, e.batchId);
             }
+            break;
+        case benchmark::COORD_PASS_ORDER_BROADCAST:
+            handlePassOrderBroadcast(data);
+            break;
 
-            // Step 3: deserialize proposal, set isPriority ONLY from verified cert
-            VehicleProposal proposal;
-            memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
-            proposal.isPriority = (role == "ambulance");  // trust cert, not payload
-            std::cout << "[CRYPTO][V" << myId_ << "] ACCEPT STATUS_RESPONSE from V" << from
-                      << " role=" << role << " isPriority=" << proposal.isPriority << std::endl;
-            handleStatusResponseProposal(from, proposal);
-        }
+        // ---- Quorum Certificate ----
+        case benchmark::QC_SIGN_REQUEST:
+            handleQCSignRequest(data, sender);
+            break;
+        case benchmark::QC_SIGN_RESPONSE:
+            handleQCSignResponse(data, sender);
+            break;
+        case benchmark::QC_BROADCAST:
+            handleQCBroadcast(data);
+            break;
+
+        default:
+            break;
     }
-    else if (pktName.find("coord-vehicle-passed") != std::string::npos) {
-        if (bytes.size() >= 1) handleVehiclePassed((int)bytes[0]);
-    }
-    else if (pktName.find("coord-vehicle-left") != std::string::npos) {
-        if (bytes.size() >= sizeof(VehicleLeftEntry)) {
-            VehicleLeftEntry e;
-            memcpy(&e, bytes.data(), sizeof(e));
-            handleVehicleLeft(e.vehicleId, e.batchId);
-        }
-    }
-    // Pass order broadcast to non-cluster (queued) vehicles
-    else if (pktName.find("coord-pass-order-broadcast") != std::string::npos)
-        handlePassOrderBroadcast(bytes);
-    // Discovery
-    else if (pktName.find("peer-beacon") != std::string::npos)
-        handlePeerBeacon(bytes, extractSenderFromPacketName(pktName));
-    else if (pktName.find("leader-db-exchange") != std::string::npos)
-        handleLeaderDbExchange(bytes, extractSenderFromPacketName(pktName));
-    else if (pktName.find("cluster-join-invite") != std::string::npos)
-        handleClusterJoinInvite(bytes, extractSenderFromPacketName(pktName));
 }
 
 // ============ PACKET NAME HELPERS ============
@@ -354,19 +380,21 @@ int UdpRaftApplication::extractSenderFromPacketName(const std::string& n)
 void UdpRaftApplication::sendRaftToPeer(int targetVehicleId, int msgType,
                                               const std::vector<uint8_t>& data)
 {
-    // Build packet name from msgType (we map numeric types back to names for clarity)
+    // Packet name encodes sender, optional raft node id (needed by response handlers), and target.
     std::ostringstream name;
-    switch (msgType) {
-        case 0x20: name << "raft-requestvote-from-"         << myId_ << "-to-" << targetVehicleId; break;
-        case 0x21: name << "raft-requestvote-response-from-" << myId_ << "-node-" << myRaftNodeId_ << "-to-" << targetVehicleId; break;
-        case 0x22: name << "raft-appendentries-from-"       << myId_ << "-to-" << targetVehicleId; break;
-        case 0x23: name << "raft-appendentries-response-from-" << myId_ << "-node-" << myRaftNodeId_ << "-to-" << targetVehicleId; break;
-        case 0x15: name << "cluster-join-invite-from-"      << myId_ << "-to-" << targetVehicleId; break;
-        case 0x31: name << "coord-status-response-from-"    << myId_ << "-to-" << targetVehicleId; break;
-        default:   name << "raft-msg-" << msgType << "-from-" << myId_ << "-to-" << targetVehicleId; break;
-    }
+    if (msgType == benchmark::RAFT_REQUEST_VOTE_RESPONSE ||
+        msgType == benchmark::RAFT_APPEND_ENTRIES_RESPONSE)
+        name << "raft-from-" << myId_ << "-node-" << myRaftNodeId_ << "-to-" << targetVehicleId;
+    else
+        name << "raft-from-" << myId_ << "-to-" << targetVehicleId;
 
-    auto payload = makeShared<BytesChunk>(data);
+    // Prepend msgType as first byte so receiver can switch on it
+    std::vector<uint8_t> wire;
+    wire.reserve(1 + data.size());
+    wire.push_back(static_cast<uint8_t>(msgType));
+    wire.insert(wire.end(), data.begin(), data.end());
+
+    auto payload = makeShared<BytesChunk>(wire);
     auto pkt     = createPacket(name.str());
     pkt->insertAtBack(payload);
     sendPacket(std::move(pkt));
@@ -376,17 +404,15 @@ void UdpRaftApplication::sendRaftToPeer(int targetVehicleId, int msgType,
 void UdpRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_t>& data)
 {
     std::ostringstream name;
-    switch (msgType) {
-        case 0x10: name << "peer-beacon-from-"          << myId_ << "-broadcast"; break;
-        case 0x14: name << "leader-db-exchange-from-"   << myId_ << "-broadcast"; break;
-        case 0x30: name << "coord-status-request-from-" << myId_ << "-broadcast"; break;
-        case 0x33: name << "coord-vehicle-passed-from-"       << myId_ << "-broadcast"; break;
-        case 0x34: name << "coord-vehicle-left-from-"         << myId_ << "-broadcast"; break;
-        case 0x35: name << "coord-pass-order-broadcast-from-" << myId_ << "-broadcast"; break;
-        default:   name << "raft-bcast-" << msgType << "-from-" << myId_ << "-broadcast"; break;
-    }
+    name << "raft-from-" << myId_ << "-broadcast";
 
-    auto payload = makeShared<BytesChunk>(data);
+    // Prepend msgType as first byte so receiver can switch on it
+    std::vector<uint8_t> wire;
+    wire.reserve(1 + data.size());
+    wire.push_back(static_cast<uint8_t>(msgType));
+    wire.insert(wire.end(), data.begin(), data.end());
+
+    auto payload = makeShared<BytesChunk>(wire);
     auto pkt     = createPacket(name.str());
     pkt->insertAtBack(payload);
     sendPacket(std::move(pkt));

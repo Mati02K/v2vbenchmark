@@ -264,10 +264,9 @@ void RaftAppBase::applyCommittedPassOrder()
         std::cout << simTime() << " [DBG][V" << myId_ << "] WAITING for batch " << myBatch_
                   << " (safetyFallback in " << safetyDelayMs << "ms)" << std::endl;
         scheduleOneshotMs(safetyDelayMs, [this, expectedBatch = myBatch_]() {
-            std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH SAFETY FALLBACK FIRED for batch "
-                      << expectedBatch << " curBatch=" << currentBatch_
-                      << " hasPassedIntersection=" << hasPassedIntersection_ << std::endl;
             if (!hasPassedIntersection_ && currentBatch_ < expectedBatch) {
+                std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH SAFETY TIMER: forcing batch "
+                          << expectedBatch << " (lost VEHICLE_LEFT?)" << std::endl;
                 RAFT_LOG("BATCH SAFETY FALLBACK (lost VEHICLE_LEFT?) for batch " << expectedBatch);
                 currentBatch_ = expectedBatch;
                 resumeMovement();

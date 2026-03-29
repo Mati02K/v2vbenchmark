@@ -79,6 +79,15 @@ public:
                                  uint64_t timestampMs,
                                  const uint8_t* sig, uint8_t sigLen);
 
+    // General-purpose sign/verify for arbitrary byte buffers.
+    // Used by the Quorum Certificate mechanism to sign (round || schedule).
+    bool signBytes(EVP_PKEY* privKey,
+                   const uint8_t* data, size_t len,
+                   uint8_t sigOut[CRYPTO_SIG_MAX_BYTES], uint8_t& sigLen);
+    bool verifyBytes(const uint8_t pubKey[CRYPTO_PUBKEY_BYTES],
+                     const uint8_t* data, size_t len,
+                     const uint8_t* sig, uint8_t sigLen);
+
     // Non-copyable singleton
     CryptoAuth(const CryptoAuth&)            = delete;
     CryptoAuth& operator=(const CryptoAuth&) = delete;

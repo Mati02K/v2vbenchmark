@@ -198,10 +198,11 @@ void WaveRaftApplication::finish()
 }
 
 // ============ POSITION UPDATE ============
-
+// runs every 100ms when vehicles moves.
 void WaveRaftApplication::handlePositionUpdate(cObject* obj)
 {
     DemoBaseApplLayer::handlePositionUpdate(obj);
+    // changes needed for first time alone
     if (!mobility_) {
         mobility_ = TraCIMobilityAccess().get(getParentModule());
         if (mobility_) {
@@ -236,9 +237,15 @@ void WaveRaftApplication::handleSelfMsg(cMessage* msg)
         checkAndStopAtIntersection();
         checkAndAdvanceInQueue();
         if ((hasStoppedAtIntersection_ || timeStartedMoving_ > SIMTIME_ZERO) && !hasPassedIntersection_)
+        {
             checkIfLeftIntersection();
+        }
+        // only reschedule if we haven't passed the intersection yet; once we've passed, we can stop all timers and ignore future messages
+        // this saves msg sent in bandwidth
         if (!hasPassedIntersection_)
+        {
             scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
+        }
     }
     else if (msg == discoveryTimer_) {
         if (!hasPassedIntersection_ && !raftStarted_) {
@@ -368,6 +375,17 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             break;
         case benchmark::COORD_PASS_ORDER_BROADCAST:
             handlePassOrderBroadcast(payload);
+            break;
+
+        // ---- Quorum Certificate ----
+        case benchmark::QC_SIGN_REQUEST:
+            handleQCSignRequest(payload, protocolSender);
+            break;
+        case benchmark::QC_SIGN_RESPONSE:
+            handleQCSignResponse(payload, protocolSender);
+            break;
+        case benchmark::QC_BROADCAST:
+            handleQCBroadcast(payload);
             break;
     }
 }

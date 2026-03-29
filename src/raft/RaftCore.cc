@@ -35,6 +35,10 @@ void RaftAppBase::processRaftPeriodic()
         RAFT_LOG("processRaftPeriodic executes! delta=" << delta << ", msecElapsed=" << msecElapsed);
     }
 
+    // Tick the RAFT library. Internally it:
+    //   - sends heartbeats to followers if this node is the leader
+    //   - triggers a new election if the election timeout expires (FOLLOWER -> CANDIDATE)
+    // States: 0=FOLLOWER, 1=LEADER, 2=CANDIDATE
     int old_state = raft_get_state(raftServer_);
     raft_periodic(raftServer_, msecElapsed);
     int new_state = raft_get_state(raftServer_);
@@ -46,6 +50,10 @@ void RaftAppBase::processRaftPeriodic()
         }
     }
 
+    // Scenario 1: RAFT elections keep failing (votes lost due to packet loss or
+    // no quorum). Each time the term increases without this node becoming leader,
+    // failedElectionCount_ increments. Once it reaches maxFailedElections_
+    // (= number of vehicles in this scenario), give up and go to fallback mode.
     raft_term_t currentTerm = raft_get_current_term(raftServer_);
     if (currentTerm > lastCheckedTerm_) {
         electionRounds_++;
@@ -65,50 +73,46 @@ void RaftAppBase::processRaftPeriodic()
         lastCheckedTerm_ = currentTerm;
     }
 
-    // Leadership transitions
+    // Detect leadership change this tick and notify accordingly.
     bool wasLeader = isLeader_;
     isLeader_      = (raft_is_leader(raftServer_) == 1);
 
     if (isLeader_ && !wasLeader)       onBecameLeader();
     else if (!isLeader_ && wasLeader)  onLostLeadership();
 
-    // Global timeout fallback — two-phase:
+    // Scenario 2: Leader was elected but coordination is stuck (e.g. STATUS_REQUEST
+    // sent but all responses lost, so PASS_ORDER is never proposed). RAFT itself is
+    // healthy — no election failures — but the intersection protocol is frozen.
+    // A wall-clock deadline catches this:
+    //   - Follower that already knows the leader: skip timeout, leader is still working.
+    //   - Leader: deadline starts from election time so it always gets a full budget.
+    //   - Follower without a known leader: deadline starts from the later of
+    //     stopped-time and cluster-formed-time.
+    // Timeout scales with cluster size to give larger groups enough headroom.
     //
-    // Phase 1 (pre-cluster): handled by the 200 ms trigger in checkClusterTrigger;
-    //   cluster always forms quickly now, so this is only a safety net.
-    //
-    // Phase 2 (post-cluster): RAFT must converge within the timeout window.
-    //
-    // Key fix for large clusters (16+ vehicles):
-    //   • For the LEADER: the window starts from ELECTION TIME, not cluster-form time.
-    //     A leader elected late (after many merge rounds) gets the full window.
-    //   • For FOLLOWERS: if a leader is currently known to RAFT, the global timer is
-    //     paused — the leader is working and we must not preempt it.
+    // Scenario 3 (pre-cluster, inner else): Discovery beacons never reach enough
+    // vehicles so a cluster never forms and RAFT never starts. No election failures
+    // occur because there is no raftServer_ activity. A separate deadline fires if
+    // the vehicle has been stopped for too long without a cluster forming.
     if (hasStoppedAtIntersection_ && !hasCommittedOrder_ && !isFallbackMode_) {
         if (timeClusterFormed_ > SIMTIME_ZERO) {
-            // For followers with a known leader: skip the timeout, leader is in charge.
+            // Follower with a known leader — leader is in charge, do not time out.
             if (!isLeader_ && raftServer_) {
                 raft_node_id_t knownLeader = raft_get_current_leader(raftServer_);
-                if (knownLeader != -1 /* RAFT_NODE_ID_NONE not guaranteed to be -1, check != 0 */) {
-                    // Leader is known — don't time out, wait for its decision.
+                if (knownLeader != -1) {
                     goto skip_timeout;
                 }
             }
 
-            // For the leader: window starts from election time so coordination has
-            // a full budget regardless of how long cluster formation took.
             simtime_t refTime;
             if (isLeader_ && timeElected_ > SIMTIME_ZERO) {
-                refTime = timeElected_;
+                refTime = timeElected_;   // leader gets full budget from election time
             } else {
-                // Non-leader without a known leader (or leader not yet elected):
-                // use the later of stopped-time and cluster-formed-time.
+                // Follower with no known leader: use whichever happened later.
                 refTime = (timeStopped_ > timeClusterFormed_) ? timeStopped_ : timeClusterFormed_;
             }
 
             simtime_t raftWait  = now - refTime;
-            // Scale the timeout with cluster size: each extra vehicle adds one
-            // extra election-round worth of headroom (worst case: all stagger).
             double extraPerVehicle = electionTimeoutBaseMs_ / 1000.0;
             double raftTimeout = (discoveryWaitMs_ + clusterFormationDelayMs_ + statusCollectionTimeoutMs_ +
                                   electionTimeoutBaseMs_ * 4 + electionTimeoutJitterMs_ * 2 +
@@ -120,7 +124,7 @@ void RaftAppBase::processRaftPeriodic()
                 handleFallback();
             }
         } else {
-            // Pre-cluster: safety net (200 ms trigger should handle this)
+            // Scenario 3: no cluster yet — safety net in case discovery never completes.
             simtime_t discWait    = now - timeStopped_;
             double    discTimeout = 15.0 + totalVehicles_ * 2.0;
             if (discWait.dbl() > discTimeout) {
@@ -273,6 +277,16 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
         // Broadcast committed schedule to non-cluster (queued) vehicles.
         // All RAFT members do this for redundancy; receivers use hasCommittedOrder_ to dedup.
         sendPassOrderBroadcast();
+
+        // Trigger QC assembly: leader will send QC_SIGN_REQUEST to cluster members.
+        // Members sign the (round || schedule) payload and return QC_SIGN_RESPONSE.
+        // Once majority signatures are collected, the assembled QC is broadcast to ALL
+        // vehicles so that the next RAFT round can verify this round's schedule.
+        if (!qcAssembled_) {
+            scheduleOneshotMs(200, [this]() {
+                if (isLeader_ && !qcAssembled_) sendQCSignRequest();
+            });
+        }
         return 0;
     }
 
@@ -579,8 +593,26 @@ void RaftAppBase::proposePassOrder()
         }
     }
 
+    // ---- Multi-round: skip vehicles already scheduled in previous rounds ----
+    if (!scheduledVehicles_.empty()) {
+        for (int vid : scheduledVehicles_) {
+            allProposals.erase(vid);
+            allVehicleIds.erase(vid);
+        }
+        std::cout << simTime() << " [ROUND][V" << myId_ << "] proposePassOrder: skipping "
+                  << scheduledVehicles_.size() << " vehicles from previous rounds. "
+                  << allVehicleIds.size() << " remain." << std::endl;
+    }
+
+    if (allVehicleIds.empty()) {
+        std::cout << simTime() << " [ROUND][V" << myId_
+                  << "] proposePassOrder: all vehicles already scheduled — nothing to do." << std::endl;
+        return;
+    }
+
     std::cout << simTime() << " [DBG][V" << myId_ << "] proposePassOrder: scheduling "
-              << allVehicleIds.size() << " vehicles (activeVehicles_=" << activeVehicles_.size()
+              << allVehicleIds.size() << " vehicles (round=" << roundNumber_
+              << " activeVehicles_=" << activeVehicles_.size()
               << " vehicleDB_=" << vehicleDB_.size() << ")" << std::endl;
 
     // Call the decision algorithm (defined in RaftDecision.cc)

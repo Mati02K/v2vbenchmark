@@ -114,6 +114,35 @@ protected:
     /** Vehicles that passed/left before we formed our cluster. */
     std::set<int> vehiclesLeftBeforeFormed_;
 
+    // ============ MULTI-ROUND STATE ============
+    // roundNumber_: starts at 1, incremented each time a new lane leader triggers a
+    //   fresh RAFT cluster formation after the previous cluster's PASS_ORDER committed.
+    // scheduledVehicles_: union of all vehicles scheduled in earlier rounds.
+    //   proposePassOrder() skips these so they are never double-scheduled.
+    // seekingNewCluster_: true while waiting for 500ms discovery window to elapse
+    //   before initiating leader-DB-exchange for the new round.
+    int              roundNumber_;
+    std::set<int>    scheduledVehicles_;
+    bool             seekingNewCluster_;
+
+    // ---- QC assembly (leader-side) ----
+    // After PASS_ORDER commits, the leader collects one ECDSA signature from each
+    // cluster member over [uint32_t round || PassScheduleEntry].
+    // When majority reached, a QuorumCertificate is broadcast to ALL vehicles.
+    struct QCSigEntry {
+        uint8_t pubKey[CRYPTO_PUBKEY_BYTES];
+        uint8_t sig[CRYPTO_SIG_MAX_BYTES];
+        uint8_t sigLen;
+    };
+    std::map<int, QCSigEntry> collectedQCSigs_;  // vehicleId → signature
+    bool             qcAssembled_;               // guards against double-assembly
+
+    // ---- QC storage (all vehicles) ----
+    // Stored when QC_BROADCAST is received (or when leader assembles the QC).
+    // The NEXT round reads hasPrevRoundQC_ + prevRoundQC_ to verify trust.
+    bool             hasPrevRoundQC_;
+    QuorumCertificate prevRoundQC_;
+
     // ============ FALLBACK STATE ============
     bool         isFallbackMode_;
     int          failedElectionCount_;
@@ -289,6 +318,22 @@ protected:
 
     void markRaftNodeInactive(int vehicleId);
     void scheduleVehicleLeftTimeout(int batchIndex);
+
+    // ---- Multi-round ----
+    // Called when isLaneLeader_ transitions false→true while stopped at the intersection
+    // with a committed order from the previous round.  Resets RAFT state and re-triggers
+    // the leader-DB-exchange loop to form a new cluster for late-arriving vehicles.
+    void startNewRound();
+
+    // ---- Quorum Certificate ----
+    void sendQCSignRequest();
+    void handleQCSignRequest(const std::vector<uint8_t>& data, int senderId);
+    void sendQCSignResponse(int toLeader, const std::vector<uint8_t>& tbsData);
+    void handleQCSignResponse(const std::vector<uint8_t>& data, int senderId);
+    void tryAssembleQC();
+    void sendQCBroadcast();
+    void handleQCBroadcast(const std::vector<uint8_t>& data);
+    bool verifyQC(const QuorumCertificate& qc) const;
 
     // ============ TRANSPORT HELPERS ============
     virtual void scheduleOneshotMs(double delayMs, std::function<void()> fn) = 0;

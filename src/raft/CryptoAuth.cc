@@ -127,6 +127,23 @@ std::string CryptoAuth::verifyCert(const VehicleCert& cert)
     }
 }
 
+// Sign arbitrary bytes — thin public wrapper around ecdsaSign.
+// Used by the Quorum Certificate mechanism.
+bool CryptoAuth::signBytes(EVP_PKEY* privKey,
+                            const uint8_t* data, size_t len,
+                            uint8_t sigOut[CRYPTO_SIG_MAX_BYTES], uint8_t& sigLen)
+{
+    return ecdsaSign(privKey, data, len, sigOut, sigLen);
+}
+
+// Verify arbitrary bytes against a raw uncompressed public key.
+bool CryptoAuth::verifyBytes(const uint8_t pubKey[CRYPTO_PUBKEY_BYTES],
+                              const uint8_t* data, size_t len,
+                              const uint8_t* sig, uint8_t sigLen)
+{
+    return ecdsaVerify(pubKey, data, len, sig, sigLen);
+}
+
 // Verify the vehicle's proposal signature using the public key in cert.
 bool CryptoAuth::verifyProposalSignature(const VehicleCert& cert,
                                           const uint8_t* proposalBytes, uint32_t proposalSize,

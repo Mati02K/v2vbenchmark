@@ -4,6 +4,7 @@ CLAUDE.md
 docs/
 ./out/
 ./simulations/intersection_8/results/General-#0.vec
+simulations/simple_intersection_4/.qtenvrc
 # OMNeT++ result files
 *.vec
 *.sca

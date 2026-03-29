@@ -133,6 +133,209 @@ void RaftAppBase::handlePassOrderBroadcast(const std::vector<uint8_t>& data)
     applyCommittedPassOrder();
 }
 
+// ============ QUORUM CERTIFICATE ============
+//
+// After PASS_ORDER commits, the RAFT leader assembles a Quorum Certificate so that
+// the next round's cluster can verify what was already scheduled without running RAFT
+// again.  Flow:
+//
+//   Leader                     Follower(s)
+//   ------                     -----------
+//   sendQCSignRequest() ──────► handleQCSignRequest()
+//                               sendQCSignResponse()  ──────► handleQCSignResponse()
+//   tryAssembleQC()  (once majority reached)
+//   sendQCBroadcast() ────────► handleQCBroadcast()  (all 16 vehicles store the QC)
+//
+// The signed data is: [uint32_t roundNumber_ || PassScheduleEntry].
+
+void RaftAppBase::sendQCSignRequest()
+{
+    if (!isLeader_ || qcAssembled_) return;
+
+    // Payload: [uint32_t round][PassScheduleEntry]
+    size_t tbsSize = sizeof(uint32_t) + sizeof(PassScheduleEntry);
+    std::vector<uint8_t> tbs(tbsSize);
+    uint32_t rn = static_cast<uint32_t>(roundNumber_);
+    memcpy(tbs.data(),                 &rn,                sizeof(uint32_t));
+    memcpy(tbs.data() + sizeof(uint32_t), &committedSchedule_, sizeof(PassScheduleEntry));
+
+    sendRaftBroadcast(/*QC_SIGN_REQUEST*/ 0x36, tbs);
+    messagesSent_++;
+
+    // Leader signs its own copy first.
+    QCSigEntry mySig;
+    memcpy(mySig.pubKey, myPubKey_, CRYPTO_PUBKEY_BYTES);
+    mySig.sigLen = 0;
+    CryptoAuth::instance().signBytes(myPrivKey_, tbs.data(), tbs.size(), mySig.sig, mySig.sigLen);
+    collectedQCSigs_[myId_] = mySig;
+
+    std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_REQUEST broadcast (round="
+              << roundNumber_ << " clusterSize=" << activeVehicles_.size() << ")" << std::endl;
+
+    tryAssembleQC();  // check if already at quorum (single-node cluster edge case)
+}
+
+void RaftAppBase::handleQCSignRequest(const std::vector<uint8_t>& data, int senderId)
+{
+    // Only non-leader cluster members respond (leader signed its own copy already).
+    if (isLeader_ || !raftServer_) return;
+    if (hasPassedIntersection_) return;
+    if (data.size() < sizeof(uint32_t) + sizeof(PassScheduleEntry)) return;
+
+    // Sign the same TBS the leader used: [round || schedule]
+    uint8_t sig[CRYPTO_SIG_MAX_BYTES];
+    uint8_t sigLen = 0;
+    CryptoAuth::instance().signBytes(myPrivKey_, data.data(), data.size(), sig, sigLen);
+
+    // Response payload: [vehicleId:4B][pubKey:65B][sig:72B][sigLen:1B]
+    std::vector<uint8_t> resp(sizeof(int) + CRYPTO_PUBKEY_BYTES + CRYPTO_SIG_MAX_BYTES + 1);
+    size_t off = 0;
+    memcpy(resp.data() + off, &myId_,    sizeof(int));            off += sizeof(int);
+    memcpy(resp.data() + off, myPubKey_, CRYPTO_PUBKEY_BYTES);    off += CRYPTO_PUBKEY_BYTES;
+    memcpy(resp.data() + off, sig,       CRYPTO_SIG_MAX_BYTES);   off += CRYPTO_SIG_MAX_BYTES;
+    resp[off] = sigLen;
+
+    sendQCSignResponse(senderId, resp);
+
+    std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_RESPONSE sent to leader V"
+              << senderId << std::endl;
+}
+
+void RaftAppBase::sendQCSignResponse(int toLeader, const std::vector<uint8_t>& respData)
+{
+    sendRaftToPeer(toLeader, /*QC_SIGN_RESPONSE*/ 0x37, respData);
+    messagesSent_++;
+}
+
+void RaftAppBase::handleQCSignResponse(const std::vector<uint8_t>& data, int senderId)
+{
+    if (!isLeader_ || qcAssembled_) return;
+    if (data.size() < sizeof(int) + CRYPTO_PUBKEY_BYTES + CRYPTO_SIG_MAX_BYTES + 1) return;
+
+    size_t off = 0;
+    int vid;
+    memcpy(&vid, data.data() + off, sizeof(int)); off += sizeof(int);
+
+    if (vid != senderId) {
+        std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_RESPONSE: vehicleId mismatch"
+                  << " (claimed " << vid << " from packet sender " << senderId << ") — ignored" << std::endl;
+        return;
+    }
+    if (!activeVehicles_.count(vid)) return;  // not a cluster member
+
+    QCSigEntry entry;
+    memcpy(entry.pubKey, data.data() + off, CRYPTO_PUBKEY_BYTES); off += CRYPTO_PUBKEY_BYTES;
+    memcpy(entry.sig,    data.data() + off, CRYPTO_SIG_MAX_BYTES); off += CRYPTO_SIG_MAX_BYTES;
+    entry.sigLen = data[off];
+
+    collectedQCSigs_[vid] = entry;
+
+    int required = static_cast<int>(activeVehicles_.size()) / 2 + 1;
+    std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_RESPONSE from V" << vid
+              << " (" << collectedQCSigs_.size() << "/" << required << " sigs)" << std::endl;
+
+    tryAssembleQC();
+}
+
+void RaftAppBase::tryAssembleQC()
+{
+    if (!isLeader_ || qcAssembled_) return;
+    int required = static_cast<int>(activeVehicles_.size()) / 2 + 1;
+    if (static_cast<int>(collectedQCSigs_.size()) >= required)
+        sendQCBroadcast();
+}
+
+void RaftAppBase::sendQCBroadcast()
+{
+    qcAssembled_ = true;
+
+    QuorumCertificate qc;
+    memset(&qc, 0, sizeof(qc));
+    qc.valid    = true;
+    qc.round    = static_cast<uint32_t>(roundNumber_);
+    memcpy(&qc.schedule, &committedSchedule_, sizeof(PassScheduleEntry));
+    qc.numSigs  = 0;
+
+    for (auto& kv : collectedQCSigs_) {
+        if (qc.numSigs >= QC_MAX_MEMBERS) break;
+        QCSig& s     = qc.sigs[qc.numSigs];
+        s.vehicleId  = kv.first;
+        memcpy(s.pubKey, kv.second.pubKey, CRYPTO_PUBKEY_BYTES);
+        memcpy(s.sig,    kv.second.sig,    CRYPTO_SIG_MAX_BYTES);
+        s.sigLen     = kv.second.sigLen;
+        qc.numSigs++;
+    }
+
+    // Store locally (leader is also a receiver of the next round).
+    prevRoundQC_    = qc;
+    hasPrevRoundQC_ = true;
+    // Populate scheduledVehicles_ so our own next round skips these.
+    for (int b = 0; b < qc.schedule.numBatches; b++)
+        for (int v = 0; v < qc.schedule.batches[b].numVehicles; v++)
+            scheduledVehicles_.insert(qc.schedule.batches[b].vehicleIds[v]);
+
+    std::vector<uint8_t> data(sizeof(QuorumCertificate));
+    memcpy(data.data(), &qc, sizeof(QuorumCertificate));
+    sendRaftBroadcast(/*QC_BROADCAST*/ 0x38, data);
+    messagesSent_++;
+
+    std::cout << NOW << " [QC][V" << myId_ << "] QC assembled and broadcast: round="
+              << qc.round << " numSigs=" << qc.numSigs
+              << " scheduledVehicles_=" << scheduledVehicles_.size() << std::endl;
+}
+
+void RaftAppBase::handleQCBroadcast(const std::vector<uint8_t>& data)
+{
+    if (data.size() < sizeof(QuorumCertificate)) return;
+
+    QuorumCertificate qc;
+    memcpy(&qc, data.data(), sizeof(QuorumCertificate));
+
+    if (!qc.valid || qc.numSigs == 0) return;
+
+    // Optionally verify signatures — at minimum log validity.
+    // Accept the QC if it is newer than what we already have.
+    if (hasPrevRoundQC_ && qc.round <= prevRoundQC_.round) return;
+
+    prevRoundQC_    = qc;
+    hasPrevRoundQC_ = true;
+    qcAssembled_    = true;  // suppress local QC assembly if we already have one
+
+    // Populate scheduledVehicles_ so our next round skips these vehicles.
+    for (int b = 0; b < qc.schedule.numBatches; b++) {
+        for (int v = 0; v < qc.schedule.batches[b].numVehicles; v++) {
+            scheduledVehicles_.insert(qc.schedule.batches[b].vehicleIds[v]);
+        }
+    }
+
+    std::cout << NOW << " [QC][V" << myId_ << "] QC_BROADCAST received: round="
+              << qc.round << " numSigs=" << qc.numSigs
+              << " scheduledVehicles_ now=" << scheduledVehicles_.size() << std::endl;
+}
+
+bool RaftAppBase::verifyQC(const QuorumCertificate& qc) const
+{
+    if (!qc.valid || qc.numSigs == 0) return false;
+
+    // Build the TBS buffer [uint32_t round || PassScheduleEntry] that signers signed.
+    size_t tbsSize = sizeof(uint32_t) + sizeof(PassScheduleEntry);
+    std::vector<uint8_t> tbs(tbsSize);
+    memcpy(tbs.data(),                    &qc.round,    sizeof(uint32_t));
+    memcpy(tbs.data() + sizeof(uint32_t), &qc.schedule, sizeof(PassScheduleEntry));
+
+    int validSigs = 0;
+    for (int i = 0; i < qc.numSigs; i++) {
+        bool ok = CryptoAuth::instance().verifyBytes(
+            qc.sigs[i].pubKey, tbs.data(), tbs.size(),
+            qc.sigs[i].sig, qc.sigs[i].sigLen);
+        if (ok) validSigs++;
+        else
+            std::cout << "[QC][V" << myId_ << "] verifyQC: sig " << i
+                      << " from V" << qc.sigs[i].vehicleId << " INVALID" << std::endl;
+    }
+    return validSigs >= qc.numSigs;  // all claimed sigs must verify
+}
+
 // ============ VEHICLE PASSED / LEFT (follower-side) ============
 
 void RaftAppBase::handleVehiclePassed(int vehicleId)

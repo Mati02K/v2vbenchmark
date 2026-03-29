@@ -31,15 +31,15 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
 OBJS = \
+    $O/raft/CryptoAuth.o \
     $O/raft/RaftAppBase.o \
+    $O/raft/RaftCoordination.o \
     $O/raft/RaftCore.o \
     $O/raft/RaftDecision.o \
     $O/raft/RaftDiscovery.o \
-    $O/raft/RaftCoordination.o \
     $O/raft/RaftExit.o \
-    $O/raft/RaftUtilities.o \
     $O/raft/RaftMetrics.o \
-    $O/raft/CryptoAuth.o \
+    $O/raft/RaftUtilities.o \
     $O/raft/UdpRaftApplication.o \
     $O/raft/WaveRaftApplication.o \
     $O/veins_inet/VeinsInetApplicationBase.o \
@@ -48,11 +48,13 @@ OBJS = \
     $O/veins_inet/VeinsInetManagerForker.o \
     $O/veins_inet/VeinsInetMobility.o \
     $O/veins_inet/VeinsInetSampleApplication.o \
+    $O/raft/RaftTypes_m.o \
     $O/raft/RaftWaveMessage_m.o \
     $O/veins_inet/VeinsInetSampleMessage_m.o
 
 # Message files
 MSGFILES = \
+    raft/RaftTypes.msg \
     raft/RaftWaveMessage.msg \
     veins_inet/VeinsInetSampleMessage.msg
 

@@ -207,23 +207,6 @@ inline std::ostream& operator<<(std::ostream& out, const std::vector<T,A>& vec)
     return out;
 }
 
-EXECUTE_ON_STARTUP(
-    omnetpp::cEnum *e = omnetpp::cEnum::find("benchmark::RaftMsgType");
-    if (!e) omnetpp::enums.getInstance()->add(e = new omnetpp::cEnum("benchmark::RaftMsgType"));
-    e->insert(PEER_BEACON, "PEER_BEACON");
-    e->insert(LEADER_DB_EXCHANGE, "LEADER_DB_EXCHANGE");
-    e->insert(CLUSTER_JOIN_INVITE, "CLUSTER_JOIN_INVITE");
-    e->insert(RAFT_REQUEST_VOTE, "RAFT_REQUEST_VOTE");
-    e->insert(RAFT_REQUEST_VOTE_RESPONSE, "RAFT_REQUEST_VOTE_RESPONSE");
-    e->insert(RAFT_APPEND_ENTRIES, "RAFT_APPEND_ENTRIES");
-    e->insert(RAFT_APPEND_ENTRIES_RESPONSE, "RAFT_APPEND_ENTRIES_RESPONSE");
-    e->insert(COORD_STATUS_REQUEST, "COORD_STATUS_REQUEST");
-    e->insert(COORD_STATUS_RESPONSE, "COORD_STATUS_RESPONSE");
-    e->insert(COORD_VEHICLE_PASSED, "COORD_VEHICLE_PASSED");
-    e->insert(COORD_VEHICLE_LEFT, "COORD_VEHICLE_LEFT");
-    e->insert(COORD_PASS_ORDER_BROADCAST, "COORD_PASS_ORDER_BROADCAST");
-)
-
 Register_Class(RaftWaveMessage)
 
 RaftWaveMessage::RaftWaveMessage(const char *name, short kind) : ::veins::BaseFrame1609_4(name, kind)

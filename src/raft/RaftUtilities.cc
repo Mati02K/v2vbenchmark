@@ -91,7 +91,8 @@ void RaftAppBase::checkAndStopAtIntersection()
     try {
         std::string roadId = traciVehicle_->getRoadId();
 
-        // --- DBG: per-vehicle periodic position report + road transition ---
+        // lastKnownRoad gives us the previous road (the approach edge) so we can still assign the correct myLaneIndex_.
+        // Without it, the vehicle would have laneIndex = 0 (default) regardless of which direction it came from, breaking the pass order logic.
         bool roadChanged = (roadId != prevRoadId_);
         std::string lastKnownRoad = prevRoadId_;  // save before potential update
         if (roadChanged) {
@@ -114,6 +115,8 @@ void RaftAppBase::checkAndStopAtIntersection()
                 }
             }
         }
+
+        // Small debug to know where the vehicle is
         if (NOW - lastStopDebugPrint_ > 5.0) {
             lastStopDebugPrint_ = NOW;
             double spd = 999.0;
@@ -132,6 +135,7 @@ void RaftAppBase::checkAndStopAtIntersection()
 
         // Catch vehicles that enter the main intersection cluster junction without being
         // stopped on the approach edge (short approach lanes traversed in <CHECK_INTERVAL).
+        // In SUMO, intersection junction roads always start with ':' and contain 'cluster' in their ID, so this is a reliable way to detect being in the cluster junction.
         bool onClusterJunction = (!roadId.empty() && roadId[0] == ':' &&
                                    roadId.find("cluster") != std::string::npos);
         if (onClusterJunction) {
@@ -176,6 +180,8 @@ void RaftAppBase::checkAndStopAtIntersection()
             return;  // Do not proceed to approach-edge logic
         }
 
+        // This is where we stop vehicle in motion.
+        
         if (!intersectionEdges_.count(roadId)) return;
 
         double dist  = getDistanceToJunction();

@@ -109,8 +109,14 @@ void RaftAppBase::handlePeerBeacon(const std::vector<uint8_t>& data, int senderI
 // Recomputed every check interval (~50ms).
 // isLaneLeader_ = true if no vehicle in the same lane has a smaller distanceToJunction.
 // Also updates vehicleInFrontOfMe_: the vehicle in this lane immediately ahead of us.
+//
+// Multi-round trigger: if this vehicle transitions from not-leader to leader while
+// it is still stopped at the intersection with a committed schedule from a previous
+// round, and there are unscheduled vehicles still waiting, startNewRound() is called.
 void RaftAppBase::updateLaneLeaderFlag()
 {
+    bool wasLaneLeader = isLaneLeader_;  // save before recompute
+
     double myDist = calculateDistanceToJunction();
     if (myDist < 0) myDist = 999999.0;
 
@@ -135,6 +141,120 @@ void RaftAppBase::updateLaneLeaderFlag()
     }
 
     wayOfSight_ = (vehicleInFrontOfMe_ == -1);
+
+    // ---- Multi-round: detect lane-leader promotion ----
+    // Conditions:
+    //   1. We were not lane leader last tick, but we are now (previous leader left).
+    //   2. We are still physically at the intersection (not yet passed).
+    //   3. A PASS_ORDER was already committed in a previous round.
+    //   4. We are not already in the process of forming a new cluster.
+    //   5. There exist vehicles in vehicleDB_ that were not scheduled in the previous round.
+    if (!wasLaneLeader && isLaneLeader_ &&
+        hasStoppedAtIntersection_ && hasCommittedOrder_ &&
+        !hasPassedIntersection_ && !seekingNewCluster_ && !isFallbackMode_) {
+
+        // Check whether there are any vehicles not covered by the previous schedule
+        bool hasUnscheduled = false;
+        for (auto& kv : vehicleDB_) {
+            if (!scheduledVehicles_.count(kv.first) && kv.first != myId_) {
+                hasUnscheduled = true;
+                break;
+            }
+        }
+        if (!scheduledVehicles_.count(myId_)) hasUnscheduled = true;
+
+        if (hasUnscheduled) {
+            std::cout << NOW << " [ROUND][V" << myId_ << "] Lane leader promotion detected"
+                      << " (prev wasLaneLeader=" << wasLaneLeader << ") — starting new RAFT round." << std::endl;
+            startNewRound();
+        } else {
+            std::cout << NOW << " [ROUND][V" << myId_ << "] Lane leader promotion: all vehicles"
+                      << " already scheduled — no new round needed." << std::endl;
+        }
+    }
+}
+
+// ============ MULTI-ROUND: start a fresh RAFT cluster ============
+//
+// Called when this vehicle becomes the new lane leader after the previous leader passed.
+// Resets all RAFT and coordination state so a new election can start fresh.
+// scheduledVehicles_ is populated from the committed schedule of the previous round
+// (and from any QC_BROADCAST already received) so proposePassOrder() won't re-schedule
+// vehicles that already have a committed crossing order.
+void RaftAppBase::startNewRound()
+{
+    seekingNewCluster_ = true;
+    roundNumber_++;
+
+    // Build scheduledVehicles_ from our local committed schedule.
+    // (QC_BROADCAST may have already populated this; we add our own copy as a safety net.)
+    for (int b = 0; b < committedSchedule_.numBatches; b++) {
+        for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
+            scheduledVehicles_.insert(committedSchedule_.batches[b].vehicleIds[v]);
+        }
+    }
+
+    std::cout << NOW << " [ROUND][V" << myId_ << "] === STARTING ROUND " << roundNumber_
+              << " === (scheduledVehicles_=" << scheduledVehicles_.size()
+              << " vehicleDB_=" << vehicleDB_.size() << ")" << std::endl;
+
+    // Free the previous RAFT server — it served its purpose.
+    if (raftServer_) {
+        raft_free(raftServer_);
+        raftServer_ = nullptr;
+    }
+
+    // Reset all RAFT and coordination state for the new round.
+    raftStarted_         = false;
+    passOrderProposed_   = false;
+    hasCommittedOrder_   = false;
+    isLeader_            = false;
+    wasElectedLeader_    = false;
+    waitingForStatus_    = false;
+    statusResponseCount_ = 0;
+    collectedProposals_.clear();
+    collectedWayOfSight_.clear();
+    proposedLeft_.clear();
+    vehiclesLeftInBatch_.clear();
+    gossipSeenVehicleLeft_.clear();
+    committedStatuses_.clear();
+    currentBatch_        = 0;
+    myBatch_             = -1;
+    lastAppliedIndex_    = 0;
+    failedElectionCount_ = 0;
+    lastCheckedTerm_     = 0;
+    lastRaftPeriodicRun_ = SIMTIME_ZERO;
+    clusterPhase_        = PHASE_DISCOVERY;
+    activeVehicles_.clear();
+    activeVehicles_.insert(myId_);
+    receivedLeaderDBs_.clear();
+    receivedLeaderSenderIds_.clear();
+
+    // Reset QC assembly for the new round.
+    qcAssembled_ = false;
+    collectedQCSigs_.clear();
+
+    // Reset timing metrics for the new round.
+    timeClusterFormed_ = SIMTIME_ZERO;
+    timeElected_       = SIMTIME_ZERO;
+    timeOrderCommitted_= SIMTIME_ZERO;
+    logEntriesProposed_= 0;
+    logEntriesCommitted_= 0;
+    electionRounds_    = 0;
+    totalRaftDecisionTimeSec_ = 0.0;
+    statusCollectionTimeMs_   = 0.0;
+    coordinationMethod_ = "raft";
+
+    // Wait 500ms for peers to discover each other, then initiate leader DB exchange.
+    scheduleOneshotMs(500.0, [this]() {
+        seekingNewCluster_ = false;
+        if (!hasPassedIntersection_ && !raftStarted_) {
+            std::cout << NOW << " [ROUND][V" << myId_ << "] Round " << roundNumber_
+                      << " discovery window elapsed — sending LEADER_DB_EXCHANGE." << std::endl;
+            sendLeaderDbExchange();
+            scheduleLeaderDbExchangeLoop();
+        }
+    });
 }
 
 // ============ INTERSECTION LEADER DB EXCHANGE ============
