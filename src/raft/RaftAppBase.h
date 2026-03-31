@@ -8,7 +8,7 @@
 
 #include "raft/RaftShared.h"
 #include "raft/RaftMetrics.h"
-#include "raft/CryptoAuth.h"
+#include "../../third_party/crypto/CryptoAuth.h"
 #include <openssl/evp.h>
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
 
@@ -289,10 +289,22 @@ protected:
     bool          movementsConflict(int laneA, int turnA, int laneB, int turnB);
     PassScheduleEntry computePassOrder(const std::map<int, VehicleProposal>& proposals,
                                        const std::set<int>& activeVehicles);
+    void addToBatch(const VehicleProposal& v,
+                    const std::map<int, VehicleProposal>& proposals,
+                    PassScheduleEntry& schedule,
+                    std::set<int>& scheduled);
+    bool blockerScheduled(const VehicleProposal& v,
+                          const std::set<int>& scheduled);
     VehicleProposal buildMyProposal();
     int           detectBlockingVehicle();
     double        calculateDistanceToJunction();
+    // Returns true if TraCI reports no vehicle ahead in the same lane
+    // (within a generous look-ahead distance).  Used by updateLaneLeaderFlag()
+    // instead of stale beacon data.
+    bool          isLaneLeaderByTraci() const;
     int           getLaneIndex(const std::string& lane);
+    bool          isVehicleInCommittedSchedule(int vehicleId) const;
+    bool          hasUnscheduledVehicles() const;
 
     // Intersection state helpers
     void checkAndStopAtIntersection();

@@ -31,7 +31,6 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
 OBJS = \
-    $O/raft/CryptoAuth.o \
     $O/raft/RaftAppBase.o \
     $O/raft/RaftCoordination.o \
     $O/raft/RaftCore.o \
@@ -108,6 +107,19 @@ endif
 # >>>
 # inserted from file 'makefrag':
 MSGC:=$(MSGC) --msg6
+
+# CryptoAuth C++ source (lives in third_party/crypto)
+CRYPTO_DIR = ../third_party/crypto
+CRYPTO_OBJS = $O/crypto/CryptoAuth.o
+
+EXTRA_OBJS += $(CRYPTO_OBJS)
+
+$O/crypto/CryptoAuth.o: $(CRYPTO_DIR)/CryptoAuth.cc
+	@mkdir -p $O/crypto
+	@echo "Compiling CryptoAuth: $<"
+	$(Q)$(CXX) -c $(CXXFLAGS) $(COPTS) -I$(CRYPTO_DIR) -o $@ $<
+
+$(OBJS): | $(CRYPTO_OBJS)
 
 # RAFT library C source files
 RAFT_DIR = ../third_party/raft

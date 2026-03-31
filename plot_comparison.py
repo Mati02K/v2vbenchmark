@@ -638,11 +638,21 @@ def main():
                 for v in d:
                     if v.get('coordination_method') == 'fallback':
                         continue
-                    passed = v['timestamps_ms'].get('passed', 0)
-                    if passed <= 0:
+                    passed_ms  = v['timestamps_ms'].get('passed', 0)
+                    stopped_ms = v['timestamps_ms'].get('stopped', 0)
+                    formed_ms  = v['timestamps_ms'].get('cluster_formed', 0)
+                    if passed_ms <= 0:
                         continue
-                    # Use passed timestamp as crossing time (all vehicles spawn near t=0)
-                    latency_s = passed / 1000.0
+                    started_ms = v['timestamps_ms'].get('started_moving', 0)
+                    # Use stopped→passed (same as CDF) when vehicle stopped independently.
+                    # For vehicles that never stopped at stop line (2nd vehicle in lane),
+                    # fall back to started_moving→passed (transit time only).
+                    if stopped_ms > 0:
+                        latency_s = (passed_ms - stopped_ms) / 1000.0
+                    elif started_ms > 0:
+                        latency_s = (passed_ms - started_ms) / 1000.0
+                    else:
+                        continue
                     if v['vehicle_id'] == amb_id:
                         amb_times.append(latency_s)
                     else:
@@ -655,8 +665,8 @@ def main():
     # Layout: one subplot per vehicle count, grouped bars per protocol
     fig_amb, axes_amb = plt.subplots(1, len(vehicle_counts), figsize=(14, 5), sharey=False)
     fig_amb.suptitle(
-        f'Intersection Crossing Time: Ambulance vs Normal Vehicles{title_note}\n'
-        'Crossing time = simulation time when vehicle passed the intersection (s)',
+        f'Wait Time at Intersection: Ambulance vs Normal Vehicles{title_note}\n'
+        'Wait time = stopped→passed; for non-stopping vehicles: started_moving→passed (s)',
         fontsize=13, fontweight='bold'
     )
 

@@ -8,6 +8,7 @@ simulations/simple_intersection_4/.qtenvrc
 # OMNeT++ result files
 *.vec
 *.sca
+results/
 # Build artifacts
 out/
 src/benchmark_dbg

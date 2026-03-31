@@ -8,7 +8,7 @@
 // On STATUS_RESPONSE, the receiver calls verifyCert() then verifyProposalSignature()
 // before trusting the isPriority flag.
 
-#include "raft/CryptoAuth.h"
+#include "CryptoAuth.h"
 
 #include <cassert>
 #include <cstring>

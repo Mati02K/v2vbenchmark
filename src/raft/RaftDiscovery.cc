@@ -117,30 +117,30 @@ void RaftAppBase::updateLaneLeaderFlag()
 {
     bool wasLaneLeader = isLaneLeader_;  // save before recompute
 
-    double myDist = calculateDistanceToJunction();
-    if (myDist < 0) myDist = 999999.0;
+    // Use TraCI to determine lane leadership: ask SUMO directly whether any vehicle
+    // is ahead of us in the same lane.  Real-time and accurate — no stale beacon data.
+    isLaneLeader_ = isLaneLeaderByTraci();
+    wayOfSight_   = isLaneLeader_;  // no vehicle ahead = clear line of sight
 
-    isLaneLeader_       = true;
+    // Still maintain vehicleInFrontOfMe_ from beacon data — needed by handleVehiclePassed()
+    // so it knows which vehicle ID to watch for before advancing in the queue.
     vehicleInFrontOfMe_ = -1;
-    double closestFrontDist = 999999.0;
-
-    for (auto& kv : vehicleDB_) {
-        int vid = kv.first;
-        const VehicleProposal& prop = kv.second;
-        if (vid == myId_) continue;
-        if (prop.laneIndex != myLaneIndex_) continue;
-
-        double theirDist = prop.distanceToJunction;
-        if (theirDist < myDist) {
-            isLaneLeader_ = false;
-            if (theirDist < closestFrontDist) {
-                closestFrontDist    = theirDist;
+    if (!isLaneLeader_) {
+        double myDist = calculateDistanceToJunction();
+        if (myDist < 0) myDist = 999999.0;
+        double closestFrontDist = 999999.0;
+        for (auto& kv : vehicleDB_) {
+            int vid = kv.first;
+            const VehicleProposal& prop = kv.second;
+            if (vid == myId_) continue;
+            if (prop.laneIndex != myLaneIndex_) continue;
+            if (prop.distanceToJunction < myDist &&
+                prop.distanceToJunction < closestFrontDist) {
+                closestFrontDist    = prop.distanceToJunction;
                 vehicleInFrontOfMe_ = vid;
             }
         }
     }
-
-    wayOfSight_ = (vehicleInFrontOfMe_ == -1);
 
     // ---- Multi-round: detect lane-leader promotion ----
     // Conditions:
@@ -153,17 +153,7 @@ void RaftAppBase::updateLaneLeaderFlag()
         hasStoppedAtIntersection_ && hasCommittedOrder_ &&
         !hasPassedIntersection_ && !seekingNewCluster_ && !isFallbackMode_) {
 
-        // Check whether there are any vehicles not covered by the previous schedule
-        bool hasUnscheduled = false;
-        for (auto& kv : vehicleDB_) {
-            if (!scheduledVehicles_.count(kv.first) && kv.first != myId_) {
-                hasUnscheduled = true;
-                break;
-            }
-        }
-        if (!scheduledVehicles_.count(myId_)) hasUnscheduled = true;
-
-        if (hasUnscheduled) {
+        if (hasUnscheduledVehicles()) {
             std::cout << NOW << " [ROUND][V" << myId_ << "] Lane leader promotion detected"
                       << " (prev wasLaneLeader=" << wasLaneLeader << ") — starting new RAFT round." << std::endl;
             startNewRound();
@@ -485,6 +475,8 @@ void RaftAppBase::formCluster(const std::set<int>& members)
 
     raft_cbs_t cbs;
     memset(&cbs, 0, sizeof(cbs));
+    // These are teh functions that will be called by the RAFT library when it needs to send messages, persist logs, etc.
+    // This is how we stay protocol agnostic
     cbs.send_requestvote      = &RaftAppBase::sendRequestVote;
     cbs.send_appendentries    = &RaftAppBase::sendAppendEntries;
     cbs.log_offer             = &RaftAppBase::logOffer;

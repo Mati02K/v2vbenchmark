@@ -1,4 +1,4 @@
-// RaftUtilities.cc — Intersection detection, vehicle movement control, fallback, gossip relay
+// RaftUtilities.cc — Intersection detection, vehicle movement control, fallback, helpers
 
 #include "raft/RaftAppBase.h"
 #include "raft/RaftLogger.h"
@@ -44,6 +44,21 @@ int RaftAppBase::detectBlockingVehicle()
 double RaftAppBase::calculateDistanceToJunction()
 {
     return getDistanceToJunction();
+}
+
+// Ask TraCI if any vehicle is immediately ahead in the same lane.
+// Returns true  → no vehicle ahead → I am the lane leader.
+// Returns false → someone is ahead → I am queued behind them.
+// Look-ahead distance = 200m (large enough to cover a full approach lane queue).
+bool RaftAppBase::isLaneLeaderByTraci() const
+{
+    if (!traciVehicle_) return true;  // no TraCI yet → assume leader
+    try {
+        auto leader = traciVehicle_->getLeader(200.0);
+        return leader.first.empty();  // empty string = nobody ahead in lane
+    } catch (...) {
+        return true;  // on error assume leader (safe default)
+    }
 }
 
 // ============ INTERSECTION DETECTION ============
@@ -467,3 +482,25 @@ void RaftAppBase::handleFallback()
     }
 }
 
+
+// Returns true if vehicleId appears in any batch of the locally committed schedule.
+// committedSchedule_ is populated when PASS_ORDER commits in RAFT — always reliable,
+// unlike scheduledVehicles_ which is only filled by startNewRound() or QC_BROADCAST.
+bool RaftAppBase::isVehicleInCommittedSchedule(int vehicleId) const
+{
+    for (int b = 0; b < committedSchedule_.numBatches; b++)
+        for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++)
+            if (committedSchedule_.batches[b].vehicleIds[v] == vehicleId)
+                return true;
+    return false;
+}
+
+// Returns true if any vehicle in vehicleDB_ is NOT in the committed schedule.
+// Used by the multi-round trigger to decide whether a new RAFT round is needed.
+bool RaftAppBase::hasUnscheduledVehicles() const
+{
+    for (auto& kv : vehicleDB_)
+        if (!isVehicleInCommittedSchedule(kv.first))
+            return true;
+    return false;
+}

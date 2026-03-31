@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
-#include "raft/CryptoAuth.h"  // VehicleCert, SignedProposal
+#include "../../third_party/crypto/CryptoAuth.h"  // VehicleCert, SignedProposal
 
 extern "C" {
 #include "../../third_party/raft/raft_types.h"
