@@ -274,18 +274,56 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
         }
 
         executePassOrder();
-        // Broadcast committed schedule to non-cluster (queued) vehicles.
-        // All RAFT members do this for redundancy; receivers use hasCommittedOrder_ to dedup.
+        // All cluster members broadcast the schedule immediately for redundancy.
+        // In UDP, packet loss means a single broadcast may be dropped; multiple senders
+        // give non-cluster vehicles more chances to receive it.
+        // The leader will send a second broadcast once the QC is assembled (with QC embedded).
+        // Receivers deduplicate via hasCommittedOrder_.
         sendPassOrderBroadcast();
 
-        // Trigger QC assembly: leader will send QC_SIGN_REQUEST to cluster members.
-        // Members sign the (round || schedule) payload and return QC_SIGN_RESPONSE.
-        // Once majority signatures are collected, the assembled QC is broadcast to ALL
-        // vehicles so that the next RAFT round can verify this round's schedule.
+        // Every cluster member signs [round || schedule] immediately upon commit.
+        // Followers send their ECDSA signature directly to the leader (no request needed).
+        // Leader collects signatures; once quorum reached it assembles the QC and sends
+        // another PASS_ORDER_BROADCAST with the QC embedded.
         if (!qcAssembled_) {
-            scheduleOneshotMs(200, [this]() {
-                if (isLeader_ && !qcAssembled_) sendQCSignRequest();
-            });
+            size_t tbsSize = sizeof(uint32_t) + sizeof(PassScheduleEntry);
+            std::vector<uint8_t> tbs(tbsSize);
+            uint32_t rn = static_cast<uint32_t>(roundNumber_);
+            memcpy(tbs.data(),                    &rn,                sizeof(uint32_t));
+            memcpy(tbs.data() + sizeof(uint32_t), &committedSchedule_, sizeof(PassScheduleEntry));
+
+            if (isLeader_) {
+                // Leader signs its own copy first.
+                QCSigEntry mySig;
+                memcpy(mySig.pubKey, myPubKey_, CRYPTO_PUBKEY_BYTES);
+                mySig.sigLen = 0;
+                CryptoAuth::instance().signBytes(myPrivKey_, tbs.data(), tbs.size(),
+                                                 mySig.sig, mySig.sigLen);
+                collectedQCSigs_[myId_] = mySig;
+                std::cout << NOW << " [QC][V" << myId_ << "] Leader signed own QC copy (round="
+                          << roundNumber_ << " clusterSize=" << activeVehicles_.size() << ")" << std::endl;
+                tryAssembleQC();  // single-node cluster edge case
+            } else if (raftServer_) {
+                // Follower: sign and send directly to leader — no QC_SIGN_REQUEST needed.
+                raft_node_id_t leaderNodeId = raft_get_current_leader(raftServer_);
+                if (leaderNodeId > 0) {
+                    int leaderVehicleId = static_cast<int>(leaderNodeId) - 1;
+                    uint8_t sig[CRYPTO_SIG_MAX_BYTES];
+                    uint8_t sigLen = 0;
+                    CryptoAuth::instance().signBytes(myPrivKey_, tbs.data(), tbs.size(),
+                                                     sig, sigLen);
+                    std::vector<uint8_t> resp(sizeof(int) + CRYPTO_PUBKEY_BYTES + CRYPTO_SIG_MAX_BYTES + 1);
+                    size_t off = 0;
+                    memcpy(resp.data() + off, &myId_,    sizeof(int));           off += sizeof(int);
+                    memcpy(resp.data() + off, myPubKey_, CRYPTO_PUBKEY_BYTES);   off += CRYPTO_PUBKEY_BYTES;
+                    memcpy(resp.data() + off, sig,       CRYPTO_SIG_MAX_BYTES);  off += CRYPTO_SIG_MAX_BYTES;
+                    resp[off] = sigLen;
+                    sendQCSignResponse(leaderVehicleId, resp);
+                    std::cout << NOW << " [QC][V" << myId_ << "] Signed and sent QC_SIGN_RESPONSE"
+                              << " to leader V" << leaderVehicleId
+                              << " (round=" << roundNumber_ << ")" << std::endl;
+                }
+            }
         }
         return 0;
     }
@@ -767,18 +805,22 @@ void RaftAppBase::onLostLeadership()
 
 // ============ PASS ORDER BROADCAST (to non-cluster vehicles) ============
 
-// Called by all RAFT cluster members after PASS_ORDER is committed.
-// Non-cluster (queued) vehicles receive this and apply the schedule.
+// Called by the RAFT leader once the QC is assembled.
+// Payload: [PassScheduleEntry][QuorumCertificate] — schedule + crypto proof in one message.
+// Non-cluster (queued) vehicles receive this and apply both the schedule and store the QC.
 void RaftAppBase::sendPassOrderBroadcast()
 {
     if (!hasCommittedOrder_) return;
 
-    std::vector<uint8_t> data(sizeof(PassScheduleEntry));
-    memcpy(data.data(), &committedSchedule_, sizeof(PassScheduleEntry));
+    // Embed QC in payload so non-cluster vehicles get schedule + proof in one message.
+    std::vector<uint8_t> data(sizeof(PassScheduleEntry) + sizeof(QuorumCertificate));
+    memcpy(data.data(),                          &committedSchedule_, sizeof(PassScheduleEntry));
+    memcpy(data.data() + sizeof(PassScheduleEntry), &prevRoundQC_,    sizeof(QuorumCertificate));
     sendRaftBroadcast(/*COORD_PASS_ORDER_BROADCAST*/ 0x35, data);
     messagesSent_++;
 
-    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST sent: "
-              << committedSchedule_.numBatches << " batches to non-cluster vehicles" << std::endl;
-    RAFT_LOG("PASS_ORDER_BROADCAST sent (" << committedSchedule_.numBatches << " batches)");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST sent (with QC): "
+              << committedSchedule_.numBatches << " batches, QC round=" << prevRoundQC_.round
+              << " numSigs=" << prevRoundQC_.numSigs << std::endl;
+    RAFT_LOG("PASS_ORDER_BROADCAST sent (" << committedSchedule_.numBatches << " batches + QC)");
 }

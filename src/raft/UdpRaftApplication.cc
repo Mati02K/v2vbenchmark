@@ -342,14 +342,8 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             break;
 
         // ---- Quorum Certificate ----
-        case benchmark::QC_SIGN_REQUEST:
-            handleQCSignRequest(data, sender);
-            break;
         case benchmark::QC_SIGN_RESPONSE:
             handleQCSignResponse(data, sender);
-            break;
-        case benchmark::QC_BROADCAST:
-            handleQCBroadcast(data);
             break;
 
         default:

@@ -378,14 +378,8 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             break;
 
         // ---- Quorum Certificate ----
-        case benchmark::QC_SIGN_REQUEST:
-            handleQCSignRequest(payload, protocolSender);
-            break;
         case benchmark::QC_SIGN_RESPONSE:
             handleQCSignResponse(payload, protocolSender);
-            break;
-        case benchmark::QC_BROADCAST:
-            handleQCBroadcast(payload);
             break;
     }
 }

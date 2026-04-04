@@ -338,13 +338,9 @@ protected:
     void startNewRound();
 
     // ---- Quorum Certificate ----
-    void sendQCSignRequest();
-    void handleQCSignRequest(const std::vector<uint8_t>& data, int senderId);
-    void sendQCSignResponse(int toLeader, const std::vector<uint8_t>& tbsData);
+    void sendQCSignResponse(int toLeader, const std::vector<uint8_t>& respData);
     void handleQCSignResponse(const std::vector<uint8_t>& data, int senderId);
     void tryAssembleQC();
-    void sendQCBroadcast();
-    void handleQCBroadcast(const std::vector<uint8_t>& data);
     bool verifyQC(const QuorumCertificate& qc) const;
 
     // ============ TRANSPORT HELPERS ============
