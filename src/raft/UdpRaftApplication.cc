@@ -16,7 +16,7 @@
 #include "inet/common/packet/chunk/BytesChunk.h"
 
 extern "C" {
-#include "../../third_party/raft/raft.h"
+#include "../../lib/raft/raft.h"
 }
 
 using namespace inet;
@@ -96,14 +96,14 @@ bool UdpRaftApplication::startApplication()
     clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
     mergeCooldownMs_         = par("mergeCooldownMs").intValue();
     vehicleLeftTimeoutMs_    = par("vehicleLeftTimeoutMs").intValue();
-    isAmbulance_             = par("isAmbulance").boolValue();
+    isPriorityVehicle_             = par("isPriority vehicle").boolValue();
 
     // ---- Crypto init: generate keypair and get cert signed by appropriate CA ----
     memset(myPubKey_, 0, sizeof(myPubKey_));
     memset(&myCert_,  0, sizeof(myCert_));
     myPrivKey_ = CryptoAuth::instance().generateKeyPair(myPubKey_);
-    std::string role   = isAmbulance_ ? "ambulance" : "normal";
-    std::string issuer = isAmbulance_ ? "Emergency_CA" : "Vehicle_CA";
+    std::string role   = isPriorityVehicle_ ? "priority" : "normal";
+    std::string issuer = isPriorityVehicle_ ? "Emergency_CA" : "Vehicle_CA";
     myCert_ = CryptoAuth::instance().issueCert(myPubKey_, role, issuer);
     std::cout << "[V" << myId_ << "] Crypto init: role=" << role << " issuer=" << issuer << std::endl;
 
@@ -119,6 +119,8 @@ bool UdpRaftApplication::startApplication()
     static const char* routeNames[] = {"rN","rS","rE","rW"};  // North,South,East,West (N/W swapped)
     myRoute_ = routeNames[dirIndex % 4];
     myLaneIndex_ = sideIndex % 4;
+
+    initMyProposal();  // set static fields of cached proposal once
 
     vehicleInFrontOfMe_ = (posInLane > 0) ? myId_ - 1 : -1;  // initial guess, updated by updateLaneLeaderFlag
     wayOfSight_         = (posInLane == 0);
@@ -143,10 +145,10 @@ bool UdpRaftApplication::startApplication()
     traciVehicle_ = mobility_->getVehicleCommandInterface();
     if (!traci_ || !traciVehicle_) { EV_ERROR << "No TraCI" << endl; return false; }
 
-    // Colour ambulance red so it's visually distinct in SUMO-GUI
-    if (isAmbulance_) {
+    // Colour priority vehicle red so it's visually distinct in SUMO-GUI
+    if (isPriorityVehicle_) {
         traciVehicle_->setColor(veins::TraCIColor(255, 0, 0, 255)); // red
-        std::cout << "[V" << myId_ << "] Ambulance coloured RED in SUMO-GUI" << std::endl;
+        std::cout << "[V" << myId_ << "] Priority vehicle coloured RED in SUMO-GUI" << std::endl;
     }
 
     timeArrived_ = simTime();
@@ -274,9 +276,6 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
         case benchmark::PEER_BEACON:
             handlePeerBeacon(data, sender);
             break;
-        case benchmark::LEADER_DB_EXCHANGE:
-            handleLeaderDbExchange(data, sender);
-            break;
         case benchmark::CLUSTER_JOIN_INVITE:
             handleClusterJoinInvite(data, sender);
             break;
@@ -299,34 +298,9 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
         case benchmark::COORD_STATUS_REQUEST:
             handleStatusRequest(sender);
             break;
-        case benchmark::COORD_STATUS_RESPONSE: {
-            if (data.size() >= sizeof(SignedProposal)) {
-                SignedProposal sp;
-                memcpy(&sp, data.data(), sizeof(SignedProposal));
-
-                std::string role = CryptoAuth::instance().verifyCert(sp.cert);
-                if (role.empty()) {
-                    std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V" << sender
-                              << " — invalid certificate (possible fake ambulance)" << std::endl;
-                    break;
-                }
-                bool sigOk = CryptoAuth::instance().verifyProposalSignature(
-                    sp.cert, sp.proposalBytes, sp.proposalSize, sp.timestampMs,
-                    sp.signature, sp.signatureLen);
-                if (!sigOk) {
-                    std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V" << sender
-                              << " — signature mismatch (tampered payload)" << std::endl;
-                    break;
-                }
-                VehicleProposal proposal;
-                memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
-                proposal.isPriority = (role == "ambulance");
-                std::cout << "[CRYPTO][V" << myId_ << "] ACCEPT STATUS_RESPONSE from V" << sender
-                          << " role=" << role << " isPriority=" << proposal.isPriority << std::endl;
-                handleStatusResponseProposal(sender, proposal);
-            }
+        case benchmark::COORD_STATUS_RESPONSE:
+            handleDbResponse(data, sender);
             break;
-        }
         case benchmark::COORD_VEHICLE_PASSED:
             if (!data.empty()) handleVehiclePassed((int)data[0]);
             break;

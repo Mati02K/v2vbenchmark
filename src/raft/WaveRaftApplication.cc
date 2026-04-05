@@ -14,7 +14,7 @@
 #include <sstream>
 
 extern "C" {
-#include "../../third_party/raft/raft.h"
+#include "../../lib/raft/raft.h"
 }
 
 using namespace veins;
@@ -98,7 +98,7 @@ void WaveRaftApplication::initialize(int stage)
             invitationIntervalStoppedMs_ = par("invitationIntervalStoppedMs").intValue();
             resultsFileName_          = par("resultsFile").stdstringValue();
             resultsFileCloseAtSec_    = par("resultsFileCloseAtSec").doubleValue();
-            isAmbulance_             = par("isAmbulance").boolValue();
+            isPriorityVehicle_             = par("isPriority vehicle").boolValue();
         } catch (std::exception& e) {
             std::cerr << "Vehicle " << myId_ << " ERROR reading params: " << e.what() << std::endl;
         }
@@ -107,13 +107,14 @@ void WaveRaftApplication::initialize(int stage)
         memset(myPubKey_, 0, sizeof(myPubKey_));
         memset(&myCert_,  0, sizeof(myCert_));
         myPrivKey_ = CryptoAuth::instance().generateKeyPair(myPubKey_);
-        std::string role   = isAmbulance_ ? "ambulance" : "normal";
-        std::string issuer = isAmbulance_ ? "Emergency_CA" : "Vehicle_CA";
+        std::string role   = isPriorityVehicle_ ? "priority" : "normal";
+        std::string issuer = isPriorityVehicle_ ? "Emergency_CA" : "Vehicle_CA";
         myCert_ = CryptoAuth::instance().issueCert(myPubKey_, role, issuer);
         std::cout << "[V" << myId_ << "] Crypto init: role=" << role << " issuer=" << issuer << std::endl;
 
         parseEdgeParametersFromNed();
 
+        // TODO : I need to understand why ghost vehicles spawns and clearly remove it
         // Ghost vehicle: SUMO recycled a vehicle slot after the original N vehicles
         // completed their routes.  myId_ >= totalVehicles_ means this module should
         // not participate in RAFT cluster formation or channel communication.
@@ -137,6 +138,8 @@ void WaveRaftApplication::initialize(int stage)
         }
         static const char* routeNames[] = {"rN","rS","rE","rW"};  // North,South,East,West (N/W swapped)
         myRoute_ = routeNames[sideIndex % 4];
+
+        initMyProposal();  // set static fields of cached proposal once
 
         vehicleInFrontOfMe_ = (posInLane > 0) ? myId_ - 1 : -1;  // initial guess
         wayOfSight_         = (posInLane == 0);
@@ -208,11 +211,11 @@ void WaveRaftApplication::handlePositionUpdate(cObject* obj)
         if (mobility_) {
             traci_        = mobility_->getCommandInterface();
             traciVehicle_ = mobility_->getVehicleCommandInterface();
-            // Colour ambulance red so it's visually distinct in SUMO-GUI
-            if (isAmbulance_) {
+            // Colour priority vehicle red so it's visually distinct in SUMO-GUI
+            if (isPriorityVehicle_) {
                 try {
                     traciVehicle_->setColor(veins::TraCIColor(255, 0, 0, 255)); // red
-                    std::cout << "[V" << myId_ << "] Ambulance coloured RED in SUMO-GUI" << std::endl;
+                    std::cout << "[V" << myId_ << "] Priority vehicle coloured RED in SUMO-GUI" << std::endl;
                 } catch (...) {}
             }
             try {
@@ -311,9 +314,6 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
         case benchmark::PEER_BEACON:
             handlePeerBeacon(payload, protocolSender);
             break;
-        case benchmark::LEADER_DB_EXCHANGE:
-            handleLeaderDbExchange(payload, protocolSender);
-            break;
         case benchmark::CLUSTER_JOIN_INVITE:
             handleClusterJoinInvite(payload, protocolSender);
             break;
@@ -333,35 +333,7 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             handleStatusRequest(protocolSender);
             break;
         case benchmark::COORD_STATUS_RESPONSE:
-            if (payload.size() >= sizeof(SignedProposal)) {
-                SignedProposal sp;
-                memcpy(&sp, payload.data(), sizeof(SignedProposal));
-
-                // Step 1: verify certificate against trusted CA public keys
-                std::string role = CryptoAuth::instance().verifyCert(sp.cert);
-                if (role.empty()) {
-                    std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V"
-                              << protocolSender << " — invalid certificate" << std::endl;
-                    break;
-                }
-                // Step 2: verify message signature
-                bool sigOk = CryptoAuth::instance().verifyProposalSignature(
-                    sp.cert, sp.proposalBytes, sp.proposalSize, sp.timestampMs,
-                    sp.signature, sp.signatureLen);
-                if (!sigOk) {
-                    std::cout << "[CRYPTO][V" << myId_ << "] REJECT STATUS_RESPONSE from V"
-                              << protocolSender << " — signature mismatch" << std::endl;
-                    break;
-                }
-                // Step 3: set isPriority ONLY from verified cert role
-                VehicleProposal proposal;
-                memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
-                proposal.isPriority = (role == "ambulance");
-                std::cout << "[CRYPTO][V" << myId_ << "] ACCEPT STATUS_RESPONSE from V"
-                          << protocolSender << " role=" << role
-                          << " isPriority=" << proposal.isPriority << std::endl;
-                handleStatusResponseProposal(protocolSender, proposal);
-            }
+            handleDbResponse(payload, protocolSender);
             break;
         case benchmark::COORD_VEHICLE_PASSED:
             if (payload.size() >= 1) handleVehiclePassed((int)payload[0]);

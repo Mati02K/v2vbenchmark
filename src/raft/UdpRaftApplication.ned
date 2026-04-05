@@ -28,7 +28,7 @@ simple UdpRaftApplication extends VeinsInetApplicationBase
 
         // Cluster formation fallback timeout (milliseconds) — if RAFT cluster not formed by this time after stopping, activate fallback
         int fallbackClusterTimeoutMs = default(30000);
-        bool isAmbulance = default(false);  // true = Emergency_CA signs cert, gets priority
+        bool isPriorityVehicle = default(false);  // true = Emergency_CA signs cert, gets priority
         
         // Distance-based intersection stopping
         double intersectionStopDistance @unit(m) = default(25m);  // Stop within this distance of junction

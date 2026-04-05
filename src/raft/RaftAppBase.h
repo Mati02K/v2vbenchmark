@@ -8,7 +8,7 @@
 
 #include "raft/RaftShared.h"
 #include "raft/RaftMetrics.h"
-#include "../../third_party/crypto/CryptoAuth.h"
+#include "../../lib/crypto/CryptoAuth.h"
 #include <openssl/evp.h>
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
 
@@ -20,8 +20,8 @@
 #include <vector>
 
 extern "C" {
-#include "../../third_party/raft/raft_types.h"
-#include "../../third_party/raft/raft.h"
+#include "../../lib/raft/raft_types.h"
+#include "../../lib/raft/raft.h"
 }
 
 class RaftAppBase
@@ -50,6 +50,10 @@ protected:
     std::string myRoute_;
     std::string myLane_;
 
+    // Cached proposal — static fields set once in initMyProposal(), dynamic fields
+    // refreshed on each updateMyProposal() call.
+    VehicleProposal myProposal_;
+
     // TraCI (set by subclass after mobility is available)
     veins::TraCICommandInterface*          traci_          = nullptr;
     veins::TraCICommandInterface::Vehicle* traciVehicle_   = nullptr;
@@ -63,10 +67,10 @@ protected:
     // Recomputed dynamically every check interval from vehicleDB_.
     bool isLaneLeader_;
 
-    // receivedLeaderDBs_: leader DBs received at intersection, key = senderLaneIndex.
-    std::map<int, std::map<int, VehicleProposal>> receivedLeaderDBs_;
-    // senderVehicleId for each received leader DB, key = laneIndex
-    std::map<int, int> receivedLeaderSenderIds_;
+    // collectedLeaderDBs_: full vehicleDB_ received from each lane leader after election.
+    // Key = senderVehicleId, Value = that leader's full vehicleDB_.
+    // Built during STATUS_REQUEST phase; used by proposePassOrder() instead of stale local vehicleDB_.
+    std::map<int, std::map<int, VehicleProposal>> collectedLeaderDBs_;
 
     // raftStarted_: true once formCluster() has been called. Guards against double-formation.
     bool raftStarted_;
@@ -171,7 +175,7 @@ protected:
     std::string transportName_;
 
     // ============ CRYPTO / AUTHENTICATION ============
-    bool         isAmbulance_;                          // set from NED parameter
+    bool         isPriorityVehicle_;                          // set from NED parameter
     EVP_PKEY*    myPrivKey_;                            // vehicle's EC private key
     uint8_t      myPubKey_[CRYPTO_PUBKEY_BYTES];        // vehicle's EC public key
     VehicleCert  myCert_;                               // cert signed by appropriate CA
@@ -228,13 +232,11 @@ protected:
     // Lane leader flag — recomputed from vehicleDB_ every check interval
     void updateLaneLeaderFlag();
 
-    // Intersection phase: leader DB exchange + RAFT cluster formation
-    void sendLeaderDbExchange();
-    void handleLeaderDbExchange(const std::vector<uint8_t>& data, int senderId);
-    void tryFormRaftFromLeaderDBs();
+    // Intersection phase: direct cluster formation + RAFT cluster formation
+    void tryFormClusterFromVehicleDB();
+    void scheduleClusterFormationLoop();
     void sendClusterJoinInvite(const std::set<int>& members);
     void handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId);
-    void scheduleLeaderDbExchangeLoop();
 
     // Core cluster formation (called once per RAFT lifecycle)
     void formCluster(const std::set<int>& members);
@@ -267,9 +269,8 @@ protected:
     // Coordination protocol
     void sendStatusRequest();
     void handleStatusRequest(int fromLeader);
-    void sendStatusResponse(int toLeader);
-    void handleStatusResponse(int fromVehicle, bool wos);
-    void handleStatusResponseProposal(int fromVehicle, const VehicleProposal& proposal);
+    void sendDbResponse(int toLeader);
+    void handleDbResponse(const std::vector<uint8_t>& data, int senderId);
     void collectStatusAndDecide();
     void proposeStatusReport();
     void proposePassOrder();
@@ -295,7 +296,8 @@ protected:
                     std::set<int>& scheduled);
     bool blockerScheduled(const VehicleProposal& v,
                           const std::set<int>& scheduled);
-    VehicleProposal buildMyProposal();
+    void            initMyProposal();   // call once after identity/cert are known
+    VehicleProposal updateMyProposal();  // refreshes dynamic fields, returns myProposal_
     int           detectBlockingVehicle();
     double        calculateDistanceToJunction();
     // Returns true if TraCI reports no vehicle ahead in the same lane
@@ -310,6 +312,12 @@ protected:
     void checkAndStopAtIntersection();
     void onFirstStoppedAtIntersection();  // called once when vehicle first stops
     void checkAndAdvanceInQueue();
+    // checkAndStopAtIntersection sub-functions
+    void updateRoadTracking(const std::string& roadId, const std::string& lastKnownRoad);
+    void handleClusterJunctionStop(const std::string& roadId, const std::string& lastKnownRoad);
+    void handleFrontStop(const std::string& roadId, double dist);
+    void handleQueuedStop(const std::string& roadId, double dist, double speed);
+    void scheduleLeaderStatusRequest();
     bool isAtIntersection() const;
     bool isNearJunction() const;
     bool hasPassedIntersectionEdge() const;
@@ -320,6 +328,11 @@ protected:
     void onBecameLeader();
     void onLostLeadership();
     void handleFallback();
+    // processRaftPeriodic sub-functions
+    void checkElectionFailures(raft_term_t currentTerm);
+    void checkLeadershipChange();
+    void checkCoordinationTimeout(simtime_t now);
+    void checkDiscoveryTimeout(simtime_t now);
 
     // Metrics
     void outputMetricsJSON();

@@ -4,7 +4,7 @@
 // Design:
 //   - CryptoAuth is a singleton that holds two CA keypairs (Emergency_CA, Vehicle_CA).
 //   - Each vehicle generates its own EC keypair at init time.
-//   - Ambulance vehicles get a cert signed by Emergency_CA; normal vehicles by Vehicle_CA.
+//   - Ambulance/Police/Priority vehicles get a cert signed by Emergency_CA; normal vehicles by Vehicle_CA.
 //   - On receive, the cert is verified against the trusted CA public keys.
 //   - isPriority is set ONLY if the cert is signed by Emergency_CA (never from payload).
 //

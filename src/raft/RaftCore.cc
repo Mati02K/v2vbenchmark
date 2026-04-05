@@ -11,18 +11,94 @@
 #include <functional>
 
 extern "C" {
-#include "../../third_party/raft/raft.h"
+#include "../../lib/raft/raft.h"
 }
 
 #define NOW (simTime())
 
 // ============ RAFT PERIODIC ============
 
+// ---- checkElectionFailures --------------------------------------------------
+// Increments failedElectionCount_ when term advances without this node winning.
+// Activates fallback if too many consecutive failures while stopped.
+void RaftAppBase::checkElectionFailures(raft_term_t currentTerm)
+{
+    if (currentTerm <= lastCheckedTerm_) return;
+    electionRounds_++;
+    if (!raft_is_leader(raftServer_)) {
+        failedElectionCount_++;
+        if (failedElectionCount_ >= maxFailedElections_
+            && hasStoppedAtIntersection_ && !hasCommittedOrder_) {
+            isFallbackMode_     = true;
+            coordinationMethod_ = "fallback";
+            handleFallback();
+        }
+    } else {
+        failedElectionCount_ = 0;
+    }
+    lastCheckedTerm_ = currentTerm;
+}
+
+// ---- checkLeadershipChange --------------------------------------------------
+// Detects FOLLOWER→LEADER and LEADER→FOLLOWER transitions this tick.
+void RaftAppBase::checkLeadershipChange()
+{
+    bool wasLeader = isLeader_;
+    isLeader_ = (raft_is_leader(raftServer_) == 1);
+    if (isLeader_ && !wasLeader) {
+        onBecameLeader();
+    } else if (!isLeader_ && wasLeader) {
+        onLostLeadership();
+    }
+}
+
+// ---- checkCoordinationTimeout -----------------------------------------------
+// Cluster formed but coordination is stuck (STATUS_REQUEST responses lost, etc.).
+// Skips if a follower already has a known leader (leader is still working).
+void RaftAppBase::checkCoordinationTimeout(simtime_t now)
+{
+    // Follower with a known leader — leader is in charge, do not time out.
+    if (!isLeader_ && raftServer_) {
+        if (raft_get_current_leader(raftServer_) != -1) return;
+    }
+
+    simtime_t refTime;
+    if (isLeader_ && timeElected_ > SIMTIME_ZERO) {
+        refTime = timeElected_;
+    } else {
+        refTime = (timeStopped_ > timeClusterFormed_) ? timeStopped_ : timeClusterFormed_;
+    }
+
+    double extraPerVehicle = electionTimeoutBaseMs_ / 1000.0;
+    double raftTimeout = (discoveryWaitMs_ + clusterFormationDelayMs_ + statusCollectionTimeoutMs_ +
+                          electionTimeoutBaseMs_ * 4 + electionTimeoutJitterMs_ * 2 +
+                          totalVehicles_ * extraPerVehicle * 1000.0 + 15000) / 1000.0;
+
+    if ((now - refTime).dbl() > raftTimeout) {
+        RAFT_LOG("RAFT TIMEOUT: " << (now - refTime).dbl() * 1000.0
+                 << "ms since ref (threshold=" << raftTimeout * 1000.0 << "ms)");
+        handleFallback();
+    }
+}
+
+// ---- checkDiscoveryTimeout --------------------------------------------------
+// Safety net: cluster never formed (discovery beacons never reached enough vehicles).
+void RaftAppBase::checkDiscoveryTimeout(simtime_t now)
+{
+    double discTimeout = 15.0 + totalVehicles_ * 2.0;
+    if ((now - timeStopped_).dbl() > discTimeout) {
+        RAFT_LOG("DISCOVERY TIMEOUT (safety net): " << (now - timeStopped_).dbl() * 1000.0 << "ms");
+        handleFallback();
+    }
+}
+
+// ---- processRaftPeriodic ----------------------------------------------------
+// Called every 20ms. Ticks the RAFT library and runs watchdog checks.
 void RaftAppBase::processRaftPeriodic()
 {
     if (!raftServer_ || isFallbackMode_) return;
 
-    simtime_t now   = NOW;
+    simtime_t now = NOW;
     if (lastRaftPeriodicRun_ == SIMTIME_ZERO) lastRaftPeriodicRun_ = now;
     simtime_t delta = now - lastRaftPeriodicRun_;
     lastRaftPeriodicRun_ = now;
@@ -32,108 +108,31 @@ void RaftAppBase::processRaftPeriodic()
 
     static int print_count = 0;
     if (print_count++ < 10) {
-        RAFT_LOG("processRaftPeriodic executes! delta=" << delta << ", msecElapsed=" << msecElapsed);
+        RAFT_LOG("processRaftPeriodic delta=" << delta << " ms=" << msecElapsed);
     }
 
-    // Tick the RAFT library. Internally it:
-    //   - sends heartbeats to followers if this node is the leader
-    //   - triggers a new election if the election timeout expires (FOLLOWER -> CANDIDATE)
-    // States: 0=FOLLOWER, 1=LEADER, 2=CANDIDATE
+    // Tick the RAFT library — sends heartbeats, triggers elections.
     int old_state = raft_get_state(raftServer_);
     raft_periodic(raftServer_, msecElapsed);
     int new_state = raft_get_state(raftServer_);
 
     if (old_state != new_state) {
-        RAFT_LOG("RAFT STATE CHANGED from " << old_state << " to " << new_state);
-        if (new_state == 2 /* RAFT_STATE_CANDIDATE */) {
-            RAFT_LOG("I am a candidate now! Starting election...");
-        }
+        RAFT_LOG("RAFT STATE " << old_state << " -> " << new_state);
+        if (new_state == 2) RAFT_LOG("CANDIDATE — starting election");
     }
 
-    // Scenario 1: RAFT elections keep failing (votes lost due to packet loss or
-    // no quorum). Each time the term increases without this node becoming leader,
-    // failedElectionCount_ increments. Once it reaches maxFailedElections_
-    // (= number of vehicles in this scenario), give up and go to fallback mode.
-    raft_term_t currentTerm = raft_get_current_term(raftServer_);
-    if (currentTerm > lastCheckedTerm_) {
-        electionRounds_++;
-        if (!raft_is_leader(raftServer_)) {
-            failedElectionCount_++;
-            if (failedElectionCount_ >= maxFailedElections_
-                && hasStoppedAtIntersection_
-                && !hasCommittedOrder_) {
-                isFallbackMode_    = true;
-                coordinationMethod_ = "fallback";
-                handleFallback();
-                return;
-            }
-        } else {
-            failedElectionCount_ = 0;
-        }
-        lastCheckedTerm_ = currentTerm;
-    }
+    checkElectionFailures(raft_get_current_term(raftServer_));
+    if (isFallbackMode_) return;  // checkElectionFailures may have activated fallback
 
-    // Detect leadership change this tick and notify accordingly.
-    bool wasLeader = isLeader_;
-    isLeader_      = (raft_is_leader(raftServer_) == 1);
+    checkLeadershipChange();
 
-    if (isLeader_ && !wasLeader)       onBecameLeader();
-    else if (!isLeader_ && wasLeader)  onLostLeadership();
-
-    // Scenario 2: Leader was elected but coordination is stuck (e.g. STATUS_REQUEST
-    // sent but all responses lost, so PASS_ORDER is never proposed). RAFT itself is
-    // healthy — no election failures — but the intersection protocol is frozen.
-    // A wall-clock deadline catches this:
-    //   - Follower that already knows the leader: skip timeout, leader is still working.
-    //   - Leader: deadline starts from election time so it always gets a full budget.
-    //   - Follower without a known leader: deadline starts from the later of
-    //     stopped-time and cluster-formed-time.
-    // Timeout scales with cluster size to give larger groups enough headroom.
-    //
-    // Scenario 3 (pre-cluster, inner else): Discovery beacons never reach enough
-    // vehicles so a cluster never forms and RAFT never starts. No election failures
-    // occur because there is no raftServer_ activity. A separate deadline fires if
-    // the vehicle has been stopped for too long without a cluster forming.
     if (hasStoppedAtIntersection_ && !hasCommittedOrder_ && !isFallbackMode_) {
         if (timeClusterFormed_ > SIMTIME_ZERO) {
-            // Follower with a known leader — leader is in charge, do not time out.
-            if (!isLeader_ && raftServer_) {
-                raft_node_id_t knownLeader = raft_get_current_leader(raftServer_);
-                if (knownLeader != -1) {
-                    goto skip_timeout;
-                }
-            }
-
-            simtime_t refTime;
-            if (isLeader_ && timeElected_ > SIMTIME_ZERO) {
-                refTime = timeElected_;   // leader gets full budget from election time
-            } else {
-                // Follower with no known leader: use whichever happened later.
-                refTime = (timeStopped_ > timeClusterFormed_) ? timeStopped_ : timeClusterFormed_;
-            }
-
-            simtime_t raftWait  = now - refTime;
-            double extraPerVehicle = electionTimeoutBaseMs_ / 1000.0;
-            double raftTimeout = (discoveryWaitMs_ + clusterFormationDelayMs_ + statusCollectionTimeoutMs_ +
-                                  electionTimeoutBaseMs_ * 4 + electionTimeoutJitterMs_ * 2 +
-                                  totalVehicles_ * extraPerVehicle * 1000.0 +
-                                  15000) / 1000.0;
-            if (raftWait.dbl() > raftTimeout) {
-                RAFT_LOG("RAFT TIMEOUT: " << raftWait.dbl()*1000.0
-                         << "ms since ref (threshold=" << raftTimeout*1000.0 << "ms)");
-                handleFallback();
-            }
+            checkCoordinationTimeout(now);
         } else {
-            // Scenario 3: no cluster yet — safety net in case discovery never completes.
-            simtime_t discWait    = now - timeStopped_;
-            double    discTimeout = 15.0 + totalVehicles_ * 2.0;
-            if (discWait.dbl() > discTimeout) {
-                RAFT_LOG("DISCOVERY TIMEOUT (safety net): " << discWait.dbl()*1000.0 << "ms");
-                handleFallback();
-            }
+            checkDiscoveryTimeout(now);
         }
     }
-    skip_timeout:;
 }
 
 // ============ RAFT STATIC CALLBACKS ============
@@ -491,15 +490,13 @@ void RaftAppBase::sendStatusRequest()
     messagesSent_++;
 
     timeStatusRequestSent_ = NOW;
-    waitingForStatus_  = true;
-    statusResponseCount_ = 0;
-    collectedWayOfSight_.clear();
-    collectedProposals_.clear();
+    waitingForStatus_     = true;
+    statusResponseCount_  = 0;
+    collectedLeaderDBs_.clear();
 
-    // Include our own wayOfSight
-    collectedWayOfSight_[myId_] = wayOfSight_;
-    auto myProp = buildMyProposal();
-    collectedProposals_[myId_] = myProp;
+    // Leader adds its own vehicleDB_ immediately (broadcasts don't loop back to sender)
+    vehicleDB_[myId_] = updateMyProposal();
+    collectedLeaderDBs_[myId_] = vehicleDB_;
 }
 
 // ============ STATUS REPORT PROPOSAL ============
@@ -568,68 +565,54 @@ void RaftAppBase::proposePassOrder()
     if (!raftServer_ || !isLeader_ || hasCommittedOrder_ || passOrderProposed_) return;
     passOrderProposed_ = true;
 
-    // Leader injects its own proposal (WSM broadcasts don't loop back to sender)
-    VehicleProposal myProp = buildMyProposal();
-    collectedProposals_[myId_] = myProp;
+    // Merge all lane leaders' DBs into allProposals.
+    // collectedLeaderDBs_ contains: leader's own DB (set in sendStatusRequest) +
+    // each follower's DB received via COORD_DB_RESPONSE.
+    std::map<int, VehicleProposal> allProposals;
+    std::set<int> allVehicleIds;
 
-    // Add default proposals for any lane leaders (activeVehicles_) whose status response was lost
+    // Two-pass merge: first collect all data, then overwrite with self-reports.
+    // This ensures each lane leader's fresh self-reported position (dist, laneIndex, etc.)
+    // always wins over stale beacon data that other vehicles may carry for it.
+    for (auto& leaderKv : collectedLeaderDBs_) {
+        for (auto& propKv : leaderKv.second) {
+            int vid = propKv.first;
+            if (allProposals.count(vid) == 0) {
+                allProposals[vid] = propKv.second;
+            }
+            allVehicleIds.insert(vid);
+        }
+    }
+    // Second pass: self-reports always win (overwrite stale beacon data from other DBs)
+    for (auto& leaderKv : collectedLeaderDBs_) {
+        int leaderId = leaderKv.first;
+        if (leaderKv.second.count(leaderId)) {
+            allProposals[leaderId] = leaderKv.second.at(leaderId);
+        }
+    }
+
+    // Add default proposals for any lane leader whose DB response was lost (packet loss)
     int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
     for (int vid : activeVehicles_) {
-        if (collectedProposals_.count(vid) == 0) {
+        if (allVehicleIds.count(vid) == 0) {
             VehicleProposal dflt;
             memset(&dflt, 0, sizeof(dflt));
             dflt.vehicleId          = vid;
             dflt.laneIndex          = (vid / vehiclesPerSide) % 4;
-            dflt.intendedTurn       = 0;    // assume STRAIGHT
+            dflt.intendedTurn       = 0;
             dflt.isFirstInLane      = true;
             dflt.blockedByVehicleId = -1;
-            dflt.waitingTimeMs      = 99999.0; // ensure it's not starved
+            dflt.waitingTimeMs      = 99999.0;
             dflt.distanceToJunction = 0.0;
-            collectedProposals_[vid] = dflt;
-            RAFT_LOG_LEADER("lane leader " << vid << " response lost — using default proposal");
+            allProposals[vid]       = dflt;
+            allVehicleIds.insert(vid);
+            RAFT_LOG_LEADER("lane leader " << vid << " DB response lost — using default proposal");
         }
     }
 
-    // Build schedule covering ALL vehicles (lane leaders + queued vehicles behind them).
-    // Lane leaders contributed proposals via STATUS_RESPONSE (collectedProposals_).
-    // Queued vehicles use their latest beacon data from vehicleDB_.
-    std::map<int, VehicleProposal> allProposals = collectedProposals_;
-    std::set<int> allVehicleIds;
-    for (int vid : activeVehicles_) allVehicleIds.insert(vid);
-
-    for (auto& kv : vehicleDB_) {
-        int vid = kv.first;
-        allVehicleIds.insert(vid);
-        if (allProposals.count(vid) == 0) {
-            // Queued vehicle: use its beacon data (has correct laneIndex, blockedByVehicleId, dist)
-            allProposals[vid] = kv.second;
-            RAFT_LOG_LEADER("queued vehicle " << vid << " added from vehicleDB_ (lane="
-                            << kv.second.laneIndex << " dist=" << kv.second.distanceToJunction << "m)");
-        }
-    }
-
-    // Safety: if vehicleDB_ is missing entries, add defaults for all expected vehicles
-    if ((int)allVehicleIds.size() < totalVehicles_) {
-        std::cout << simTime() << " [WARN][V" << myId_ << "] vehicleDB_ has " << vehicleDB_.size()
-                  << " of " << totalVehicles_ << " vehicles — adding defaults for missing" << std::endl;
-        for (int vid = 0; vid < totalVehicles_; vid++) {
-            if (allVehicleIds.count(vid) == 0) {
-                allVehicleIds.insert(vid);
-                VehicleProposal dflt;
-                memset(&dflt, 0, sizeof(dflt));
-                dflt.vehicleId          = vid;
-                dflt.laneIndex          = (vid / vehiclesPerSide) % 4;
-                dflt.intendedTurn       = 0;
-                dflt.isFirstInLane      = (vid % vehiclesPerSide == 0);
-                int posInLane           = vid % vehiclesPerSide;
-                dflt.blockedByVehicleId = (posInLane > 0) ? vid - 1 : -1;
-                dflt.waitingTimeMs      = 99999.0;
-                dflt.distanceToJunction = posInLane * 10.0;
-                allProposals[vid]       = dflt;
-                RAFT_LOG_LEADER("vehicle " << vid << " missing from vehicleDB_ — using default");
-            }
-        }
-    }
+    std::cout << simTime() << " [DBG][V" << myId_ << "] proposePassOrder: merged DBs from "
+              << collectedLeaderDBs_.size() << " leaders → " << allVehicleIds.size()
+              << " total vehicles" << std::endl;
 
     // ---- Multi-round: skip vehicles already scheduled in previous rounds ----
     if (!scheduledVehicles_.empty()) {
@@ -763,7 +746,10 @@ void RaftAppBase::onBecameLeader()
               << " stopped=" << hasStoppedAtIntersection_
               << " committed=" << hasCommittedOrder_
               << " activeVehicles=[";
-    for (int v : activeVehicles_) std::cout << v << " ";
+    for (int v : activeVehicles_) 
+    {
+        std::cout << v << " ";
+    }
     std::cout << "]" << std::endl;
     RAFT_LOG("BECAME LEADER (term=" << raft_get_current_term(raftServer_) << ")");
     wasElectedLeader_     = true;

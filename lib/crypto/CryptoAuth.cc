@@ -1,7 +1,7 @@
 // CryptoAuth.cc — ECDSA P-256 certificate engine for V2V authentication.
 //
 // The singleton generates two CA keypairs at startup:
-//   Emergency_CA  — signs ambulance vehicle certificates
+//   Emergency_CA  — signs ambulance/police/priority vehicle certificates
 //   Vehicle_CA    — signs normal vehicle certificates
 //
 // All vehicles call generateKeyPair() + issueCert() during initialize().

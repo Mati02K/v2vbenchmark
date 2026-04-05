@@ -36,13 +36,13 @@ bool RaftAppBase::movementsConflict(int laneA, int turnA, int laneB, int turnB)
 // ============ DECISION ALGORITHM ============
 // Takes all collected proposals and returns the batch schedule.
 //
-// Priority policy (ambulance-aware):
+// Priority policy (priority vehicle-aware):
 //   Step 1 — Find "priority lanes": any lane that contains at least one vehicle
 //             with isPriority=true (verified by Emergency_CA cert).
 //   Step 2 — Schedule ALL vehicles from priority lanes first, round-robining
 //             between priority lanes if more than one. Within each priority lane,
 //             vehicles go in queue order (blocker before blocked).
-//             This continues until the ambulance vehicle itself is scheduled.
+//             This continues until the priority vehicle vehicle itself is scheduled.
 //   Step 3 — Schedule remaining (non-priority-lane) vehicles using the normal
 //             fairness algorithm (wait time, distance, lane).
 //   If no priority lanes exist, skip to Step 3 directly.
@@ -86,14 +86,14 @@ PassScheduleEntry RaftAppBase::computePassOrder(
         if (kv.second.isPriority) priorityLanes.insert(kv.second.laneIndex);
 
     if (!priorityLanes.empty()) {
-        std::cout << "[PRIORITY] Ambulance detected in lane(s): ";
+        std::cout << "[PRIORITY] Priority vehicle detected in lane(s): ";
         for (int l : priorityLanes) std::cout << l << " ";
         std::cout << std::endl;
     }
 
     // ---- Step 2: schedule priority lanes (round-robin between them) ----
     // For each priority lane: schedule vehicles in queue order (closest to junction first)
-    // until the ambulance vehicle in that lane is scheduled. Then that lane is "done".
+    // until the priority vehicle vehicle in that lane is scheduled. Then that lane is "done".
 
     // Build per-lane vehicle lists (sorted by distance, closest first)
     std::map<int, std::vector<VehicleProposal>> laneVehicles;
@@ -108,7 +108,7 @@ PassScheduleEntry RaftAppBase::computePassOrder(
                   });
     }
 
-    // Track which priority lanes still have their ambulance unscheduled
+    // Track which priority lanes still have their priority vehicle unscheduled
     std::set<int> activePriorityLanes = priorityLanes;
     // Round-robin index across priority lanes
     std::vector<int> prioLaneOrder(priorityLanes.begin(), priorityLanes.end());
@@ -128,9 +128,9 @@ PassScheduleEntry RaftAppBase::computePassOrder(
                 it = lvec.erase(it);
                 progress = true;
                 if (wasAmb) {
-                    // Ambulance in this lane has been scheduled — lane loses priority
+                    // Priority vehicle in this lane has been scheduled — lane loses priority
                     activePriorityLanes.erase(lane);
-                    std::cout << "[PRIORITY] Ambulance in lane " << lane
+                    std::cout << "[PRIORITY] Priority vehicle in lane " << lane
                               << " scheduled — lane priority released." << std::endl;
                 }
                 break; // one vehicle per lane per round-robin turn
@@ -138,7 +138,7 @@ PassScheduleEntry RaftAppBase::computePassOrder(
             if (lvec.empty()) activePriorityLanes.erase(lane);
         }
     }
-    // Flush any remaining batches from priority lanes (vehicles after the ambulance)
+    // Flush any remaining batches from priority lanes (vehicles after the priority vehicle)
     // They go into the pool for the normal algorithm below.
 
     // ---- Step 3: normal fairness algorithm for remaining vehicles ----
@@ -251,6 +251,18 @@ void RaftAppBase::applyCommittedPassOrder()
     if (myBatch_ == 0) {
         std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH 0 -> calling resumeMovement immediately" << std::endl;
         resumeMovement();
+    } else if (!hasStoppedAtIntersection_ && traciVehicle_) {
+        // Vehicle is still approaching — advance at full speed toward stop line so it
+        // arrives ready instead of creeping in behind a stopped queue.
+        try {
+            double maxSpd = traciVehicle_->getMaxSpeed();
+            if (maxSpd <= 0) maxSpd = 13.89;
+            traciVehicle_->setSpeedMode(31);   // SUMO safety on (collision avoidance in lane)
+            traciVehicle_->setSpeed(maxSpd);
+            std::cout << simTime() << " [ADV][V" << myId_ << "] batch=" << myBatch_
+                      << " advancing to stop line at max speed (dist="
+                      << getDistanceToJunction() << "m)" << std::endl;
+        } catch (...) {}
     }
     // Schedule 1.5s timeout: if VEHICLE_LEFT not received from vehicles in current batch, assume they left
     scheduleVehicleLeftTimeout(currentBatch_);

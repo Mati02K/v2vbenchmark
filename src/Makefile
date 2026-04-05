@@ -22,7 +22,7 @@ INCLUDE_PATH = -I$(INET_PROJ)/src -I$(VEINS_PROJ)/src -I.
 EXTRA_OBJS =
 
 # Additional libraries (-L, -l options)
-LIBS = $(LDFLAG_LIBPATH)$(INET_PROJ)/src $(LDFLAG_LIBPATH)$(VEINS_PROJ)/src  -lINET$(D) -lveins$(D) -lssl -lcrypto
+LIBS = $(LDFLAG_LIBPATH)$(INET_PROJ)/src $(LDFLAG_LIBPATH)$(VEINS_PROJ)/src  -lINET$(D) -lveins$(D)
 
 # Output directory
 PROJECT_OUTPUT_DIR = ../out
@@ -108,21 +108,8 @@ endif
 # inserted from file 'makefrag':
 MSGC:=$(MSGC) --msg6
 
-# CryptoAuth C++ source (lives in third_party/crypto)
-CRYPTO_DIR = ../third_party/crypto
-CRYPTO_OBJS = $O/crypto/CryptoAuth.o
-
-EXTRA_OBJS += $(CRYPTO_OBJS)
-
-$O/crypto/CryptoAuth.o: $(CRYPTO_DIR)/CryptoAuth.cc
-	@mkdir -p $O/crypto
-	@echo "Compiling CryptoAuth: $<"
-	$(Q)$(CXX) -c $(CXXFLAGS) $(COPTS) -I$(CRYPTO_DIR) -o $@ $<
-
-$(OBJS): | $(CRYPTO_OBJS)
-
 # RAFT library C source files
-RAFT_DIR = ../third_party/raft
+RAFT_DIR = ../lib/raft
 RAFT_OBJS = \
     $O/raft_c/raft_server.o \
     $O/raft_c/raft_server_properties.o \
@@ -132,12 +119,23 @@ RAFT_OBJS = \
 # Add RAFT objects to the link
 EXTRA_OBJS += $(RAFT_OBJS)
 
-# Force RAFT files to be built before any .cc files are compiled
+# CryptoAuth C++ source (lives in lib/crypto)
+CRYPTO_DIR = ../lib/crypto
+CRYPTO_OBJS = $O/crypto/CryptoAuth.o
+EXTRA_OBJS += $(CRYPTO_OBJS)
+LIBS += -lssl -lcrypto
+
+$O/crypto/CryptoAuth.o: $(CRYPTO_DIR)/CryptoAuth.cc
+	@mkdir -p $O/crypto
+	@echo "Compiling CryptoAuth: $<"
+	$(Q)$(CXX) -c $(CXXFLAGS) $(COPTS) -I$(CRYPTO_DIR) -o $@ $<
+
+# Force lib files to be built before any .cc files are compiled
 # This ensures they exist when $(wildcard) is evaluated during linking
 # Declare 'all' as the default target so this rule doesn't hijack it
 all: $(TARGET_DIR)/$(TARGET)
 
-$(OBJS): | $(RAFT_OBJS)
+$(OBJS): | $(RAFT_OBJS) $(CRYPTO_OBJS)
 
 # Explicit rules to compile each RAFT C file
 $O/raft_c/raft_server.o: $(RAFT_DIR)/raft_server.c

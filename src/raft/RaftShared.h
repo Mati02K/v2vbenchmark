@@ -5,10 +5,10 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
-#include "../../third_party/crypto/CryptoAuth.h"  // VehicleCert, SignedProposal
+#include "../../lib/crypto/CryptoAuth.h"  // VehicleCert, SignedProposal
 
 extern "C" {
-#include "../../third_party/raft/raft_types.h"
+#include "../../lib/raft/raft_types.h"
 }
 
 // ============ LOG ENTRY TYPES ============
@@ -47,7 +47,7 @@ struct VehicleProposal {
     double waitingTimeMs;
     double distanceToJunction;
     // Set by receiver ONLY after cert verification — never trust from raw payload.
-    bool   isPriority;          // true = ambulance verified by Emergency_CA
+    bool   isPriority;          // true = priority vehicle verified by Emergency_CA
 };
 
 struct PassCommandEntry {

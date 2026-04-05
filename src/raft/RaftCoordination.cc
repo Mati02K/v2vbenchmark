@@ -22,64 +22,76 @@ void RaftAppBase::handleStatusRequest(int fromLeader)
                   << " ignored — not a RAFT cluster member (queued vehicle)" << std::endl;
         return;
     }
-    sendStatusResponse(fromLeader);
+    sendDbResponse(fromLeader);
 }
 
-void RaftAppBase::sendStatusResponse(int toLeader)
+// Lane leader sends its full vehicleDB_ to the RAFT leader.
+// Payload: [senderVehicleId:4B][numEntries:2B][VehicleProposal * numEntries]
+void RaftAppBase::sendDbResponse(int toLeader)
 {
-    VehicleProposal proposal = buildMyProposal();
-    proposal.isPriority = false;  // never self-claim priority — receiver sets this from cert
+    // Refresh own entry in vehicleDB_ before sending
+    vehicleDB_[myId_] = updateMyProposal();
 
-    // Build SignedProposal: serialize proposal, sign it, attach cert
-    SignedProposal sp;
-    memset(&sp, 0, sizeof(sp));
-
-    sp.proposalSize = sizeof(VehicleProposal);
-    memcpy(sp.proposalBytes, &proposal, sizeof(VehicleProposal));
-    sp.timestampMs  = (uint64_t)(simTime().dbl() * 1000.0);
-    sp.cert         = myCert_;
-
-    CryptoAuth::instance().signProposal(myPrivKey_,
-                                         sp.proposalBytes, sp.proposalSize,
-                                         sp.timestampMs,
-                                         sp.signature, sp.signatureLen);
-
-    std::vector<uint8_t> data(sizeof(SignedProposal));
-    memcpy(data.data(), &sp, sizeof(SignedProposal));
-    sendRaftToPeer(toLeader, /*COORD_STATUS_RESPONSE*/ 0x31, data);
-    messagesSent_++;
-}
-
-void RaftAppBase::handleStatusResponse(int fromVehicle, bool wos)
-{
-    if (!isLeader_ || !waitingForStatus_) return;
-    collectedWayOfSight_[fromVehicle] = wos;
-    statusResponseCount_++;
-    if (statusResponseCount_ >= (int)activeVehicles_.size()) {
-        collectStatusAndDecide();
+    uint16_t numEntries = static_cast<uint16_t>(vehicleDB_.size());
+    std::vector<uint8_t> data(sizeof(int) + sizeof(uint16_t) + numEntries * sizeof(VehicleProposal));
+    size_t off = 0;
+    memcpy(data.data() + off, &myId_, sizeof(int));             off += sizeof(int);
+    memcpy(data.data() + off, &numEntries, sizeof(uint16_t));   off += sizeof(uint16_t);
+    for (auto& kv : vehicleDB_) {
+        memcpy(data.data() + off, &kv.second, sizeof(VehicleProposal));
+        off += sizeof(VehicleProposal);
     }
+
+    sendRaftToPeer(toLeader, /*COORD_DB_RESPONSE*/ 0x31, data);
+    messagesSent_++;
+
+    std::cout << simTime() << " [DBG][V" << myId_ << "] DB_RESPONSE sent to V" << toLeader
+              << " numEntries=" << numEntries << std::endl;
 }
 
-void RaftAppBase::handleStatusResponseProposal(int fromVehicle, const VehicleProposal& proposal)
+// Leader receives a lane leader's full vehicleDB_.
+// When all lane leaders have responded, merge all DBs and call proposePassOrder().
+void RaftAppBase::handleDbResponse(const std::vector<uint8_t>& data, int senderId)
 {
-    std::cout << simTime() << " [DBG][V" << myId_ << "] STATUS_RESPONSE from V" << fromVehicle
-              << " isLeader=" << isLeader_ << " waitingForStatus=" << waitingForStatus_
-              << " count=" << statusResponseCount_ << "/" << (totalVehicles_-1)
-              << " wos=" << proposal.isFirstInLane
-              << " dist=" << proposal.distanceToJunction << "m" << std::endl;
     if (!isLeader_ || !waitingForStatus_) return;
-    collectedProposals_[fromVehicle] = proposal;
-    collectedWayOfSight_[fromVehicle] = proposal.isFirstInLane;
+    if (data.size() < sizeof(int) + sizeof(uint16_t)) return;
+
+    size_t off = 0;
+    int claimedId;
+    memcpy(&claimedId, data.data() + off, sizeof(int));         off += sizeof(int);
+    uint16_t numEntries;
+    memcpy(&numEntries, data.data() + off, sizeof(uint16_t));   off += sizeof(uint16_t);
+
+    if (claimedId != senderId) {
+        std::cout << simTime() << " [WARN][V" << myId_ << "] DB_RESPONSE: id mismatch"
+                  << " claimed=" << claimedId << " sender=" << senderId << " — ignored" << std::endl;
+        return;
+    }
+    if (data.size() < off + numEntries * sizeof(VehicleProposal)) return;
+
+    std::map<int, VehicleProposal> senderDb;
+    for (int i = 0; i < numEntries; i++) {
+        VehicleProposal prop;
+        memcpy(&prop, data.data() + off, sizeof(VehicleProposal));
+        off += sizeof(VehicleProposal);
+        if (prop.vehicleId >= 0 && prop.vehicleId < totalVehicles_) {
+            senderDb[prop.vehicleId] = prop;
+        }
+    }
+    collectedLeaderDBs_[senderId] = senderDb;
     statusResponseCount_++;
+
     int expectedResponses = std::max(1, (int)activeVehicles_.size() - 1);
-    std::cout << simTime() << " [DBG][V" << myId_ << "] STATUS collected " << statusResponseCount_
-              << "/" << expectedResponses << " (need " << expectedResponses << ")" << std::endl;
+    std::cout << simTime() << " [DBG][V" << myId_ << "] DB_RESPONSE from V" << senderId
+              << " entries=" << numEntries
+              << " collected=" << statusResponseCount_ << "/" << expectedResponses << std::endl;
+
     if (statusResponseCount_ >= expectedResponses) {
         waitingForStatus_ = false;
         if (timeStatusRequestSent_ > SIMTIME_ZERO) {
             statusCollectionTimeMs_ += (NOW - timeStatusRequestSent_).dbl() * 1000.0;
         }
-        std::cout << simTime() << " [DBG][V" << myId_ << "] ALL STATUS COLLECTED -> proposePassOrder()" << std::endl;
+        std::cout << simTime() << " [DBG][V" << myId_ << "] ALL DB RESPONSES COLLECTED -> proposePassOrder()" << std::endl;
         proposePassOrder();
     }
 }
@@ -92,8 +104,8 @@ void RaftAppBase::collectStatusAndDecide()
         statusCollectionTimeMs_ += (NOW - timeStatusRequestSent_).dbl() * 1000.0;
     }
 
-    RAFT_LOG_LEADER("collected status from " << collectedWayOfSight_.size() << " vehicles");
-    proposeStatusReport();
+    RAFT_LOG_LEADER("status collection timeout — collected DBs from " << collectedLeaderDBs_.size() << " leaders");
+    proposePassOrder();
 }
 
 // ============ PASS ORDER BROADCAST (non-cluster vehicles) ============
@@ -279,11 +291,21 @@ void RaftAppBase::handleVehiclePassed(int vehicleId)
         // AND (b) queued vehicles (hasStoppedAtIntersection_=true) waiting behind.
         if (!hasPassedIntersection_ && traciVehicle_ && timeStartedMoving_ == SIMTIME_ZERO) {
             std::cout << simTime() << " [CHAIN][V" << myId_ << "] Front V" << vehicleId
-                      << " passed -> advancing to stop position (resume car-following)" << std::endl;
-            RAFT_LOG("front vehicle passed — advancing to stop position (chain)");
+                      << " passed -> advancing" << std::endl;
+            RAFT_LOG("front vehicle passed — advancing");
             try {
-                traciVehicle_->setSpeedMode(31);  // restore SUMO car-following
-                traciVehicle_->setSpeed(-1);      // let SUMO advance us
+                // If we have a decision and it's our turn: go at full speed like resumeMovement().
+                // Otherwise: restore car-following so SUMO advances us safely to the stop line.
+                bool myTurn = hasCommittedOrder_ && myBatch_ != -1
+                           && myBatch_ <= currentBatch_ && !hasPassedIntersection_;
+                if (myTurn) {
+                    std::cout << simTime() << " [CHAIN][V" << myId_ << "] it's our turn (batch="
+                              << myBatch_ << ") — resuming at max speed" << std::endl;
+                    resumeMovement();
+                } else {
+                    traciVehicle_->setSpeedMode(31);
+                    traciVehicle_->setSpeed(-1);
+                }
             } catch (...) {}
         }
     }
