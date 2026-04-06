@@ -116,23 +116,15 @@ RAFT_OBJS = \
     $O/raft_c/raft_node.o \
     $O/raft_c/raft_log.o
 
-# Add RAFT objects to the link
-EXTRA_OBJS += $(RAFT_OBJS)
-
-# CryptoAuth C++ source (lives in lib/crypto)
+# CryptoAuth C++ source
 CRYPTO_DIR = ../lib/crypto
 CRYPTO_OBJS = $O/crypto/CryptoAuth.o
-EXTRA_OBJS += $(CRYPTO_OBJS)
+
+# Add RAFT and Crypto objects to the link
+EXTRA_OBJS += $(RAFT_OBJS) $(CRYPTO_OBJS)
 LIBS += -lssl -lcrypto
 
-$O/crypto/CryptoAuth.o: $(CRYPTO_DIR)/CryptoAuth.cc
-	@mkdir -p $O/crypto
-	@echo "Compiling CryptoAuth: $<"
-	$(Q)$(CXX) -c $(CXXFLAGS) $(COPTS) -I$(CRYPTO_DIR) -o $@ $<
-
-# Force lib files to be built before any .cc files are compiled
-# This ensures they exist when $(wildcard) is evaluated during linking
-# Declare 'all' as the default target so this rule doesn't hijack it
+# Force RAFT/Crypto files to be built before any .cc files are compiled
 all: $(TARGET_DIR)/$(TARGET)
 
 $(OBJS): | $(RAFT_OBJS) $(CRYPTO_OBJS)
@@ -157,6 +149,11 @@ $O/raft_c/raft_log.o: $(RAFT_DIR)/raft_log.c
 	@mkdir -p $O/raft_c
 	@echo "Compiling RAFT: $<"
 	$(Q)$(CC) -c -std=c99 -I$(RAFT_DIR) -O2 -o $@ $<
+
+$O/crypto/CryptoAuth.o: $(CRYPTO_DIR)/CryptoAuth.cc
+	@mkdir -p $O/crypto
+	@echo "Compiling CryptoAuth: $<"
+	$(Q)$(CXX) -c $(CXXFLAGS) $(COPTS) -I$(CRYPTO_DIR) -o $@ $<
 
 # <<<
 #------------------------------------------------------------------------------

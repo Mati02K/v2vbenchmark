@@ -199,12 +199,9 @@ void RaftAppBase::startNewRound()
     wasElectedLeader_    = false;
     waitingForStatus_    = false;
     statusResponseCount_ = 0;
-    collectedProposals_.clear();
-    collectedWayOfSight_.clear();
     proposedLeft_.clear();
     vehiclesLeftInBatch_.clear();
     gossipSeenVehicleLeft_.clear();
-    committedStatuses_.clear();
     currentBatch_        = 0;
     myBatch_             = -1;
     lastAppliedIndex_    = 0;
@@ -214,6 +211,7 @@ void RaftAppBase::startNewRound()
     clusterPhase_        = PHASE_DISCOVERY;
     activeVehicles_.clear();
     activeVehicles_.insert(myId_);
+    collectedLaneLeaders_.clear();
     collectedLeaderDBs_.clear();
 
     // Reset QC assembly for the new round.
@@ -237,126 +235,144 @@ void RaftAppBase::startNewRound()
         if (!hasPassedIntersection_ && !raftStarted_) {
             std::cout << NOW << " [ROUND][V" << myId_ << "] Round " << roundNumber_
                       << " discovery window elapsed — attempting cluster formation." << std::endl;
-            tryFormClusterFromVehicleDB();
+            sendLaneLeaderBeacon();
             scheduleClusterFormationLoop();
         }
     });
 }
 
-// ============ CLUSTER FORMATION FROM vehicleDB_ ============
+// ============ CLUSTER FORMATION — BROADCAST APPROACH ============
+//
+// Each lane leader broadcasts CLUSTER_JOIN_INVITE carrying [myId, myLaneIndex].
+// Every receiving lane leader stores it in collectedLaneLeaders_[laneIndex] = vehicleId.
+// Self is added immediately on send.
+// Once all approach lanes are represented → formCluster() with the collected IDs.
+// A 500ms retry loop keeps broadcasting until raftStarted_.
 
-// Compute the lane leaders from our own vehicleDB_ and send CLUSTER_JOIN_INVITE.
-// One lane leader per approach lane = vehicle with smallest distanceToJunction in that lane.
-// Called once after the discovery wait and retried every 500ms until raftStarted_.
-void RaftAppBase::tryFormClusterFromVehicleDB()
+// Broadcast own lane-leader announcement and check if cluster is complete.
+void RaftAppBase::sendLaneLeaderBeacon()
 {
     if (raftStarted_ || hasPassedIntersection_ || !isLaneLeader_) return;
 
-    // Ensure self is current in vehicleDB_
-    vehicleDB_[myId_] = updateMyProposal();
+    // Register self
+    collectedLaneLeaders_[myLaneIndex_] = myId_;
+
+    // Payload: [vehicleId:4B][laneIndex:4B]
+    std::vector<uint8_t> data(sizeof(int) * 2);
+    memcpy(data.data(),              &myId_,        sizeof(int));
+    memcpy(data.data() + sizeof(int), &myLaneIndex_, sizeof(int));
+    sendRaftBroadcast(/*CLUSTER_JOIN_INVITE*/ 0x15, data);
+    messagesSent_++;
 
     int numLanes = (int)approachEdgeList_.size();
+    std::cout << NOW << " [DBG][V" << myId_ << "] LANE_LEADER_BEACON sent"
+              << " laneIdx=" << myLaneIndex_
+              << " collected=" << collectedLaneLeaders_.size() << "/" << numLanes << std::endl;
 
-    // For each approach lane, find the vehicle with smallest distanceToJunction.
-    std::map<int, std::pair<int, double>> bestPerLane;  // laneIndex → {vehicleId, dist}
-    for (auto& kv : vehicleDB_) {
-        const VehicleProposal& p = kv.second;
-        int lane = p.laneIndex;
-        if (lane < 0 || lane >= numLanes) continue;
-        double dist = p.distanceToJunction;
-        if (!bestPerLane.count(lane) || dist < bestPerLane[lane].second) {
-            bestPerLane[lane] = {kv.first, dist};
-        }
-    }
-
-    std::set<int> laneLeaderIds;
-    for (auto& kv : bestPerLane) laneLeaderIds.insert(kv.second.first);
-    laneLeaderIds.insert(myId_);  // always include self
-
-    std::cout << NOW << " [DBG][V" << myId_ << "] TRY_FORM_CLUSTER: vehicleDB_=" << vehicleDB_.size()
-              << " lanes=" << bestPerLane.size() << "/" << numLanes
-              << " laneLeaders=[";
-    for (int v : laneLeaderIds) std::cout << v << " ";
-    std::cout << "]" << std::endl;
-
-    if ((int)bestPerLane.size() < numLanes) {
-        std::cout << NOW << " [DBG][V" << myId_ << "] TRY_FORM_CLUSTER: only "
-                  << bestPerLane.size() << "/" << numLanes
-                  << " lanes visible — will retry." << std::endl;
-        return;  // retry loop will call again in 500ms
-    }
-
-    sendClusterJoinInvite(laneLeaderIds);
+    tryFormClusterFromCollected();
 }
 
-// Repeating 500ms loop: keep trying to form cluster until RAFT starts.
-void RaftAppBase::scheduleClusterFormationLoop()
-{
-    scheduleOneshotMs(500.0, [this]() {
-        if (!raftStarted_ && !hasPassedIntersection_) {
-            if (isLaneLeader_ && hasStoppedAtIntersection_) {
-                tryFormClusterFromVehicleDB();
-            }
-            scheduleClusterFormationLoop();
-        }
-    });
-}
-
-// Lane leader sends unicast CLUSTER_JOIN_INVITE to each member and forms cluster itself.
-// Payload: [numMembers:1B][vehicleId * numMembers (4B each)]
-void RaftAppBase::sendClusterJoinInvite(const std::set<int>& members)
+// Check if all lane leaders have announced — if so, form the cluster.
+// Also broadcasts CLUSTER_FORM_BROADCAST so every member can independently call formCluster().
+void RaftAppBase::tryFormClusterFromCollected()
 {
     if (raftStarted_) return;
-    raftStarted_ = true;  // set before formCluster to block re-entry
+    int numLanes = (int)approachEdgeList_.size();
+    if ((int)collectedLaneLeaders_.size() < numLanes) return;
 
-    uint8_t num = static_cast<uint8_t>(std::min(members.size(), (size_t)255));
-    std::vector<uint8_t> data(1 + num * sizeof(int));
-    data[0] = num;
-    int i = 0;
-    for (int v : members) {
-        memcpy(data.data() + 1 + i * sizeof(int), &v, sizeof(int));
-        i++;
+    std::set<int> members;
+    for (auto& kv : collectedLaneLeaders_) members.insert(kv.second);
+
+    std::cout << NOW << " [DBG][V" << myId_ << "] ALL LANES PRESENT — forming cluster ["
+              << members.size() << "]: [";
+    for (int v : members) std::cout << v << " ";
+    std::cout << "]" << std::endl;
+
+    // Broadcast member list so every member calls formCluster() with the same set.
+    // Payload: [numMembers:4B][vehicleId:4B * N]
+    int numMembers = (int)members.size();
+    std::vector<uint8_t> bcastData(sizeof(int) * (1 + numMembers));
+    memcpy(bcastData.data(), &numMembers, sizeof(int));
+    int idx = 0;
+    for (int vid : members) {
+        memcpy(bcastData.data() + sizeof(int) * (1 + idx), &vid, sizeof(int));
+        idx++;
     }
+    sendRaftBroadcast(/*CLUSTER_FORM_BROADCAST*/ 0x16, bcastData);
+    messagesSent_++;
 
-    // Unicast to each member except self
-    for (int v : members) {
-        if (v != myId_) {
-            sendRaftToPeer(v, /*CLUSTER_JOIN_INVITE*/ 0x15, data);
-            messagesSent_++;
-        }
-    }
-
-    std::cout << NOW << " [DBG][V" << myId_ << "] CLUSTER_JOIN_INVITE sent to "
-              << (members.size() - 1) << " peers. Forming cluster." << std::endl;
-
+    raftStarted_ = true;
     formCluster(members);
 }
 
-// Non-leader vehicle receives CLUSTER_JOIN_INVITE and joins RAFT cluster.
-void RaftAppBase::handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId)
+// Receive CLUSTER_FORM_BROADCAST: extract member list and call formCluster() if not yet started.
+void RaftAppBase::handleClusterFormBroadcast(const std::vector<uint8_t>& data)
 {
-    if (raftStarted_) return;  // already formed (e.g., got invite from another lane leader)
-    if (data.size() < 1) return;
+    if (raftStarted_ || hasPassedIntersection_) return;
+    if (data.size() < sizeof(int)) return;
 
-    uint8_t num = data[0];
-    if (data.size() < 1 + num * sizeof(int)) return;
+    int numMembers;
+    memcpy(&numMembers, data.data(), sizeof(int));
+    if (numMembers <= 0 || (int)data.size() < (int)sizeof(int) * (1 + numMembers)) return;
 
     std::set<int> members;
-    for (int i = 0; i < num; i++) {
+    for (int i = 0; i < numMembers; i++) {
         int vid;
-        memcpy(&vid, data.data() + 1 + i * sizeof(int), sizeof(int));
-        if (vid >= 0 && vid < totalVehicles_) members.insert(vid);
+        memcpy(&vid, data.data() + sizeof(int) * (1 + i), sizeof(int));
+        members.insert(vid);
     }
 
-    if (members.empty()) return;
+    // Only join if we are one of the members
+    if (members.count(myId_) == 0) return;
 
-    std::cout << NOW << " [DBG][V" << myId_ << "] CLUSTER_JOIN_INVITE from V" << senderId
-              << " — joining RAFT cluster of " << members.size() << " members: [";
+    std::cout << NOW << " [DBG][V" << myId_ << "] CLUSTER_FORM_BROADCAST: joining cluster ["
+              << members.size() << "]: [";
     for (int v : members) std::cout << v << " ";
     std::cout << "]" << std::endl;
 
     raftStarted_ = true;
     formCluster(members);
+}
+
+// Repeating 500ms loop: keep broadcasting until RAFT starts.
+void RaftAppBase::scheduleClusterFormationLoop()
+{
+    scheduleOneshotMs(500.0, [this]() {
+        if (!raftStarted_ && !hasPassedIntersection_) {
+            if (isLaneLeader_ && hasStoppedAtIntersection_)
+                sendLaneLeaderBeacon();
+            scheduleClusterFormationLoop();
+        }
+    });
+}
+
+// Receive a lane leader announcement.
+// If we are a lane leader: store it and check if cluster is complete.
+// Non-lane-leaders ignore it — they wait for COORD_PASS_ORDER_BROADCAST.
+void RaftAppBase::handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId)
+{
+    if (raftStarted_ || hasPassedIntersection_) return;
+    if (data.size() < sizeof(int) * 2) return;
+
+    int vehicleId, laneIndex;
+    memcpy(&vehicleId,  data.data(),              sizeof(int));
+    memcpy(&laneIndex,  data.data() + sizeof(int), sizeof(int));
+
+    if (vehicleId != senderId) return;  // sanity check
+    if (laneIndex < 0 || laneIndex >= (int)approachEdgeList_.size()) return;
+
+    collectedLaneLeaders_[laneIndex] = vehicleId;
+
+    std::cout << NOW << " [DBG][V" << myId_ << "] LANE_LEADER_BEACON from V" << senderId
+              << " lane=" << laneIndex
+              << " collected=" << collectedLaneLeaders_.size()
+              << "/" << approachEdgeList_.size() << std::endl;
+
+    // Only lane leaders trigger cluster formation
+    if (isLaneLeader_) {
+        collectedLaneLeaders_[myLaneIndex_] = myId_;  // ensure self is registered
+        tryFormClusterFromCollected();
+    }
 }
 
 // ============ RAFT CLUSTER FORMATION ============

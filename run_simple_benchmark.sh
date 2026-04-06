@@ -36,6 +36,14 @@ get_sim_dir() {
     esac
 }
 
+# Priority vehicle index = (run - 1) % vc
+# Run 1 → V0, Run 2 → V1, ..., cycles through all positions uniformly.
+priority_vehicle_for_run() {
+    local vc=$1
+    local run=$2
+    echo $(( (run - 1) % vc ))
+}
+
 run_udp() {
     local vc=$1
     local sim_dir=$(get_sim_dir $vc)
@@ -48,12 +56,23 @@ run_udp() {
         local iter_dir="$result_dir/run_$i"
         mkdir -p "$iter_dir"
         local results_json="$iter_dir/raft_results.json"
+        local prio_vid=$(priority_vehicle_for_run $vc $i)
+        local prio_ini="/tmp/prio_override_$$.ini"
 
+        # Write a per-run ini snippet. Specific rule FIRST (OMNeT++ is first-match, not best-match).
+        cat > "$prio_ini" << EOF
+[General]
+**.node[${prio_vid}].app[0].isPriorityVehicle = true
+**.isPriorityVehicle = false
+EOF
+
+        echo "  Run $i: priority vehicle = V${prio_vid}"
         cd "$sim_dir"
-        "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_udp.ini \
+        "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_udp.ini -f "$prio_ini" \
             --seed-set=$i \
             "--**.app[0].resultsFile=\"$results_json\"" \
             > "$iter_dir/console.log" 2>&1
+        rm -f "$prio_ini"
 
         if [ -f "raft_results.json" ] && [ ! -f "$results_json" ]; then
             mv "raft_results.json" "$results_json"
@@ -74,12 +93,22 @@ run_wave() {
         local iter_dir="$result_dir/run_$i"
         mkdir -p "$iter_dir"
         local results_json="$iter_dir/raft_results.json"
+        local prio_vid=$(priority_vehicle_for_run $vc $i)
+        local prio_ini="/tmp/prio_override_$$.ini"
 
+        cat > "$prio_ini" << EOF
+[General]
+**.node[${prio_vid}].appl.isPriorityVehicle = true
+**.isPriorityVehicle = false
+EOF
+
+        echo "  Run $i: priority vehicle = V${prio_vid}"
         cd "$sim_dir"
-        "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_wave.ini \
+        "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_wave.ini -f "$prio_ini" \
             --seed-set=$i \
             "--**.appl.resultsFile=\"$results_json\"" \
             > "$iter_dir/console.log" 2>&1
+        rm -f "$prio_ini"
 
         if [ -f "raft_results.json" ] && [ ! -f "$results_json" ]; then
             mv "raft_results.json" "$results_json"

@@ -1,5 +1,5 @@
 //
-// Generated file, do not edit! Created by nedtool 5.6 from raft//RaftTypes.msg.
+// Generated file, do not edit! Created by nedtool 5.6 from raft/RaftTypes.msg.
 //
 
 #ifndef __BENCHMARK_RAFTTYPES_M_H
@@ -25,14 +25,14 @@ namespace benchmark {
 namespace benchmark {
 
 /**
- * Enum generated from <tt>raft//RaftTypes.msg:6</tt> by nedtool.
+ * Enum generated from <tt>raft/RaftTypes.msg:6</tt> by nedtool.
  * <pre>
  * enum RaftMsgType
  * {
  *     // Discovery
  *     PEER_BEACON = 16;   // 0x10
- *     LEADER_DB_EXCHANGE = 20;   // 0x14
  *     CLUSTER_JOIN_INVITE = 21;   // 0x15
+ *     CLUSTER_FORM_BROADCAST = 22;   // 0x16 — broadcast member list so all members call formCluster()
  * 
  *     // RAFT Core
  *     RAFT_REQUEST_VOTE = 32;   // 0x20
@@ -56,8 +56,8 @@ namespace benchmark {
  */
 enum RaftMsgType {
     PEER_BEACON = 16,
-    LEADER_DB_EXCHANGE = 20,
     CLUSTER_JOIN_INVITE = 21,
+    CLUSTER_FORM_BROADCAST = 22,
     RAFT_REQUEST_VOTE = 32,
     RAFT_REQUEST_VOTE_RESPONSE = 33,
     RAFT_APPEND_ENTRIES = 34,

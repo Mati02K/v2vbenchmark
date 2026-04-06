@@ -85,7 +85,7 @@ void RaftAppBase::onFirstStoppedAtIntersection()
               << " laneIdx=" << myLaneIndex_ << std::endl;
 
     if (isLaneLeader_) {
-        tryFormClusterFromVehicleDB();
+        sendLaneLeaderBeacon();
         scheduleClusterFormationLoop();
     }
 

@@ -229,30 +229,6 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
     uint8_t* data       = static_cast<uint8_t*>(entry->data.buf);
     uint8_t  entry_type = data[0];
 
-    if (entry_type == STATUS_REPORT) {
-        StatusReportEntry* report = reinterpret_cast<StatusReportEntry*>(data + 1);
-        RAFT_LOG("APPLYING STATUS_REPORT entry #" << entry_idx
-                 << " (" << report->numVehicles << " vehicles)");
-
-        committedStatuses_.clear();
-        for (int i = 0; i < report->numVehicles; i++) {
-            committedStatuses_[report->statuses[i].vehicleId] = report->statuses[i];
-        }
-        logEntriesCommitted_++;
-        lastAppliedIndex_ = entry_idx;
-
-        if (proposedTimes_.count(entry_idx)) {
-            double delta = (NOW - proposedTimes_[entry_idx]).dbl();
-            totalRaftDecisionTimeSec_ += delta;
-            proposedTimes_.erase(entry_idx);
-        }
-
-        if (isLeader_ && !hasPassedIntersection_ && !hasCommittedOrder_) {
-            scheduleOneshotMs(50, [this]() { proposePassOrder(); });
-        }
-        return 0;
-    }
-
     if (entry_type == PASS_ORDER) {
         PassScheduleEntry* schedule = reinterpret_cast<PassScheduleEntry*>(data + 1);
         RAFT_LOG("APPLYING PASS_ORDER entry #" << entry_idx
@@ -343,22 +319,6 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
 
         applyVehicleLeftFromRaft(leftEntry->vehicleId, leftEntry->batchId);
         return 0;
-    }
-
-    if (entry_type == PASS_COMMAND) {
-        PassCommandEntry* cmd = reinterpret_cast<PassCommandEntry*>(data + 1);
-        RAFT_LOG("APPLYING PASS_COMMAND entry #" << entry_idx
-                 << " - vehicle " << cmd->vehicleId);
-        logEntriesCommitted_++;
-        lastAppliedIndex_ = entry_idx;
-
-        if (proposedTimes_.count(entry_idx)) {
-            double delta = (NOW - proposedTimes_[entry_idx]).dbl();
-            totalRaftDecisionTimeSec_ += delta;
-            proposedTimes_.erase(entry_idx);
-        }
-
-        if (cmd->vehicleId == myId_) resumeMovement();
     }
 
     return 0;
@@ -497,64 +457,6 @@ void RaftAppBase::sendStatusRequest()
     // Leader adds its own vehicleDB_ immediately (broadcasts don't loop back to sender)
     vehicleDB_[myId_] = updateMyProposal();
     collectedLeaderDBs_[myId_] = vehicleDB_;
-}
-
-// ============ STATUS REPORT PROPOSAL ============
-
-void RaftAppBase::proposeStatusReport()
-{
-    if (!raftServer_ || !isLeader_) return;
-
-    RAFT_LOG_LEADER("PROPOSING STATUS_REPORT to quorum");
-
-    StatusReportEntry report;
-    memset(&report, 0, sizeof(report));
-
-    for (int vid : activeVehicles_) {
-        if (report.numVehicles >= 32) break;
-        VehicleStatus& s = report.statuses[report.numVehicles];
-        s.vehicleId  = vid;
-        s.wayOfSight = collectedWayOfSight_.count(vid) > 0 ? collectedWayOfSight_[vid] : false;
-
-        int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
-        int sideIndex = vid / vehiclesPerSide;
-        switch (sideIndex % 4) {
-            case 0: strncpy(s.lane, "W2C", 63); break;  // West (swapped with North)
-            case 1: strncpy(s.lane, "S2C", 63); break;
-            case 2: strncpy(s.lane, "E2C", 63); break;
-            case 3: strncpy(s.lane, "N2C", 63); break;  // North (swapped with West)
-        }
-        s.positionInLane = vid % vehiclesPerSide;
-        report.numVehicles++;
-    }
-
-    size_t entrySize = 1 + sizeof(StatusReportEntry);
-    std::vector<uint8_t> entryBuffer(entrySize);
-    entryBuffer[0] = static_cast<uint8_t>(STATUS_REPORT);
-    memcpy(entryBuffer.data() + 1, &report, sizeof(StatusReportEntry));
-
-    raft_entry_t entry;
-    memset(&entry, 0, sizeof(entry));
-    entry.term     = raft_get_current_term(raftServer_);
-    entry.type     = RAFT_LOGTYPE_NORMAL;
-    entry.data.buf = entryBuffer.data();
-    entry.data.len = entrySize;
-
-    msg_entry_response_t response;
-    if (raft_recv_entry(raftServer_, &entry, &response) == 0) {
-        logEntriesProposed_++;
-        proposedTimes_[response.idx] = NOW;
-        RAFT_LOG_LEADER("submitted STATUS_REPORT entry #" << response.idx);
-
-        raft_index_t idx = response.idx;
-        scheduleOneshotMs(100, [this, idx]() {
-            if (raftServer_ && raft_get_commit_idx(raftServer_) >= idx && !hasCommittedOrder_) {
-                if (isLeader_ && !hasPassedIntersection_) proposePassOrder();
-            }
-        });
-    } else {
-        RAFT_LOG_LEADER("FAILED to propose STATUS_REPORT");
-    }
 }
 
 // ============ PASS ORDER PROPOSAL (RAFT wrapper) ============

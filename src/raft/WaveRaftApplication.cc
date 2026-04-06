@@ -29,8 +29,7 @@ bool WaveRaftApplication::isGlobalInitialized_ = false;
 WaveRaftApplication::WaveRaftApplication()
 {
     transportName_ = "wave";
-    memset(&committedPassOrder_, 0, sizeof(committedPassOrder_));
-    memset(&committedSchedule_,  0, sizeof(committedSchedule_));
+    memset(&committedSchedule_, 0, sizeof(committedSchedule_));
 }
 
 WaveRaftApplication::~WaveRaftApplication() {}
@@ -98,7 +97,7 @@ void WaveRaftApplication::initialize(int stage)
             invitationIntervalStoppedMs_ = par("invitationIntervalStoppedMs").intValue();
             resultsFileName_          = par("resultsFile").stdstringValue();
             resultsFileCloseAtSec_    = par("resultsFileCloseAtSec").doubleValue();
-            isPriorityVehicle_             = par("isPriority vehicle").boolValue();
+            isPriorityVehicle_             = par("isPriorityVehicle").boolValue();
         } catch (std::exception& e) {
             std::cerr << "Vehicle " << myId_ << " ERROR reading params: " << e.what() << std::endl;
         }
@@ -316,6 +315,9 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             break;
         case benchmark::CLUSTER_JOIN_INVITE:
             handleClusterJoinInvite(payload, protocolSender);
+            break;
+        case benchmark::CLUSTER_FORM_BROADCAST:
+            handleClusterFormBroadcast(payload);
             break;
         case benchmark::RAFT_REQUEST_VOTE:
             if (raftServer_) handleRequestVote(payload, protocolSender);

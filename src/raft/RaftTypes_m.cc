@@ -1,5 +1,5 @@
 //
-// Generated file, do not edit! Created by nedtool 5.6 from raft//RaftTypes.msg.
+// Generated file, do not edit! Created by nedtool 5.6 from raft/RaftTypes.msg.
 //
 
 // Disable warnings about unused variables, empty switch stmts, etc:
@@ -211,8 +211,8 @@ EXECUTE_ON_STARTUP(
     omnetpp::cEnum *e = omnetpp::cEnum::find("benchmark::RaftMsgType");
     if (!e) omnetpp::enums.getInstance()->add(e = new omnetpp::cEnum("benchmark::RaftMsgType"));
     e->insert(PEER_BEACON, "PEER_BEACON");
-    e->insert(LEADER_DB_EXCHANGE, "LEADER_DB_EXCHANGE");
     e->insert(CLUSTER_JOIN_INVITE, "CLUSTER_JOIN_INVITE");
+    e->insert(CLUSTER_FORM_BROADCAST, "CLUSTER_FORM_BROADCAST");
     e->insert(RAFT_REQUEST_VOTE, "RAFT_REQUEST_VOTE");
     e->insert(RAFT_REQUEST_VOTE_RESPONSE, "RAFT_REQUEST_VOTE_RESPONSE");
     e->insert(RAFT_APPEND_ENTRIES, "RAFT_APPEND_ENTRIES");

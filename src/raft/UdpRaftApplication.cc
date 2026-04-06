@@ -28,8 +28,7 @@ Define_Module(UdpRaftApplication);
 UdpRaftApplication::UdpRaftApplication()
 {
     transportName_ = "udp";
-    memset(&committedPassOrder_, 0, sizeof(committedPassOrder_));
-    memset(&committedSchedule_,  0, sizeof(committedSchedule_));
+    memset(&committedSchedule_, 0, sizeof(committedSchedule_));
 }
 
 UdpRaftApplication::~UdpRaftApplication() {}
@@ -96,7 +95,7 @@ bool UdpRaftApplication::startApplication()
     clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
     mergeCooldownMs_         = par("mergeCooldownMs").intValue();
     vehicleLeftTimeoutMs_    = par("vehicleLeftTimeoutMs").intValue();
-    isPriorityVehicle_             = par("isPriority vehicle").boolValue();
+    isPriorityVehicle_             = par("isPriorityVehicle").boolValue();
 
     // ---- Crypto init: generate keypair and get cert signed by appropriate CA ----
     memset(myPubKey_, 0, sizeof(myPubKey_));
@@ -278,6 +277,9 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             break;
         case benchmark::CLUSTER_JOIN_INVITE:
             handleClusterJoinInvite(data, sender);
+            break;
+        case benchmark::CLUSTER_FORM_BROADCAST:
+            handleClusterFormBroadcast(data);
             break;
 
         // ---- RAFT Core ----

@@ -35,8 +35,10 @@ void RaftAppBase::sendDbResponse(int toLeader)
     uint16_t numEntries = static_cast<uint16_t>(vehicleDB_.size());
     std::vector<uint8_t> data(sizeof(int) + sizeof(uint16_t) + numEntries * sizeof(VehicleProposal));
     size_t off = 0;
-    memcpy(data.data() + off, &myId_, sizeof(int));             off += sizeof(int);
-    memcpy(data.data() + off, &numEntries, sizeof(uint16_t));   off += sizeof(uint16_t);
+    memcpy(data.data() + off, &myId_, sizeof(int));             
+    off += sizeof(int);
+    memcpy(data.data() + off, &numEntries, sizeof(uint16_t));   
+    off += sizeof(uint16_t);
     for (auto& kv : vehicleDB_) {
         memcpy(data.data() + off, &kv.second, sizeof(VehicleProposal));
         off += sizeof(VehicleProposal);

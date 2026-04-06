@@ -12,7 +12,6 @@
 #include <openssl/evp.h>
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
 
-#include <fstream>
 #include <functional>
 #include <map>
 #include <set>
@@ -67,6 +66,11 @@ protected:
     // Recomputed dynamically every check interval from vehicleDB_.
     bool isLaneLeader_;
 
+    // collectedLaneLeaders_: lane leaders heard during cluster formation.
+    // Key = laneIndex, Value = vehicleId of that lane's leader.
+    // Populated by handleClusterJoinInvite(); once size == numLanes → formCluster().
+    std::map<int, int> collectedLaneLeaders_;
+
     // collectedLeaderDBs_: full vehicleDB_ received from each lane leader after election.
     // Key = senderVehicleId, Value = that leader's full vehicleDB_.
     // Built during STATUS_REQUEST phase; used by proposePassOrder() instead of stale local vehicleDB_.
@@ -92,24 +96,19 @@ protected:
     bool        wayOfSight_;
     int         vehicleInFrontOfMe_;
     std::set<int>      activeVehicles_;
-    std::map<int,bool> collectedWayOfSight_;
     bool        waitingForStatus_;
     int         statusResponseCount_;
 
     // ============ RAFT LOG STATE ============
     raft_index_t            lastAppliedIndex_;
-    std::map<int,VehicleStatus>    committedStatuses_;
-    std::map<int,VehicleProposal>  collectedProposals_;
-    PassOrderEntry                 committedPassOrder_;
     PassScheduleEntry              committedSchedule_;
-    int          waitingForVehicle_;
     bool         hasCommittedOrder_;
 
     // Batch execution
     int          currentBatch_;
     int          myBatch_;
     std::set<int> vehiclesLeftInBatch_;
-    std::set<int> proposedLeft_;      // tracks vehicles proposed-left to RAFT (per-instance)
+    std::set<int> proposedLeft_;      // dedup guard: prevents double-proposing the same vehicle exit to RAFT
     bool         passOrderProposed_;  // guard: prevent double proposePassOrder() calls
 
     // Dedup for VEHICLE_LEFT: prevent double-applying the same vehicle's exit notification
@@ -223,8 +222,6 @@ protected:
     // ============ SHARED METHODS ============
 
     void parseEdgeParameters();
-    void initVehicleIdentity();
-
     // Pre-intersection discovery (peer beacons)
     void sendPeerBeacon();
     void handlePeerBeacon(const std::vector<uint8_t>& data, int senderId);
@@ -232,11 +229,12 @@ protected:
     // Lane leader flag — recomputed from vehicleDB_ every check interval
     void updateLaneLeaderFlag();
 
-    // Intersection phase: direct cluster formation + RAFT cluster formation
-    void tryFormClusterFromVehicleDB();
+    // Intersection phase: lane-leader broadcast + RAFT cluster formation
+    void sendLaneLeaderBeacon();
+    void tryFormClusterFromCollected();
     void scheduleClusterFormationLoop();
-    void sendClusterJoinInvite(const std::set<int>& members);
     void handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId);
+    void handleClusterFormBroadcast(const std::vector<uint8_t>& data);
 
     // Core cluster formation (called once per RAFT lifecycle)
     void formCluster(const std::set<int>& members);
@@ -272,7 +270,6 @@ protected:
     void sendDbResponse(int toLeader);
     void handleDbResponse(const std::vector<uint8_t>& data, int senderId);
     void collectStatusAndDecide();
-    void proposeStatusReport();
     void proposePassOrder();
     void executePassOrder();
     void applyCommittedPassOrder();
