@@ -83,11 +83,19 @@ PassScheduleEntry RaftAppBase::computePassOrder(
     // ---- Step 1: identify priority lanes ----
     std::set<int> priorityLanes;
     for (const auto& kv : proposals)
-        if (kv.second.isPriority) priorityLanes.insert(kv.second.laneIndex);
+    {
+        if (kv.second.isPriority) 
+        {
+            priorityLanes.insert(kv.second.laneIndex);
+        }
+    }
 
     if (!priorityLanes.empty()) {
         std::cout << "[PRIORITY] Priority vehicle detected in lane(s): ";
-        for (int l : priorityLanes) std::cout << l << " ";
+        for (int l : priorityLanes) 
+        {
+            std::cout << l << " ";
+        }
         std::cout << std::endl;
     }
 
@@ -98,8 +106,10 @@ PassScheduleEntry RaftAppBase::computePassOrder(
     // Build per-lane vehicle lists (sorted by distance, closest first)
     std::map<int, std::vector<VehicleProposal>> laneVehicles;
     for (const auto& kv : proposals) {
-        if (priorityLanes.count(kv.second.laneIndex))
+        if (priorityLanes.count(kv.second.laneIndex)) 
+        {
             laneVehicles[kv.second.laneIndex].push_back(kv.second);
+        }
     }
     for (auto& kv : laneVehicles) {
         std::sort(kv.second.begin(), kv.second.end(),
@@ -145,7 +155,9 @@ PassScheduleEntry RaftAppBase::computePassOrder(
     std::vector<VehicleProposal> pool;
     for (const auto& kv : proposals) {
         if (!scheduled.count(kv.second.vehicleId))
+        {
             pool.push_back(kv.second);
+        }
     }
 
     std::sort(pool.begin(), pool.end(), [](const VehicleProposal& a, const VehicleProposal& b) {
@@ -194,11 +206,6 @@ PassScheduleEntry RaftAppBase::computePassOrder(
 }
 
 // ============ PASS ORDER EXECUTION ============
-
-void RaftAppBase::executePassOrder()
-{
-    applyCommittedPassOrder();
-}
 
 void RaftAppBase::applyCommittedPassOrder()
 {

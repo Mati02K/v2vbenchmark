@@ -157,18 +157,14 @@ protected:
     int    electionTimeoutJitterMs_;
     int    requestTimeoutMs_;
     double intersectionStopDistance_;
-    int    arrivalWaitTimeMs_;
     int    maxFailedElections_;
     int    fallbackWaitMinMs_;
     int    fallbackWaitMaxMs_;
     int    passConfirmationMs_;
     int    statusCollectionTimeoutMs_;
     int    fallbackClusterTimeoutMs_;
-    int    discoveryWaitMs_;
-    int    clusterFormationDelayMs_;
-    int    mergeCooldownMs_;
+    int    intersectionStopTimeMs_;
     int    vehicleLeftTimeoutMs_;
-    int    invitationIntervalStoppedMs_;
     std::string resultsFileName_;
     double      resultsFileCloseAtSec_ = 0;
     std::string transportName_;
@@ -196,7 +192,6 @@ protected:
     std::map<raft_index_t, simtime_t> proposedTimes_;
     simtime_t timeStatusRequestSent_;
     double statusCollectionTimeMs_;
-    bool      waitingForVehiclesToArrive_;
     int       messagesSent_;
     int       messagesReceived_;
     int       electionRounds_;
@@ -271,7 +266,6 @@ protected:
     void handleDbResponse(const std::vector<uint8_t>& data, int senderId);
     void collectStatusAndDecide();
     void proposePassOrder();
-    void executePassOrder();
     void applyCommittedPassOrder();
     void sendPassOrderBroadcast();
     void handlePassOrderBroadcast(const std::vector<uint8_t>& data);
@@ -279,7 +273,6 @@ protected:
     void handleVehiclePassed(int vehicleId);
     void sendVehicleLeft();
     void handleVehicleLeft(int vehicleId, int batchId);
-    void proposeVehicleLeft(int vehicleId, int batchId);
     void applyVehicleLeftFromRaft(int vehicleId, int batchId);
     void checkBatchAdvance();
 

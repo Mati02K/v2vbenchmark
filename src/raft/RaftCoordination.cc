@@ -263,13 +263,18 @@ bool RaftAppBase::verifyQC(const QuorumCertificate& qc) const
 
     int validSigs = 0;
     for (int i = 0; i < qc.numSigs; i++) {
-        bool ok = CryptoAuth::instance().verifyBytes(
+        bool validSign = CryptoAuth::instance().verifyBytes(
             qc.sigs[i].pubKey, tbs.data(), tbs.size(),
             qc.sigs[i].sig, qc.sigs[i].sigLen);
-        if (ok) validSigs++;
+        if (validSign) 
+        {
+            validSigs++;
+        }
         else
+        {
             std::cout << "[QC][V" << myId_ << "] verifyQC: sig " << i
                       << " from V" << qc.sigs[i].vehicleId << " INVALID" << std::endl;
+        }
     }
     return validSigs >= qc.numSigs;  // all claimed sigs must verify
 }

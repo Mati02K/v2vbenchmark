@@ -76,28 +76,14 @@ void WaveRaftApplication::initialize(int stage)
         myRaftNodeId_ = myId_ + 1;
 
         try {
+            // Read NED parameters (scenario-specific only; timing constants are in RaftAppBase constructor)
             totalVehicles_            = par("totalVehicles").intValue();
-            electionTimeoutBaseMs_    = par("electionTimeoutBaseMs").intValue();
-            electionTimeoutJitterMs_  = par("electionTimeoutJitterMs").intValue();
-            requestTimeoutMs_         = par("requestTimeoutMs").intValue();
-            maxFailedElections_       = par("maxFailedElections").intValue();
-            fallbackWaitMinMs_        = par("fallbackWaitMinMs").intValue();
-            fallbackWaitMaxMs_        = par("fallbackWaitMaxMs").intValue();
-            passConfirmationMs_       = par("passConfirmationMs").intValue();
-            statusCollectionTimeoutMs_ = par("statusCollectionTimeoutMs").intValue();
-            fallbackClusterTimeoutMs_  = par("fallbackClusterTimeoutMs").intValue();
-            discoveryWaitMs_          = par("discoveryWaitMs").intValue();
-            clusterFormationDelayMs_  = par("clusterFormationDelayMs").intValue();
-            mergeCooldownMs_         = par("mergeCooldownMs").intValue();
-            vehicleLeftTimeoutMs_    = par("vehicleLeftTimeoutMs").intValue();
             intersectionStopDistance_ = par("intersectionStopDistance").doubleValue();
-            arrivalWaitTimeMs_        = par("arrivalWaitTimeMs").intValue();
             clusterTriggerDistance_   = par("clusterTriggerDistance").doubleValue();
             discoveryBeaconInterval_  = par("discoveryBeaconInterval").doubleValue();
-            invitationIntervalStoppedMs_ = par("invitationIntervalStoppedMs").intValue();
             resultsFileName_          = par("resultsFile").stdstringValue();
             resultsFileCloseAtSec_    = par("resultsFileCloseAtSec").doubleValue();
-            isPriorityVehicle_             = par("isPriorityVehicle").boolValue();
+            isPriorityVehicle_        = par("isPriorityVehicle").boolValue();
         } catch (std::exception& e) {
             std::cerr << "Vehicle " << myId_ << " ERROR reading params: " << e.what() << std::endl;
         }

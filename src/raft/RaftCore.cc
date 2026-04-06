@@ -70,7 +70,7 @@ void RaftAppBase::checkCoordinationTimeout(simtime_t now)
     }
 
     double extraPerVehicle = electionTimeoutBaseMs_ / 1000.0;
-    double raftTimeout = (discoveryWaitMs_ + clusterFormationDelayMs_ + statusCollectionTimeoutMs_ +
+    double raftTimeout = (intersectionStopTimeMs_ + statusCollectionTimeoutMs_ +
                           electionTimeoutBaseMs_ * 4 + electionTimeoutJitterMs_ * 2 +
                           totalVehicles_ * extraPerVehicle * 1000.0 + 15000) / 1000.0;
 
@@ -248,7 +248,7 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
             proposedTimes_.erase(entry_idx);
         }
 
-        executePassOrder();
+        applyCommittedPassOrder();
         // All cluster members broadcast the schedule immediately for redundancy.
         // In UDP, packet loss means a single broadcast may be dropped; multiple senders
         // give non-cluster vehicles more chances to receive it.
@@ -595,40 +595,6 @@ void RaftAppBase::proposePassOrder()
     }
 }
 
-// ============ VEHICLE_LEFT PROPOSAL ============
-
-void RaftAppBase::proposeVehicleLeft(int vehicleId, int batchId)
-{
-    if (!isLeader_ || !raftServer_ || hasPassedIntersection_) return;
-
-    if (proposedLeft_.count(vehicleId)) return;
-    proposedLeft_.insert(vehicleId);
-
-    RAFT_LOG_LEADER("proposing VEHICLE_LEFT for vehicle " << vehicleId
-                    << " (batch=" << batchId << ")");
-
-    VehicleLeftEntry leftEntry; leftEntry.vehicleId = vehicleId; leftEntry.batchId = batchId;
-    size_t entrySize = 1 + sizeof(VehicleLeftEntry);
-    uint8_t* entryData = new uint8_t[entrySize];
-    entryData[0] = VEHICLE_LEFT;
-    memcpy(entryData + 1, &leftEntry, sizeof(VehicleLeftEntry));
-
-    raft_entry_t entry;
-    memset(&entry, 0, sizeof(entry));
-    entry.term     = raft_get_current_term(raftServer_);
-    entry.type     = RAFT_LOGTYPE_REMOVE_NODE;
-    entry.data.buf = entryData;
-    entry.data.len = entrySize;
-
-    msg_entry_response_t response;
-    if (raft_recv_entry(raftServer_, &entry, &response) == 0) {
-        logEntriesProposed_++;
-        proposedTimes_[response.idx] = NOW;
-    } else {
-        delete[] entryData;
-    }
-}
-
 void RaftAppBase::applyVehicleLeftFromRaft(int vehicleId, int batchId)
 {
     RAFT_LOG("RAFT-confirmed: vehicle " << vehicleId
@@ -661,9 +627,8 @@ void RaftAppBase::onBecameLeader()
     // Only propose status/pass order after 5s stopped (aggressive merge window)
     if (!hasStoppedAtIntersection_ || hasCommittedOrder_) return;
 
-    double requiredWaitMs = discoveryWaitMs_ + clusterFormationDelayMs_;
     double waitedMs       = (NOW - timeStopped_).dbl() * 1000.0;
-    double delayMs       = requiredWaitMs - waitedMs;
+    double delayMs       = intersectionStopTimeMs_ - waitedMs;
 
     if (delayMs <= 0) {
         sendStatusRequest();

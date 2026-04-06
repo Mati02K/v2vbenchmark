@@ -108,7 +108,7 @@ void RaftAppBase::onFirstStoppedAtIntersection()
 void RaftAppBase::scheduleLeaderStatusRequest()
 {
     if (!isLeader_ || hasCommittedOrder_) return;
-    double waitMs = discoveryWaitMs_ + clusterFormationDelayMs_;
+    double waitMs = intersectionStopTimeMs_;
     scheduleOneshotMs(waitMs, [this]() {
         if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_) {
             sendStatusRequest();
