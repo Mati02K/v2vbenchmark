@@ -249,12 +249,6 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
         }
 
         applyCommittedPassOrder();
-        // All cluster members broadcast the schedule immediately for redundancy.
-        // In UDP, packet loss means a single broadcast may be dropped; multiple senders
-        // give non-cluster vehicles more chances to receive it.
-        // The leader will send a second broadcast once the QC is assembled (with QC embedded).
-        // Receivers deduplicate via hasCommittedOrder_.
-        sendPassOrderBroadcast();
 
         // Every cluster member signs [round || schedule] immediately upon commit.
         // Followers send their ECDSA signature directly to the leader (no request needed).
@@ -571,24 +565,6 @@ void RaftAppBase::proposePassOrder()
         logEntriesProposed_++;
         proposedTimes_[response.idx] = NOW;
         RAFT_LOG_LEADER("submitted PASS_SCHEDULE entry #" << response.idx);
-
-        raft_index_t idx = response.idx;
-        scheduleOneshotMs(100, [this, idx, schedule]() {
-            if (raftServer_ && raft_get_commit_idx(raftServer_) >= idx && !hasCommittedOrder_) {
-                RAFT_LOG_LEADER("APPLYING committed PASS_SCHEDULE #" << idx);
-                if (proposedTimes_.count(idx)) {
-                    double delta = (NOW - proposedTimes_[idx]).dbl();
-                    totalRaftDecisionTimeSec_ += delta;
-                    proposedTimes_.erase(idx);
-                }
-                memcpy(&committedSchedule_, &schedule, sizeof(PassScheduleEntry));
-                hasCommittedOrder_  = true;
-                timeOrderCommitted_ = NOW;
-                logEntriesCommitted_++;
-                lastAppliedIndex_   = idx;
-                applyCommittedPassOrder();
-            }
-        });
     } else {
         RAFT_LOG_LEADER("FAILED to propose PASS_SCHEDULE");
         delete[] entryData;
