@@ -6,6 +6,7 @@
 
 #include <cstring>
 #include <iostream>
+#include <set>
 
 #define NOW (simTime())
 
@@ -31,8 +32,8 @@ VehicleProposal RaftAppBase::updateMyProposal()
     calculateWayOfSight();  // refresh wayOfSight_ / vehicleInFrontOfMe_
 
     myProposal_.laneIndex          = myLaneIndex_;
-    myProposal_.blockedByVehicleId = detectBlockingVehicle();
-    myProposal_.isFirstInLane      = (myProposal_.blockedByVehicleId == -1);
+    myProposal_.isFirstInLane      = isLaneLeaderByTraci();
+    myProposal_.blockedByVehicleId = myProposal_.isFirstInLane ? -1 : 0;
     myProposal_.waitingTimeMs      = (timeStopped_ > SIMTIME_ZERO)
                                      ? (NOW - timeStopped_).dbl() * 1000.0 : 0.0;
     myProposal_.distanceToJunction = calculateDistanceToJunction();
@@ -83,6 +84,20 @@ void RaftAppBase::onFirstStoppedAtIntersection()
               << " isLaneLeader=" << isLaneLeader_
               << " vehicleDB_=" << vehicleDB_.size()
               << " laneIdx=" << myLaneIndex_ << std::endl;
+
+    // Print vehicles currently known to this vehicle
+    std::set<int> distinctLanes;
+    for (const auto& kv : vehicleDB_)
+        distinctLanes.insert(kv.second.laneIndex);
+
+    std::cout << NOW << " [VIEW][V" << myId_ << "] vehicles in view: [";
+    bool first = true;
+    for (const auto& kv : vehicleDB_) {
+        if (!first) std::cout << ", ";
+        std::cout << kv.first;
+        first = false;
+    }
+    std::cout << "] LanesInView: " << distinctLanes.size() << std::endl;
 
     if (isLaneLeader_) {
         sendLaneLeaderBeacon();
