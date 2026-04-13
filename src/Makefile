@@ -36,7 +36,6 @@ OBJS = \
     $O/raft/RaftCore.o \
     $O/raft/RaftDecision.o \
     $O/raft/RaftDiscovery.o \
-    $O/raft/RaftExit.o \
     $O/raft/RaftMetrics.o \
     $O/raft/RaftUtilities.o \
     $O/raft/UdpRaftApplication.o \
@@ -109,30 +108,22 @@ endif
 MSGC:=$(MSGC) --msg6
 
 # RAFT library C source files
-RAFT_DIR = ../lib/raft
+RAFT_DIR = ../third_party/raft
 RAFT_OBJS = \
     $O/raft_c/raft_server.o \
     $O/raft_c/raft_server_properties.o \
     $O/raft_c/raft_node.o \
     $O/raft_c/raft_log.o
 
-CRYPTO_DIR = ../lib/crypto
-CRYPTO_OBJS = $O/crypto/CryptoAuth.o
-
-# Add RAFT and crypto objects to the link
-EXTRA_OBJS += $(RAFT_OBJS) $(CRYPTO_OBJS)
-LIBS += -lssl -lcrypto
+# Add RAFT objects to the link
+EXTRA_OBJS += $(RAFT_OBJS)
 
 # Force RAFT files to be built before any .cc files are compiled
 # This ensures they exist when $(wildcard) is evaluated during linking
 # Declare 'all' as the default target so this rule doesn't hijack it
 all: $(TARGET_DIR)/$(TARGET)
 
-$(OBJS): | $(RAFT_OBJS) $(CRYPTO_OBJS)
-
-$O/crypto/CryptoAuth.o: $(CRYPTO_DIR)/CryptoAuth.cc
-	@mkdir -p $O/crypto
-	$(Q)$(CXX) -c $(CXXFLAGS) $(COPTS) -I$(CRYPTO_DIR) -o $@ $<
+$(OBJS): | $(RAFT_OBJS)
 
 # Explicit rules to compile each RAFT C file
 $O/raft_c/raft_server.o: $(RAFT_DIR)/raft_server.c

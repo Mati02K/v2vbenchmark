@@ -199,8 +199,9 @@ void UdpRaftApplication::handleMessageWhenUp(cMessage* msg)
         }
     }
     else if (msg == raftPeriodicTimer_) {
-        if (raftServer_ && !hasPassedIntersection_ && !isFallbackMode_)
+        if (raftServer_ && !hasPassedIntersection_ && !isFallbackMode_) {
             processRaftPeriodic();
+        }
         scheduleAt(simTime() + RAFT_PERIODIC_INTERVAL, raftPeriodicTimer_);
     }
     else if (msg == closeResultsFileTimer_) {
@@ -302,6 +303,9 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             break;
 
         // ---- Quorum Certificate ----
+        case benchmark::QC_SIGN_REQUEST:
+            handleQCSignRequest(data);
+            break;
         case benchmark::QC_SIGN_RESPONSE:
             handleQCSignResponse(data, sender);
             break;

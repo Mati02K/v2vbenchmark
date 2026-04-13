@@ -1,20 +1,12 @@
-// RaftDiscovery.cc — Pre-intersection discovery, lane-leader election,
-//                    and RAFT cluster formation.
+// RaftDiscovery.cc — From simulation start to vehicle stopped at intersection
+//                    and RAFT cluster formed.
 //
-// Protocol phases:
-//   1. DISCOVERY: All vehicles broadcast PEER_BEACON (own VehicleProposal).
-//      All vehicles build vehicleDB_[senderId] = proposal.
-//      isLaneLeader_ flag is recomputed every check interval.
+// Protocol phases covered:
+//   1. DISCOVERY  — All vehicles broadcast PEER_BEACON, build vehicleDB_
+//   2. FORMATION  — Lane leaders announce, cluster forms, RAFT initialised
+//   3. STOP       — Per-tick intersection stop detection, queue management
 //
-//   2. INTERSECTION: When stopped, each lane leader computes the cluster members
-//      directly from its own vehicleDB_ (front vehicle of each approach lane),
-//      then sends CLUSTER_JOIN_INVITE to all of them.  No pre-election DB exchange.
-//      The leader keeps retrying every 500 ms until raftStarted_ is set.
-//
-//   3. RAFT: formCluster() initialises the raft_server_t with the agreed member
-//      set and triggers election. Everything after this is handled by RaftCore.cc.
-//      After election, the RAFT leader collects each lane leader's full vehicleDB_
-//      via STATUS_REQUEST / COORD_DB_RESPONSE and uses that for pass-order decisions.
+// After formCluster() returns, RaftCore.cc takes over.
 
 #include "raft/RaftAppBase.h"
 #include "raft/RaftLogger.h"
@@ -70,22 +62,7 @@ void RaftAppBase::handlePeerBeacon(const std::vector<uint8_t>& data, int senderI
     SignedProposal sp;
     memcpy(&sp, data.data(), sizeof(SignedProposal));
 
-    std::string role = CryptoAuth::instance().verifyCert(sp.cert);
-    bool sigOk = !role.empty() &&
-                 CryptoAuth::instance().verifyProposalSignature(
-                     sp.cert, sp.proposalBytes, sp.proposalSize,
-                     sp.timestampMs, sp.signature, sp.signatureLen);
-
-    if (!role.empty() && sigOk) {
-        isPrio = (role == "priority");
-        if (isPrio) {
-            std::cout << NOW << " [CRYPTO][V" << myId_ << "] BEACON from V" << senderId
-                      << " verified as PRIORITY (Emergency_CA)" << std::endl;
-        }
-    } else if (!role.empty() || !sigOk) {
-        std::cout << NOW << " [CRYPTO][V" << myId_ << "] BEACON from V" << senderId
-                  << " cert/sig INVALID — treated as normal vehicle" << std::endl;
-    }
+    isPrio = verifySignedProposal(sp, senderId);
     memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
 
     bool wasNew = (vehicleDB_.find(senderId) == vehicleDB_.end());
@@ -378,7 +355,7 @@ void RaftAppBase::handleClusterJoinInvite(const std::vector<uint8_t>& data, int 
 // ============ RAFT CLUSTER FORMATION ============
 
 // Initialise the raft_server_t with the agreed member set.
-// Called by sendClusterJoinInvite (lane leader) or handleClusterJoinInvite (member).
+// Called by tryFormClusterFromCollected (lane leader) or handleClusterFormBroadcast (member).
 void RaftAppBase::formCluster(const std::set<int>& members)
 {
     if (clusterPhase_ != PHASE_DISCOVERY) return;  // already formed
@@ -402,8 +379,6 @@ void RaftAppBase::formCluster(const std::set<int>& members)
 
     raft_cbs_t cbs;
     memset(&cbs, 0, sizeof(cbs));
-    // These are teh functions that will be called by the RAFT library when it needs to send messages, persist logs, etc.
-    // This is how we stay protocol agnostic
     cbs.send_requestvote      = &RaftAppBase::sendRequestVote;
     cbs.send_appendentries    = &RaftAppBase::sendAppendEntries;
     cbs.log_offer             = &RaftAppBase::logOffer;
@@ -440,4 +415,262 @@ void RaftAppBase::formCluster(const std::set<int>& members)
 
     clusterPhase_ = PHASE_COORDINATION;
     onClusterFormed();
+}
+
+// ============ INTERSECTION STOP DETECTION ============
+
+// Called once the first time a vehicle stops at the intersection.
+// Triggers leader DB exchange (if lane leader) and the fallback timeout.
+void RaftAppBase::onFirstStoppedAtIntersection()
+{
+    updateLaneLeaderFlag();
+
+    std::cout << NOW << " [DBG][V" << myId_ << "] FIRST_STOP:"
+              << " isLaneLeader=" << isLaneLeader_
+              << " vehicleDB_=" << vehicleDB_.size()
+              << " laneIdx=" << myLaneIndex_ << std::endl;
+
+    // Print vehicles currently known to this vehicle
+    std::set<int> distinctLanes;
+    for (const auto& kv : vehicleDB_)
+        distinctLanes.insert(kv.second.laneIndex);
+
+    std::cout << NOW << " [VIEW][V" << myId_ << "] vehicles in view: [";
+    bool first = true;
+    for (const auto& kv : vehicleDB_) {
+        if (!first) std::cout << ", ";
+        std::cout << kv.first;
+        first = false;
+    }
+    std::cout << "] LanesInView: " << distinctLanes.size() << std::endl;
+
+    if (isLaneLeader_) {
+        sendLaneLeaderBeacon();
+        scheduleClusterFormationLoop();
+    }
+
+    // Fallback: if RAFT cluster hasn't formed within fallbackClusterTimeoutMs_, activate fallback
+    scheduleOneshotMs((double)fallbackClusterTimeoutMs_, [this]() {
+        if (!raftStarted_ && !hasPassedIntersection_) {
+            std::cout << NOW << " [WARN][V" << myId_ << "] CLUSTER_TIMEOUT (" << fallbackClusterTimeoutMs_
+                      << "ms): RAFT not started. vehicleDB_=" << vehicleDB_.size()
+                      << ". Activating fallback." << std::endl;
+            coordinationMethod_ = "fallback";
+            handleFallback();
+        }
+    });
+}
+
+// ---- updateRoadTracking -----------------------------------------------------
+// Detects road changes, logs them, and proactively caches the approach edge +
+// lane index so cluster-junction detection can use them even if the approach
+// edge was too short to trigger a stop check.
+void RaftAppBase::updateRoadTracking(const std::string& roadId, const std::string& lastKnownRoad)
+{
+    if (roadId == lastKnownRoad) {
+        // Periodic position debug (every 5s)
+        if (NOW - lastStopDebugPrint_ > 5.0) {
+            lastStopDebugPrint_ = NOW;
+            double spd = 999.0; try { spd = traciVehicle_->getSpeed(); } catch (...) {}
+            double d = getDistanceToJunction();
+            std::cout << simTime() << " [DBG][V" << myId_ << "] POS roadId=" << roadId
+                      << " dist=" << d << "m speed=" << spd << "m/s"
+                      << " onApproach=" << (intersectionEdges_.count(roadId) ? "YES" : "NO")
+                      << " stopped=" << hasStoppedAtIntersection_
+                      << " phase=" << clusterPhase_
+                      << " leader=" << isLeader_
+                      << " committed=" << hasCommittedOrder_
+                      << " myBatch=" << myBatch_
+                      << " curBatch=" << currentBatch_ << std::endl;
+        }
+        return;
+    }
+    prevRoadId_ = roadId;
+    double spd = 999.0; try { spd = traciVehicle_->getSpeed(); } catch (...) {}
+    std::cout << simTime() << " [DBG][V" << myId_ << "] ROAD_CHANGE -> " << roadId
+              << " dist=" << getDistanceToJunction() << "m speed=" << spd << "m/s"
+              << " onApproach=" << (intersectionEdges_.count(roadId) ? "YES" : "NO") << std::endl;
+    if (intersectionEdges_.count(roadId)) {
+        intersectionEdge_ = roadId;
+        for (int i = 0; i < (int)approachEdgeList_.size(); i++) {
+            if (approachEdgeList_[i] == roadId) { myLaneIndex_ = i; break; }
+        }
+    }
+}
+
+// ---- handleClusterJunctionStop ----------------------------------------------
+// Handles vehicles that entered the junction internal road without being caught
+// on the approach edge (very short approach lane traversed between timer ticks).
+void RaftAppBase::handleClusterJunctionStop(const std::string& roadId, const std::string& lastKnownRoad)
+{
+    if (hasStoppedAtIntersection_) return;
+
+    // Recover approach edge from lastKnownRoad if not already cached.
+    if ((intersectionEdge_.empty() || intersectionEdge_[0] == ':') &&
+        !lastKnownRoad.empty() && lastKnownRoad[0] != ':') {
+        for (int i = 0; i < (int)approachEdgeList_.size(); i++) {
+            if (approachEdgeList_[i] == lastKnownRoad) {
+                intersectionEdge_ = lastKnownRoad;
+                myLaneIndex_ = i;
+                break;
+            }
+        }
+    }
+    if (intersectionEdge_.empty()) intersectionEdge_ = roadId;
+
+    stopVehicle();
+    hasStoppedAtIntersection_ = true;
+    timeStopped_ = NOW;
+    calculateWayOfSight();
+    std::cout << simTime() << " [DBG][V" << myId_ << "] STOPPED (cluster-junction)"
+              << " road=" << roadId << " approachEdge=" << intersectionEdge_
+              << " laneIdx=" << myLaneIndex_ << " wos=" << wayOfSight_
+              << " isLeader=" << isLeader_ << std::endl;
+    RAFT_LOG("STOPPED (cluster-junction) approachEdge=" << intersectionEdge_);
+    onFirstStoppedAtIntersection();
+}
+
+// ---- handleFrontStop --------------------------------------------------------
+// Vehicle is at the front of the queue (within stop distance).
+// First time: records stop, decides whether to go through or wait.
+// Subsequent ticks: re-applies hard stop if still waiting.
+void RaftAppBase::handleFrontStop(const std::string& roadId, double dist)
+{
+    if (!hasStoppedAtIntersection_) {
+        hasStoppedAtIntersection_ = true;
+        intersectionEdge_ = roadId;
+        calculateWayOfSight();
+        onFirstStoppedAtIntersection();
+
+        bool alreadyMoving = (timeStartedMoving_ != SIMTIME_ZERO);
+        bool canGoNow = !alreadyMoving && hasCommittedOrder_
+                     && myBatch_ != -1 && myBatch_ <= currentBatch_
+                     && !hasPassedIntersection_;
+
+        if (alreadyMoving || canGoNow) {
+            std::cout << simTime() << " [NO_STOP][V" << myId_ << "] batch=" << myBatch_
+                      << " curBatch=" << currentBatch_
+                      << " alreadyMoving=" << alreadyMoving << " -> skip stop" << std::endl;
+            if (!alreadyMoving) {
+                resumeMovement();
+            }
+        } else {
+            timeStopped_ = NOW;
+            stopVehicle();
+            std::cout << simTime() << " [STOP_CHECK][V" << myId_ << "] STOPPED (front) dist="
+                      << dist << "m batch=" << myBatch_ << " curBatch=" << currentBatch_
+                      << " committed=" << hasCommittedOrder_
+                      << " isLeader=" << isLeader_ << std::endl;
+            RAFT_LOG("STOPPED (front) at dist=" << dist << "m");
+        }
+    } else {
+        // Re-apply hard stop if still waiting (prevents SUMO creep).
+        if (!hasCommittedOrder_ || (myBatch_ > currentBatch_ && timeStartedMoving_ == SIMTIME_ZERO))
+            stopVehicle();
+    }
+}
+
+// ---- handleQueuedStop -------------------------------------------------------
+// Vehicle is queued behind the front vehicle (further back, nearly stopped).
+// SUMO car-following holds its position naturally — no hard stop needed.
+void RaftAppBase::handleQueuedStop(const std::string& roadId, double dist, double speed)
+{
+    hasStoppedAtIntersection_ = true;
+    timeStopped_     = NOW;
+    intersectionEdge_ = roadId;
+    calculateWayOfSight();
+    std::cout << simTime() << " [STOP_CHECK][V" << myId_ << "] QUEUED (no hard stop) dist=" << dist
+              << "m speed=" << speed << "m/s road=" << roadId
+              << " wos=" << wayOfSight_ << " frontVeh=" << vehicleInFrontOfMe_
+              << " isLeader=" << isLeader_ << std::endl;
+    RAFT_LOG("QUEUED at dist=" << dist << "m speed=" << speed << "m/s");
+    onFirstStoppedAtIntersection();
+}
+
+// ---- checkAndStopAtIntersection ---------------------------------------------
+// Called on every timer tick. Coordinates when/whether to stop at the junction.
+void RaftAppBase::checkAndStopAtIntersection()
+{
+    if (!hasPassedIntersection_ && traciVehicle_)
+    {
+        updateLaneLeaderFlag();
+    }
+
+    if (hasPassedIntersection_ || !traciVehicle_) return;
+    if (timeStartedMoving_ > SIMTIME_ZERO) return;
+
+    try {
+        std::string roadId      = traciVehicle_->getRoadId();
+        std::string lastKnownRoad = prevRoadId_;
+        updateRoadTracking(roadId, lastKnownRoad);
+
+        // Vehicle entered the junction internal road directly (short approach lane).
+        bool onClusterJunction = (!roadId.empty() && roadId[0] == ':' &&
+                                   roadId.find("cluster") != std::string::npos);
+        if (onClusterJunction) {
+            handleClusterJunctionStop(roadId, lastKnownRoad);
+            return;
+        }
+
+        if (!intersectionEdges_.count(roadId)) return;
+
+        double dist  = getDistanceToJunction();
+        double speed = 999.0;
+        try { speed = traciVehicle_->getSpeed(); } catch (...) {}
+
+        bool closeEnough = (dist >= 0 && dist <= intersectionStopDistance_);
+        bool queued      = (!closeEnough && speed < 1.5 &&
+                            dist >= 0 && dist < intersectionStopDistance_ * 4.0 &&
+                            !hasStoppedAtIntersection_);
+
+        if (closeEnough) {
+            handleFrontStop(roadId, dist);
+        } else if (queued) {
+            handleQueuedStop(roadId, dist, speed);
+        }
+
+    } catch (...) {}
+}
+
+// TraCI-based queue advancement: on every check-timer tick, ask SUMO who is ahead
+// and how far. When the gap exceeds the stop distance (leader moved away), hand
+// control back to SUMO car-following so the whole queue accordions forward.
+// Once the vehicle reaches the stop line it is re-caught by checkAndStopAtIntersection.
+void RaftAppBase::checkAndAdvanceInQueue()
+{
+    if (!hasStoppedAtIntersection_ || hasPassedIntersection_ || timeStartedMoving_ > SIMTIME_ZERO) return;
+    if (!traciVehicle_) return;
+    try {
+        double speed = traciVehicle_->getSpeed();
+        if (speed > 0.5) return;  // already moving under SUMO
+
+        double dist = getDistanceToJunction();
+        if (dist < 0 || dist <= intersectionStopDistance_) return;  // handled by checkAndStop
+
+        // Ask TraCI for the leading vehicle and gap ahead
+        auto leader = traciVehicle_->getLeader(intersectionStopDistance_ * 4.0);
+
+        // Gap opened: no leader visible, or gap > 1× stop distance
+        bool gapOpened = leader.first.empty() ||
+                         leader.second > intersectionStopDistance_;
+
+        if (NOW - lastQueueDebugPrint_ > 1.0) {
+            lastQueueDebugPrint_ = NOW;
+            std::cout << simTime() << " [QUEUE_ADV][V" << myId_ << "] dist=" << dist
+                      << "m speed=" << speed
+                      << " leader=" << (leader.first.empty() ? "NONE" : leader.first)
+                      << " gap=" << leader.second << "m gapOpened=" << gapOpened
+                      << " (need gap>" << intersectionStopDistance_ << "m)"
+                      << " myBatch=" << myBatch_ << " curBatch=" << currentBatch_ << std::endl;
+        }
+
+        if (gapOpened) {
+            std::cout << simTime() << " [QUEUE_ADV][V" << myId_ << "] RELEASING - front moved, taking place"
+                      << " dist=" << dist << "m gap=" << leader.second << "m" << std::endl;
+            RAFT_LOG("QUEUE ADVANCE (TraCI): gap=" << leader.second
+                     << "m dist=" << dist << "m leader=" << leader.first);
+            traciVehicle_->setSpeedMode(31);  // all SUMO safety checks on
+            traciVehicle_->setSpeed(-1);       // SUMO car-following takes over
+        }
+    } catch (...) {}
 }

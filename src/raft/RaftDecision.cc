@@ -1,6 +1,7 @@
 // RaftDecision.cc — Crossing-order scheduling algorithm
 // This is the only file you need to edit to change the intersection pass policy.
 // computePassOrder() is called by proposePassOrder() in RaftCore.cc.
+// applyCommittedPassOrder() has moved to RaftCoordination.cc (execution, not algorithm).
 
 #include "raft/RaftAppBase.h"
 #include "raft/RaftLogger.h"
@@ -42,7 +43,7 @@ bool RaftAppBase::movementsConflict(int laneA, int turnA, int laneB, int turnB)
 //   Step 2 — Schedule ALL vehicles from priority lanes first, round-robining
 //             between priority lanes if more than one. Within each priority lane,
 //             vehicles go in queue order (blocker before blocked).
-//             This continues until the priority vehicle vehicle itself is scheduled.
+//             This continues until the priority vehicle itself is scheduled.
 //   Step 3 — Schedule remaining (non-priority-lane) vehicles using the normal
 //             fairness algorithm (wait time, distance, lane).
 //   If no priority lanes exist, skip to Step 3 directly.
@@ -84,7 +85,7 @@ PassScheduleEntry RaftAppBase::computePassOrder(
     std::set<int> priorityLanes;
     for (const auto& kv : proposals)
     {
-        if (kv.second.isPriority) 
+        if (kv.second.isPriority)
         {
             priorityLanes.insert(kv.second.laneIndex);
         }
@@ -92,7 +93,7 @@ PassScheduleEntry RaftAppBase::computePassOrder(
 
     if (!priorityLanes.empty()) {
         std::cout << "[PRIORITY] Priority vehicle detected in lane(s): ";
-        for (int l : priorityLanes) 
+        for (int l : priorityLanes)
         {
             std::cout << l << " ";
         }
@@ -101,12 +102,12 @@ PassScheduleEntry RaftAppBase::computePassOrder(
 
     // ---- Step 2: schedule priority lanes (round-robin between them) ----
     // For each priority lane: schedule vehicles in queue order (closest to junction first)
-    // until the priority vehicle vehicle in that lane is scheduled. Then that lane is "done".
+    // until the priority vehicle in that lane is scheduled. Then that lane is "done".
 
     // Build per-lane vehicle lists (sorted by distance, closest first)
     std::map<int, std::vector<VehicleProposal>> laneVehicles;
     for (const auto& kv : proposals) {
-        if (priorityLanes.count(kv.second.laneIndex)) 
+        if (priorityLanes.count(kv.second.laneIndex))
         {
             laneVehicles[kv.second.laneIndex].push_back(kv.second);
         }
@@ -203,94 +204,4 @@ PassScheduleEntry RaftAppBase::computePassOrder(
     }
 
     return schedule;
-}
-
-// ============ PASS ORDER EXECUTION ============
-
-void RaftAppBase::applyCommittedPassOrder()
-{
-    if (hasPassedIntersection_) return;
-
-    myBatch_ = -1;
-    for (int b = 0; b < committedSchedule_.numBatches; b++) {
-        for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
-            if (committedSchedule_.batches[b].vehicleIds[v] == myId_) {
-                myBatch_ = b; break;
-            }
-        }
-        if (myBatch_ >= 0) break;
-    }
-
-    // Print full committed schedule
-    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER COMMITTED: numBatches="
-              << committedSchedule_.numBatches << " myBatch=" << myBatch_ << std::endl;
-    for (int b = 0; b < committedSchedule_.numBatches; b++) {
-        std::cout << "  [DBG] Batch " << b << ": [";
-        for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
-            std::cout << committedSchedule_.batches[b].vehicleIds[v];
-            if (v+1 < committedSchedule_.batches[b].numVehicles) std::cout << ",";
-        }
-        std::cout << "]" << std::endl;
-    }
-
-    if (myBatch_ < 0) {
-        RAFT_LOG("NOT SCHEDULED - using fallback");
-        std::cout << simTime() << " [DBG][V" << myId_ << "] NOT IN SCHEDULE! Using fallback." << std::endl;
-        int fallbackDelayMs = committedSchedule_.numBatches * 5000 + 10000;
-        scheduleOneshotMs(fallbackDelayMs, [this]() {
-            if (!hasPassedIntersection_) {
-                isFallbackMode_     = true;
-                coordinationMethod_ = "fallback";
-                resumeMovement();
-            }
-        });
-        return;
-    }
-
-    RAFT_LOG("assigned to batch " << myBatch_
-             << " (current batch: " << currentBatch_ << ")");
-
-    std::cout << simTime() << " [DBG][V" << myId_ << "] ASSIGNED batch=" << myBatch_
-              << " currentBatch=" << currentBatch_
-              << " hasCommitted=" << hasCommittedOrder_
-              << " hasStopped=" << hasStoppedAtIntersection_ << std::endl;
-
-    if (myBatch_ == 0) {
-        std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH 0 -> calling resumeMovement immediately" << std::endl;
-        resumeMovement();
-    } else if (!hasStoppedAtIntersection_ && traciVehicle_) {
-        // Vehicle is still approaching — advance at full speed toward stop line so it
-        // arrives ready instead of creeping in behind a stopped queue.
-        try {
-            double maxSpd = traciVehicle_->getMaxSpeed();
-            if (maxSpd <= 0) maxSpd = 13.89;
-            traciVehicle_->setSpeedMode(31);   // SUMO safety on (collision avoidance in lane)
-            traciVehicle_->setSpeed(maxSpd);
-            std::cout << simTime() << " [ADV][V" << myId_ << "] batch=" << myBatch_
-                      << " advancing to stop line at max speed (dist="
-                      << getDistanceToJunction() << "m)" << std::endl;
-        } catch (...) {}
-    }
-    // Schedule 1.5s timeout: if VEHICLE_LEFT not received from vehicles in current batch, assume they left
-    scheduleVehicleLeftTimeout(currentBatch_);
-
-    if (myBatch_ != 0) {
-        // Primary mechanism: checkBatchAdvance() will call resumeMovement() once
-        // the previous batch has fully cleared via VEHICLE_LEFT broadcasts.
-        // Safety fallback fires if VEHICLE_LEFT messages are lost or ghost vehicles
-        // in the schedule never send them. 6 s per batch prevents endless waiting.
-        int safetyDelayMs = myBatch_ * 6000;
-        std::cout << simTime() << " [DBG][V" << myId_ << "] WAITING for batch " << myBatch_
-                  << " (safetyFallback in " << safetyDelayMs << "ms)" << std::endl;
-        scheduleOneshotMs(safetyDelayMs, [this, expectedBatch = myBatch_]() {
-            if (!hasPassedIntersection_ && currentBatch_ < expectedBatch) {
-                std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH SAFETY TIMER: forcing batch "
-                          << expectedBatch << " (lost VEHICLE_LEFT?)" << std::endl;
-                RAFT_LOG("BATCH SAFETY FALLBACK (lost VEHICLE_LEFT?) for batch " << expectedBatch);
-                currentBatch_ = expectedBatch;
-                resumeMovement();
-            }
-        });
-        RAFT_LOG("waiting for batch " << myBatch_ << " via checkBatchAdvance");
-    }
 }

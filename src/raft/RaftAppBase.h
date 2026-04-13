@@ -101,7 +101,8 @@ protected:
 
     // ============ RAFT LOG STATE ============
     raft_index_t            lastAppliedIndex_;
-    PassScheduleEntry              committedSchedule_;
+    PassScheduleEntry       committedSchedule_;
+    PassScheduleEntry       pendingSchedule_;    // schedule held between QC signing and RAFT submission
     bool         hasCommittedOrder_;
 
     // Batch execution
@@ -216,26 +217,33 @@ protected:
 
     // ============ SHARED METHODS ============
 
-    void parseEdgeParameters();
-    // Pre-intersection discovery (peer beacons)
+    void parseEdgeParameters();  // RaftAppBase.cc
+
+    // ---- RaftDiscovery.cc: simulation start → cluster formed, vehicle stopped ----
     void sendPeerBeacon();
     void handlePeerBeacon(const std::vector<uint8_t>& data, int senderId);
-
-    // Lane leader flag — recomputed from vehicleDB_ every check interval
     void updateLaneLeaderFlag();
-
-    // Intersection phase: lane-leader broadcast + RAFT cluster formation
+    void startNewRound();
     void sendLaneLeaderBeacon();
     void tryFormClusterFromCollected();
     void scheduleClusterFormationLoop();
     void handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId);
     void handleClusterFormBroadcast(const std::vector<uint8_t>& data);
-
-    // Core cluster formation (called once per RAFT lifecycle)
     void formCluster(const std::set<int>& members);
+    void checkAndStopAtIntersection();
+    void onFirstStoppedAtIntersection();
+    void checkAndAdvanceInQueue();
+    void updateRoadTracking(const std::string& roadId, const std::string& lastKnownRoad);
+    void handleClusterJunctionStop(const std::string& roadId, const std::string& lastKnownRoad);
+    void handleFrontStop(const std::string& roadId, double dist);
+    void handleQueuedStop(const std::string& roadId, double dist, double speed);
 
-    // RAFT periodic + callbacks
+    // ---- RaftCore.cc: election → status collection → propose → QC assembly ----
     void processRaftPeriodic();
+    void checkElectionFailures(raft_term_t currentTerm);
+    void checkLeadershipChange();
+    void checkCoordinationTimeout(simtime_t now);
+    void checkDiscoveryTimeout(simtime_t now);
     static int  sendRequestVote(raft_server_t*, void*, raft_node_t*, msg_requestvote_t*);
     static int  sendAppendEntries(raft_server_t*, void*, raft_node_t*, msg_appendentries_t*);
     static int  logOffer(raft_server_t*, void*, raft_entry_t*, raft_index_t);
@@ -248,8 +256,6 @@ protected:
     int  doLogOffer(raft_entry_t*, raft_index_t);
     int  doApplyLog(raft_entry_t*, raft_index_t);
     int  doLogGetNodeId(raft_entry_t*, raft_index_t);
-
-    // Serialization
     std::vector<uint8_t> serializeRequestVote(msg_requestvote_t*);
     std::vector<uint8_t> serializeRequestVoteResponse(msg_requestvote_response_t*);
     std::vector<uint8_t> serializeAppendEntries(msg_appendentries_t*);
@@ -258,93 +264,62 @@ protected:
     void deserializeRequestVoteResponse(const std::vector<uint8_t>&, msg_requestvote_response_t*);
     void deserializeAppendEntries(const std::vector<uint8_t>&, msg_appendentries_t*);
     void deserializeAppendEntriesResponse(const std::vector<uint8_t>&, msg_appendentries_response_t*);
-
-    // Coordination protocol
+    void onBecameLeader();
+    void onLostLeadership();
     void sendStatusRequest();
     void handleStatusRequest(int fromLeader);
     void sendDbResponse(int toLeader);
     void handleDbResponse(const std::vector<uint8_t>& data, int senderId);
     void collectStatusAndDecide();
     void proposePassOrder();
-    void applyCommittedPassOrder();
-    void sendPassOrderBroadcast();
-    void handlePassOrderBroadcast(const std::vector<uint8_t>& data);
-    void sendVehiclePassed();
-    void handleVehiclePassed(int vehicleId);
-    void sendVehicleLeft();
-    void handleVehicleLeft(int vehicleId, int batchId);
     void applyVehicleLeftFromRaft(int vehicleId, int batchId);
-    void checkBatchAdvance();
-
-    // Scheduling helpers
-    bool          movementsConflict(int laneA, int turnA, int laneB, int turnB);
-    PassScheduleEntry computePassOrder(const std::map<int, VehicleProposal>& proposals,
-                                       const std::set<int>& activeVehicles);
-    void addToBatch(const VehicleProposal& v,
-                    const std::map<int, VehicleProposal>& proposals,
-                    PassScheduleEntry& schedule,
-                    std::set<int>& scheduled);
-    bool blockerScheduled(const VehicleProposal& v,
-                          const std::set<int>& scheduled);
-    void            initMyProposal();   // call once after identity/cert are known
-    VehicleProposal updateMyProposal();  // refreshes dynamic fields, returns myProposal_
-    int           detectBlockingVehicle();
-    double        calculateDistanceToJunction();
-    // Returns true if TraCI reports no vehicle ahead in the same lane
-    // (within a generous look-ahead distance).  Used by updateLaneLeaderFlag()
-    // instead of stale beacon data.
-    bool          isLaneLeaderByTraci() const;
-    int           getLaneIndex(const std::string& lane);
-    bool          isVehicleInCommittedSchedule(int vehicleId) const;
-    bool          hasUnscheduledVehicles() const;
-
-    // Intersection state helpers
-    void checkAndStopAtIntersection();
-    void onFirstStoppedAtIntersection();  // called once when vehicle first stops
-    void checkAndAdvanceInQueue();
-    // checkAndStopAtIntersection sub-functions
-    void updateRoadTracking(const std::string& roadId, const std::string& lastKnownRoad);
-    void handleClusterJunctionStop(const std::string& roadId, const std::string& lastKnownRoad);
-    void handleFrontStop(const std::string& roadId, double dist);
-    void handleQueuedStop(const std::string& roadId, double dist, double speed);
-    void scheduleLeaderStatusRequest();
-    bool isAtIntersection() const;
-    bool isNearJunction() const;
-    bool hasPassedIntersectionEdge() const;
-    void calculateWayOfSight();
-    void checkIfLeftIntersection();
-    void stopVehicle();
-    void resumeMovement();
-    void onBecameLeader();
-    void onLostLeadership();
-    void handleFallback();
-    // processRaftPeriodic sub-functions
-    void checkElectionFailures(raft_term_t currentTerm);
-    void checkLeadershipChange();
-    void checkCoordinationTimeout(simtime_t now);
-    void checkDiscoveryTimeout(simtime_t now);
-
-    // Metrics
-    void outputMetricsJSON();
-
-    // Node ID mapping
-    raft_node_id_t getNodeIdFromVehicleId(int v) const  { return v + 1; }
-    int            getVehicleIdFromNodeId(raft_node_id_t n) const { return n - 1; }
-
-    void markRaftNodeInactive(int vehicleId);
-    void scheduleVehicleLeftTimeout(int batchIndex);
-
-    // ---- Multi-round ----
-    // Called when isLaneLeader_ transitions false→true while stopped at the intersection
-    // with a committed order from the previous round.  Resets RAFT state and re-triggers
-    // the leader-DB-exchange loop to form a new cluster for late-arriving vehicles.
-    void startNewRound();
-
-    // ---- Quorum Certificate ----
+    void sendQCSignRequest();
+    void handleQCSignRequest(const std::vector<uint8_t>& data);
     void sendQCSignResponse(int toLeader, const std::vector<uint8_t>& respData);
     void handleQCSignResponse(const std::vector<uint8_t>& data, int senderId);
     void tryAssembleQC();
     bool verifyQC(const QuorumCertificate& qc) const;
+
+    // ---- RaftDecision.cc: pure crossing-order algorithm ----
+    int               getLaneIndex(const std::string& lane);
+    bool              movementsConflict(int laneA, int turnA, int laneB, int turnB);
+    PassScheduleEntry computePassOrder(const std::map<int, VehicleProposal>& proposals,
+                                       const std::set<int>& activeVehicles);
+
+    // ---- RaftCoordination.cc: send QC/schedule to all + execute the pass ----
+    void sendPassOrderBroadcast();
+    void handlePassOrderBroadcast(const std::vector<uint8_t>& data);
+    void applyCommittedPassOrder();
+    void handleVehiclePassed(int vehicleId);
+    void handleVehicleLeft(int vehicleId, int batchId);
+    void sendVehiclePassed();
+    void sendVehicleLeft();
+    void scheduleVehicleLeftTimeout(int batchIndex);
+    void checkBatchAdvance();
+    void checkIfLeftIntersection();
+
+    // ---- RaftUtilities.cc: shared helpers ----
+    bool            verifySignedProposal(const SignedProposal& sp, int senderId) const;
+    void            initMyProposal();
+    VehicleProposal updateMyProposal();
+    int             detectBlockingVehicle();
+    double          calculateDistanceToJunction();
+    bool            isLaneLeaderByTraci() const;
+    void            calculateWayOfSight();
+    bool            isAtIntersection() const;
+    bool            isNearJunction() const;
+    bool            hasPassedIntersectionEdge() const;
+    void            stopVehicle();
+    void            resumeMovement();
+    void            handleFallback();
+    bool            isVehicleInCommittedSchedule(int vehicleId) const;
+    bool            hasUnscheduledVehicles() const;
+    void            markRaftNodeInactive(int vehicleId);
+    void            outputMetricsJSON();
+
+    // ---- Node ID mapping (inline) ----
+    raft_node_id_t getNodeIdFromVehicleId(int v) const  { return v + 1; }
+    int            getVehicleIdFromNodeId(raft_node_id_t n) const { return n - 1; }
 
     // ============ TRANSPORT HELPERS ============
     virtual void scheduleOneshotMs(double delayMs, std::function<void()> fn) = 0;
