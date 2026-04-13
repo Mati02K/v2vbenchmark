@@ -30,7 +30,6 @@ void RaftAppBase::sendPassOrderBroadcast()
     memcpy(data.data(),                          &committedSchedule_, sizeof(PassScheduleEntry));
     memcpy(data.data() + sizeof(PassScheduleEntry), &prevRoundQC_,    sizeof(QuorumCertificate));
     sendRaftBroadcast(/*COORD_PASS_ORDER_BROADCAST*/ 0x35, data);
-    messagesSent_++;
 
     std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST sent (with QC): "
               << committedSchedule_.numBatches << " batches, QC round=" << prevRoundQC_.round
@@ -247,7 +246,6 @@ void RaftAppBase::sendVehiclePassed()
     RAFT_LOG("BROADCASTING vehicle-passed");
     std::vector<uint8_t> data = {static_cast<uint8_t>(myId_)};
     sendRaftBroadcast(/*COORD_VEHICLE_PASSED*/ 0x33, data);
-    messagesSent_++;
 }
 
 void RaftAppBase::sendVehicleLeft()
@@ -258,7 +256,6 @@ void RaftAppBase::sendVehicleLeft()
     std::vector<uint8_t> data(sizeof(VehicleLeftEntry));
     memcpy(data.data(), &e, sizeof(e));
     sendRaftBroadcast(/*COORD_VEHICLE_LEFT*/ 0x34, data);
-    messagesSent_++;
 }
 
 // ============ VEHICLE_LEFT TIMEOUT ============

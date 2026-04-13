@@ -140,6 +140,7 @@ protected:
     };
     std::map<int, QCSigEntry> collectedQCSigs_;  // vehicleId → signature
     bool             qcAssembled_;               // guards against double-assembly
+    int              qcRetryCount_;              // how many times we've retried QC signing
 
     // ---- QC storage (all vehicles) ----
     // Stored when QC_BROADCAST is received (or when leader assembles the QC).
@@ -166,6 +167,8 @@ protected:
     int    fallbackClusterTimeoutMs_;
     int    intersectionStopTimeMs_;
     int    vehicleLeftTimeoutMs_;
+    int    qcSignTimeoutMs_;
+    int    maxQcRetries_;
     std::string resultsFileName_;
     double      resultsFileCloseAtSec_ = 0;
     std::string transportName_;

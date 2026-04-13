@@ -202,7 +202,6 @@ int RaftAppBase::doSendAppendEntries(raft_node_t* node, msg_appendentries_t* msg
 
     auto data = serializeAppendEntries(msg);
     sendRaftToPeer(targetVehicleId, /*RAFT_APPEND_ENTRIES*/ 0x22, data);
-    messagesSent_++;
     return 0;
 }
 
@@ -414,30 +413,13 @@ void RaftAppBase::onBecameLeader()
     timeElected_          = NOW;
     failedElectionCount_  = 0;
 
-    // Only propose status/pass order after stopped at intersection
-    if (!hasStoppedAtIntersection_ || hasCommittedOrder_) return;
+    if (hasCommittedOrder_) return;
 
-    double waitedMs = (NOW - timeStopped_).dbl() * 1000.0;
-    double delayMs  = intersectionStopTimeMs_ - waitedMs;
-
-    if (delayMs <= 0) {
-        sendStatusRequest();
-        scheduleOneshotMs(statusCollectionTimeoutMs_, [this]() {
-            if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_)
-                collectStatusAndDecide();
-        });
-    } else {
-        scheduleOneshotMs(delayMs, [this]() {
-            if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_
-                && hasStoppedAtIntersection_) {
-                sendStatusRequest();
-                scheduleOneshotMs(statusCollectionTimeoutMs_, [this]() {
-                    if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_)
-                        collectStatusAndDecide();
-                });
-            }
-        });
-    }
+    sendStatusRequest();
+    scheduleOneshotMs(statusCollectionTimeoutMs_, [this]() {
+        if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_)
+            collectStatusAndDecide();
+    });
 }
 
 void RaftAppBase::onLostLeadership()
@@ -459,7 +441,6 @@ void RaftAppBase::sendStatusRequest()
     std::vector<uint8_t> data(sizeof(int));
     memcpy(data.data(), &myId_, sizeof(int));
     sendRaftBroadcast(/*COORD_STATUS_REQUEST*/ 0x30, data);
-    messagesSent_++;
 
     timeStatusRequestSent_ = NOW;
     waitingForStatus_     = true;
@@ -506,7 +487,6 @@ void RaftAppBase::sendDbResponse(int toLeader)
     }
 
     sendRaftToPeer(toLeader, /*COORD_DB_RESPONSE*/ 0x31, data);
-    messagesSent_++;
 
     std::cout << simTime() << " [DBG][V" << myId_ << "] DB_RESPONSE sent to V" << toLeader
               << " numEntries=" << numEntries << std::endl;
@@ -669,6 +649,8 @@ void RaftAppBase::proposePassOrder()
 
     // Broadcast QC_SIGN_REQUEST to all cluster members so they sign [round || schedule].
     // Once quorum is reached in tryAssembleQC(), raft_recv_entry() is called.
+    qcRetryCount_ = 0;
+    collectedQCSigs_.clear();
     sendQCSignRequest();
 }
 
@@ -698,7 +680,6 @@ void RaftAppBase::sendQCSignRequest()
     memcpy(data.data() + sizeof(uint32_t), &pendingSchedule_, sizeof(PassScheduleEntry));
 
     sendRaftBroadcast(/*QC_SIGN_REQUEST*/ 0x36, data);
-    messagesSent_++;
     std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_REQUEST broadcast (round=" << roundNumber_
               << " clusterSize=" << activeVehicles_.size() << ")" << std::endl;
 
@@ -713,6 +694,19 @@ void RaftAppBase::sendQCSignRequest()
     collectedQCSigs_[myId_] = mySig;
     std::cout << NOW << " [QC][V" << myId_ << "] Leader signed own copy" << std::endl;
     tryAssembleQC();  // in case single-node cluster
+
+    // Schedule retry in case QC_SIGN_RESPONSE packets are lost
+    if (!qcAssembled_ && qcRetryCount_ < maxQcRetries_) {
+        scheduleOneshotMs((double)qcSignTimeoutMs_, [this]() {
+            if (!qcAssembled_ && isLeader_ && qcRetryCount_ < maxQcRetries_) {
+                qcRetryCount_++;
+                std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_REQUEST retry "
+                          << qcRetryCount_ << "/" << maxQcRetries_
+                          << " (have " << collectedQCSigs_.size() << " sigs)" << std::endl;
+                sendQCSignRequest();
+            }
+        });
+    }
 }
 
 // Follower receives QC_SIGN_REQUEST: sign [round || schedule] and return signature to leader.
@@ -745,7 +739,6 @@ void RaftAppBase::handleQCSignRequest(const std::vector<uint8_t>& data)
 void RaftAppBase::sendQCSignResponse(int toLeader, const std::vector<uint8_t>& respData)
 {
     sendRaftToPeer(toLeader, /*QC_SIGN_RESPONSE*/ 0x37, respData);
-    messagesSent_++;
 }
 
 void RaftAppBase::handleQCSignResponse(const std::vector<uint8_t>& data, int senderId)

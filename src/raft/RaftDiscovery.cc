@@ -45,7 +45,6 @@ void RaftAppBase::sendPeerBeacon()
     memcpy(data.data(), &sp, sizeof(SignedProposal));
     // Send proposal to everyone
     sendRaftBroadcast(/*PEER_BEACON*/ 0x10, data);
-    messagesSent_++;
 }
 
 // Receive a PEER_BEACON: verify cert, set isPriority in vehicleDB_.
@@ -239,7 +238,6 @@ void RaftAppBase::sendLaneLeaderBeacon()
     memcpy(data.data(),              &myId_,        sizeof(int));
     memcpy(data.data() + sizeof(int), &myLaneIndex_, sizeof(int));
     sendRaftBroadcast(/*CLUSTER_JOIN_INVITE*/ 0x15, data);
-    messagesSent_++;
 
     int numLanes = (int)approachEdgeList_.size();
     std::cout << NOW << " [DBG][V" << myId_ << "] LANE_LEADER_BEACON sent"
@@ -276,7 +274,6 @@ void RaftAppBase::tryFormClusterFromCollected()
         idx++;
     }
     sendRaftBroadcast(/*CLUSTER_FORM_BROADCAST*/ 0x16, bcastData);
-    messagesSent_++;
 
     raftStarted_ = true;
     formCluster(members);
