@@ -80,6 +80,7 @@ bool UdpRaftApplication::startApplication()
     resultsFileName_          = par("resultsFile").stdstringValue();
     resultsFileCloseAtSec_    = par("resultsFileCloseAtSec").doubleValue();
     isPriorityVehicle_        = par("isPriorityVehicle").boolValue();
+    clusterMode_              = par("clusterMode").stdstringValue();
 
     // ---- Crypto init: generate keypair and get cert signed by appropriate CA ----
     memset(myPubKey_, 0, sizeof(myPubKey_));

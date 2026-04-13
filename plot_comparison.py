@@ -5,7 +5,9 @@ Compares WAVE vs UDP performance across different vehicle counts.
 
 Usage:
   python3 plot_comparison.py           # Uses raft_*, raftwave_* (intersection_4/8/16)
-  python3 plot_comparison.py --simple  # Uses simple_udp_*, simple_raftwave_* (simple_intersection)
+  python3 plot_comparison.py --simple  # Uses simple_udp_*, simple_raftwave_* (default: laneLeaders)
+  python3 plot_comparison.py --simple --mode allVehicles   # Plot allVehicles results
+  python3 plot_comparison.py --simple --compare-modes      # Side-by-side laneLeaders vs allVehicles
 """
 
 import argparse
@@ -122,21 +124,362 @@ def calculate_metrics_from_runs(runs_data):
 
     return result
 
+
+def load_runs_for_mode(protocol_prefix, vc, mode):
+    """Load raw run data for a given protocol prefix, vehicle count, and cluster mode."""
+    result_name = f"{protocol_prefix}_{vc}veh_{mode}"
+    result_dir = os.path.join(RESULTS_DIR, result_name)
+    runs = []
+    run_num = 1
+    while True:
+        json_file = os.path.join(result_dir, f'run_{run_num}', 'raft_results.json')
+        if not os.path.exists(json_file):
+            break
+        try:
+            with open(json_file) as f:
+                raw = f.read()
+            d = json.loads(raw)
+            if d:
+                runs.append(d)
+        except json.JSONDecodeError:
+            try:
+                s = raw.rstrip()
+                if s and not s.endswith(']'):
+                    if s.endswith('}'):
+                        d = json.loads(s + '\n]')
+                    else:
+                        d = json.loads(s.rstrip(',') + '\n]')
+                    if d:
+                        runs.append(d)
+            except Exception:
+                pass
+        except Exception:
+            pass
+        run_num += 1
+    return runs
+
+
+def generate_mode_comparison(args):
+    """Generate side-by-side comparison plots: laneLeaders vs allVehicles."""
+    vehicle_counts = [4, 8, 16]
+    modes = ['laneLeaders', 'allVehicles']
+    protocols = ['wave', 'udp']
+    protocol_prefixes = {'wave': 'simple_raftwave', 'udp': 'simple_udp'}
+
+    # 4 series: protocol × mode
+    series_keys = [(p, m) for p in protocols for m in modes]
+    colors = {
+        ('wave', 'laneLeaders'): '#9b59b6',
+        ('wave', 'allVehicles'): '#9b59b6',
+        ('udp',  'laneLeaders'): '#3498db',
+        ('udp',  'allVehicles'): '#3498db',
+    }
+    hatches = {
+        ('wave', 'laneLeaders'): '',
+        ('wave', 'allVehicles'): '//',
+        ('udp',  'laneLeaders'): '',
+        ('udp',  'allVehicles'): '//',
+    }
+    labels = {
+        ('wave', 'laneLeaders'): 'WAVE / Lane Leaders',
+        ('wave', 'allVehicles'): 'WAVE / All Vehicles',
+        ('udp',  'laneLeaders'): 'UDP / Lane Leaders',
+        ('udp',  'allVehicles'): 'UDP / All Vehicles',
+    }
+
+    # Load data for all combinations
+    data = {}
+    for protocol in protocols:
+        prefix = protocol_prefixes[protocol]
+        for mode in modes:
+            for vc in vehicle_counts:
+                runs = load_runs_for_mode(prefix, vc, mode)
+                if runs:
+                    data[(protocol, mode, vc)] = calculate_metrics_from_runs(runs)
+
+    # ---- Throughput comparison ----
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.suptitle(
+        'Throughput Comparison: Lane Leaders vs All Vehicles\n'
+        'WAVE (802.11p) and UDP (802.11a) across vehicle counts',
+        fontsize=13, fontweight='bold')
+
+    bar_width = 0.18
+    x = np.arange(len(vehicle_counts))
+
+    for i, (protocol, mode) in enumerate(series_keys):
+        means = []
+        stds = []
+        for vc in vehicle_counts:
+            key = (protocol, mode, vc)
+            if key in data and 'throughput' in data[key]:
+                means.append(data[key]['throughput']['mean'])
+                stds.append(data[key]['throughput']['std'])
+            else:
+                means.append(0)
+                stds.append(0)
+        offset = (i - 1.5) * bar_width
+        bars = ax.bar(x + offset, means, bar_width, yerr=stds,
+                     label=labels[(protocol, mode)],
+                     color=colors[(protocol, mode)],
+                     hatch=hatches[(protocol, mode)],
+                     alpha=0.85, capsize=4, edgecolor='black', linewidth=0.5)
+        for bar, mean in zip(bars, means):
+            if mean > 0:
+                ax.text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                       f'{mean:.3f}', ha='center', va='bottom', fontsize=7, fontweight='bold')
+
+    ax.set_xlabel('Number of Vehicles', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Vehicles/second', fontsize=11, fontweight='bold')
+    ax.set_title('System Throughput', fontsize=12, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f'{vc} veh' for vc in vehicle_counts])
+    ax.legend(loc='upper left', fontsize=9)
+    ax.grid(True, alpha=0.3, axis='y')
+    ax.set_ylim(bottom=0)
+    plt.tight_layout()
+    out = os.path.join(RESULTS_DIR, 'simple_mode_comparison_throughput')
+    fig.savefig(out + '.png', dpi=150, bbox_inches='tight')
+    fig.savefig(out + '.pdf', bbox_inches='tight')
+    plt.close(fig)
+    print(f"Mode comparison throughput saved to: {out}.png")
+
+    # ---- Fallback Rate comparison ----
+    fig, ax = plt.subplots(figsize=(10, 6))
+    fig.suptitle(
+        'Fallback Rate Comparison: Lane Leaders vs All Vehicles',
+        fontsize=13, fontweight='bold')
+
+    for i, (protocol, mode) in enumerate(series_keys):
+        means = []
+        stds = []
+        for vc in vehicle_counts:
+            key = (protocol, mode, vc)
+            if key in data and 'fallback_rate' in data[key]:
+                means.append(data[key]['fallback_rate']['mean'] * 100)
+                stds.append(data[key]['fallback_rate']['std'] * 100)
+            else:
+                means.append(0)
+                stds.append(0)
+        offset = (i - 1.5) * bar_width
+        bars = ax.bar(x + offset, means, bar_width, yerr=stds,
+                     label=labels[(protocol, mode)],
+                     color=colors[(protocol, mode)],
+                     hatch=hatches[(protocol, mode)],
+                     alpha=0.85, capsize=4, edgecolor='black', linewidth=0.5)
+        for bar, mean in zip(bars, means):
+            if mean > 0:
+                ax.text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                       f'{mean:.1f}%', ha='center', va='bottom', fontsize=7, fontweight='bold')
+
+    ax.set_xlabel('Number of Vehicles', fontsize=11, fontweight='bold')
+    ax.set_ylabel('Fallback Rate (%)', fontsize=11, fontweight='bold')
+    ax.set_title('Vehicles Passing Without RAFT Consensus', fontsize=12, fontweight='bold')
+    ax.set_xticks(x)
+    ax.set_xticklabels([f'{vc} veh' for vc in vehicle_counts])
+    ax.legend(loc='upper left', fontsize=9)
+    ax.grid(True, alpha=0.3, axis='y')
+    ax.set_ylim(bottom=0)
+    plt.tight_layout()
+    out = os.path.join(RESULTS_DIR, 'simple_mode_comparison_fallbacks')
+    fig.savefig(out + '.png', dpi=150, bbox_inches='tight')
+    fig.savefig(out + '.pdf', bbox_inches='tight')
+    plt.close(fig)
+    print(f"Mode comparison fallbacks saved to: {out}.png")
+
+    # ---- Messages Sent comparison ----
+    fig, axes_msg = plt.subplots(1, 3, figsize=(16, 5))
+    fig.suptitle(
+        'Messages Comparison: Lane Leaders vs All Vehicles',
+        fontsize=13, fontweight='bold')
+
+    msg_configs = [
+        ('messages_sent', 'Messages Sent (per run)', 'Messages', 1),
+        ('messages_received', 'Messages Received (per run)', 'Messages', 1),
+        ('estimated_loss_rate', 'Est. Message Loss Rate', 'Loss Rate (%)', 100),
+    ]
+    for col, (metric, title, ylabel, scale) in enumerate(msg_configs):
+        ax = axes_msg[col]
+        for i, (protocol, mode) in enumerate(series_keys):
+            means = []
+            stds = []
+            for vc in vehicle_counts:
+                key = (protocol, mode, vc)
+                if key in data and metric in data[key]:
+                    means.append(data[key][metric]['mean'] * scale)
+                    stds.append(data[key][metric]['std'] * scale)
+                else:
+                    means.append(0)
+                    stds.append(0)
+            offset = (i - 1.5) * bar_width
+            bars = ax.bar(x + offset, means, bar_width, yerr=stds,
+                         label=labels[(protocol, mode)],
+                         color=colors[(protocol, mode)],
+                         hatch=hatches[(protocol, mode)],
+                         alpha=0.85, capsize=4, edgecolor='black', linewidth=0.5)
+            for bar, mean in zip(bars, means):
+                if mean > 0:
+                    fmt = f'{mean:.1f}%' if scale == 100 else f'{mean:.0f}'
+                    ax.text(bar.get_x() + bar.get_width()/2., bar.get_height(),
+                            fmt, ha='center', va='bottom', fontsize=6, fontweight='bold')
+        ax.set_xlabel('Number of Vehicles', fontsize=10, fontweight='bold')
+        ax.set_ylabel(ylabel, fontsize=10, fontweight='bold')
+        ax.set_title(title, fontsize=11, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels([f'{vc} veh' for vc in vehicle_counts])
+        ax.legend(fontsize=7, loc='upper left')
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_ylim(bottom=0)
+
+    plt.tight_layout()
+    out = os.path.join(RESULTS_DIR, 'simple_mode_comparison_messages')
+    fig.savefig(out + '.png', dpi=150, bbox_inches='tight')
+    fig.savefig(out + '.pdf', bbox_inches='tight')
+    plt.close(fig)
+    print(f"Mode comparison messages saved to: {out}.png")
+
+    # ---- CDF Wait Time comparison ----
+    fig_cdf, axes_cdf = plt.subplots(1, len(vehicle_counts), figsize=(16, 5), sharey=True)
+    fig_cdf.suptitle(
+        'CDF of Total Wait Time: Lane Leaders vs All Vehicles\n'
+        'Time from vehicle first stopping to crossing the intersection',
+        fontsize=13, fontweight='bold')
+
+    linestyles = {
+        ('wave', 'laneLeaders'): '-',
+        ('wave', 'allVehicles'): '--',
+        ('udp',  'laneLeaders'): '-',
+        ('udp',  'allVehicles'): '--',
+    }
+
+    for col, vc in enumerate(vehicle_counts):
+        ax = axes_cdf[col]
+        for protocol in protocols:
+            prefix = protocol_prefixes[protocol]
+            for mode in modes:
+                runs = load_runs_for_mode(prefix, vc, mode)
+                times = []
+                for run_data in runs:
+                    for v in run_data:
+                        if v.get('coordination_method') == 'fallback':
+                            continue
+                        wt = v['durations_ms'].get('total_wait_time', 0)
+                        if wt > 0:
+                            times.append(wt / 1000.0)
+                if not times:
+                    continue
+                sorted_t = np.sort(times)
+                cdf = np.arange(1, len(sorted_t) + 1) / len(sorted_t)
+                ax.plot(sorted_t, cdf,
+                        color=colors[(protocol, mode)],
+                        linestyle=linestyles[(protocol, mode)],
+                        linewidth=2,
+                        label=f"{labels[(protocol, mode)]} (n={len(times)})")
+        ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
+        ax.set_xlabel('Total Wait Time (s)', fontsize=10)
+        if col == 0:
+            ax.set_ylabel('CDF', fontsize=10)
+        ax.set_ylim(0, 1.05)
+        ax.set_xlim(left=0)
+        ax.legend(fontsize=7)
+        ax.grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    out = os.path.join(RESULTS_DIR, 'simple_mode_comparison_wait_time_cdf')
+    fig_cdf.savefig(out + '.png', dpi=150, bbox_inches='tight')
+    fig_cdf.savefig(out + '.pdf', bbox_inches='tight')
+    plt.close(fig_cdf)
+    print(f"Mode comparison CDF saved to: {out}.png")
+
+    # ---- Cluster Size comparison ----
+    fig_cl, axes_cl = plt.subplots(1, len(vehicle_counts), figsize=(16, 5))
+    fig_cl.suptitle(
+        'RAFT Cluster Size: Lane Leaders vs All Vehicles\n'
+        'Each bar = one run; height = vehicles in RAFT election',
+        fontsize=12, fontweight='bold')
+
+    for col, vc in enumerate(vehicle_counts):
+        ax = axes_cl[col]
+        bar_w = 0.5
+        gap = 1.5
+        pos = 0.0
+        tick_pos = []
+        tick_labels = []
+        legend_added = set()
+
+        for protocol in protocols:
+            prefix = protocol_prefixes[protocol]
+            for mode in modes:
+                runs = load_runs_for_mode(prefix, vc, mode)
+                sizes = []
+                for run_data in runs:
+                    cs = sum(1 for v in run_data if v.get('coordination_method') == 'raft')
+                    if cs > 0:
+                        sizes.append(cs)
+
+                series_label = labels[(protocol, mode)]
+                for j, s in enumerate(sizes):
+                    lbl = series_label if series_label not in legend_added else None
+                    ax.bar(pos, s, width=bar_w,
+                           color=colors[(protocol, mode)],
+                           hatch=hatches[(protocol, mode)],
+                           alpha=0.85, edgecolor='black', linewidth=0.5,
+                           label=lbl)
+                    if lbl:
+                        legend_added.add(series_label)
+                    ax.text(pos, s + 0.1, str(s), ha='center', va='bottom', fontsize=7)
+                    tick_pos.append(pos)
+                    p_short = 'W' if protocol == 'wave' else 'U'
+                    m_short = 'LL' if mode == 'laneLeaders' else 'AV'
+                    tick_labels.append(f'{p_short}{m_short}{j+1}')
+                    pos += bar_w + 0.1
+                pos += gap
+
+        ax.axhline(vc, color='gray', linestyle='--', linewidth=1, label=f'Max ({vc})')
+        ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
+        ax.set_ylim(0, vc + 2)
+        ax.set_xticks(tick_pos)
+        ax.set_xticklabels(tick_labels, fontsize=6, rotation=45)
+        if col == 0:
+            ax.set_ylabel('Vehicles in RAFT Election', fontsize=10)
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.legend(fontsize=6, loc='lower right')
+
+    plt.tight_layout()
+    out = os.path.join(RESULTS_DIR, 'simple_mode_comparison_cluster_size')
+    fig_cl.savefig(out + '.png', dpi=150, bbox_inches='tight')
+    fig_cl.savefig(out + '.pdf', bbox_inches='tight')
+    plt.close(fig_cl)
+    print(f"Mode comparison cluster size saved to: {out}.png")
+
+    print("\nAll mode comparison plots generated.")
+
+
 def main():
     parser = argparse.ArgumentParser(description='RAFT Intersection Benchmark Comparison')
     parser.add_argument('--simple', action='store_true',
                         help='Use simple_intersection results (simple_udp_*, simple_raftwave_*)')
+    parser.add_argument('--mode', default='laneLeaders',
+                        help='Cluster mode: laneLeaders (default) or allVehicles')
+    parser.add_argument('--compare-modes', action='store_true',
+                        help='Generate side-by-side plots comparing laneLeaders vs allVehicles')
     args = parser.parse_args()
+
+    if args.compare_modes:
+        generate_mode_comparison(args)
+        return
 
     vehicle_counts = [4, 8, 16]
     protocols = ['wave', 'udp']
 
     if args.simple:
-        folder_prefix = {'wave': 'simple_raftwave', 'udp': 'simple_udp'}
-        output_prefix = 'simple_'
-        title_note = ''
+        folder_prefix = {'wave': f'simple_raftwave', 'udp': f'simple_udp'}
+        mode_suffix = f'_{args.mode}'
+        output_prefix = f'simple_{args.mode}_'
+        title_note = f' [{args.mode}]'
     else:
         folder_prefix = {'wave': 'raftwave', 'udp': 'raft'}
+        mode_suffix = ''
         output_prefix = ''
         title_note = ''
 
@@ -150,9 +493,9 @@ def main():
     for protocol in protocols:
         prefix = folder_prefix[protocol]
         for vc in vehicle_counts:
-            # For simple mode: use exact name. For intersection: prefer _fixed2 > _report > plain
+            # For simple mode: use name with mode suffix. For intersection: prefer _fixed2 > _report > plain
             if args.simple:
-                result_name = f"{prefix}_{vc}veh"
+                result_name = f"{prefix}_{vc}veh{mode_suffix}"
             else:
                 for suffix in ['_fixed2', '_report', '']:
                     candidate = f"{prefix}_{vc}veh{suffix}"
@@ -395,7 +738,7 @@ def main():
     for protocol in protocols:
         prefix = folder_prefix[protocol]
         for vc in vehicle_counts:
-            result_name = f"{prefix}_{vc}veh" if args.simple else None
+            result_name = f"{prefix}_{vc}veh{mode_suffix}" if args.simple else None
             if not args.simple:
                 for suffix in ['_fixed2', '_report', '']:
                     candidate = f"{prefix}_{vc}veh{suffix}"
@@ -483,7 +826,7 @@ def main():
     for protocol in protocols:
         prefix = folder_prefix[protocol]
         for vc in vehicle_counts:
-            result_name = f"{prefix}_{vc}veh" if args.simple else None
+            result_name = f"{prefix}_{vc}veh{mode_suffix}" if args.simple else None
             if not args.simple:
                 for suffix in ['_fixed2', '_report', '']:
                     candidate = f"{prefix}_{vc}veh{suffix}"
@@ -603,7 +946,7 @@ def main():
         prefix = folder_prefix[protocol]
         for vc in vehicle_counts:
             amb_id = ambulance_ids.get(vc)
-            result_name = f"{prefix}_{vc}veh" if args.simple else None
+            result_name = f"{prefix}_{vc}veh{mode_suffix}" if args.simple else None
             if not args.simple:
                 for suffix in ['_fixed2', '_report', '']:
                     candidate = f"{prefix}_{vc}veh{suffix}"

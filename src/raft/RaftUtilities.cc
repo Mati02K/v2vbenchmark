@@ -335,6 +335,7 @@ void RaftAppBase::outputMetricsJSON()
         logEntriesProposed_,
         logEntriesCommitted_,
         myBatch_,
-        std::vector<int>(activeVehicles_.begin(), activeVehicles_.end())
+        std::vector<int>(activeVehicles_.begin(), activeVehicles_.end()),
+        clusterMode_
     );
 }

@@ -6,8 +6,9 @@
 # Prerequisite: veins_launchd must be running (SUMO started by it)
 #   python3 /path/to/veins/bin/veins_launchd -vv -c sumo-gui
 #
-# Usage: ./run_simple_benchmark.sh [num_iterations]
+# Usage: ./run_simple_benchmark.sh [num_iterations] [cluster_mode]
 #   num_iterations: number of runs per scenario (default: 3)
+#   cluster_mode:   "laneLeaders" (default) or "allVehicles"
 
 set -e
 
@@ -25,6 +26,7 @@ RESULTS_BASE="$SCRIPT_DIR/results"
 NED_PATH="..:..:../../src:../../../inet/src:../../../inet/examples:../../../inet/tutorials:../../../inet/showcases:../../../../veins/examples/veins:../../../../veins/src/veins"
 
 NUM_ITERATIONS=${1:-3}
+CLUSTER_MODE=${2:-laneLeaders}
 
 # Vehicle count -> sim directory
 get_sim_dir() {
@@ -47,11 +49,11 @@ priority_vehicle_for_run() {
 run_udp() {
     local vc=$1
     local sim_dir=$(get_sim_dir $vc)
-    local result_name="simple_udp_${vc}veh"
+    local result_name="simple_udp_${vc}veh_${CLUSTER_MODE}"
     local result_dir="$RESULTS_BASE/$result_name"
     mkdir -p "$result_dir"
 
-    echo -e "${GREEN}--- UDP ${vc} vehicles ---${NC}"
+    echo -e "${GREEN}--- UDP ${vc} vehicles (${CLUSTER_MODE}) ---${NC}"
     for i in $(seq 1 $NUM_ITERATIONS); do
         local iter_dir="$result_dir/run_$i"
         mkdir -p "$iter_dir"
@@ -71,6 +73,7 @@ EOF
         "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_udp.ini -f "$prio_ini" \
             --seed-set=$i \
             "--**.app[0].resultsFile=\"$results_json\"" \
+            "--**.app[0].clusterMode=\"$CLUSTER_MODE\"" \
             > "$iter_dir/console.log" 2>&1
         rm -f "$prio_ini"
 
@@ -84,11 +87,11 @@ EOF
 run_wave() {
     local vc=$1
     local sim_dir=$(get_sim_dir $vc)
-    local result_name="simple_raftwave_${vc}veh"
+    local result_name="simple_raftwave_${vc}veh_${CLUSTER_MODE}"
     local result_dir="$RESULTS_BASE/$result_name"
     mkdir -p "$result_dir"
 
-    echo -e "${GREEN}--- WAVE ${vc} vehicles ---${NC}"
+    echo -e "${GREEN}--- WAVE ${vc} vehicles (${CLUSTER_MODE}) ---${NC}"
     for i in $(seq 1 $NUM_ITERATIONS); do
         local iter_dir="$result_dir/run_$i"
         mkdir -p "$iter_dir"
@@ -107,6 +110,7 @@ EOF
         "$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" omnetpp_wave.ini -f "$prio_ini" \
             --seed-set=$i \
             "--**.appl.resultsFile=\"$results_json\"" \
+            "--**.appl.clusterMode=\"$CLUSTER_MODE\"" \
             > "$iter_dir/console.log" 2>&1
         rm -f "$prio_ini"
 
@@ -127,6 +131,7 @@ echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Simple Intersection Benchmark${NC}"
 echo -e "${GREEN}  UDP + WAVE for 4, 8, 16 vehicles${NC}"
 echo -e "${GREEN}  $NUM_ITERATIONS iterations each${NC}"
+echo -e "${GREEN}  Cluster mode: ${CLUSTER_MODE}${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
@@ -148,7 +153,7 @@ echo -e "${GREEN}All runs complete. Generating aggregate stats and plots...${NC}
 echo ""
 
 # Run aggregation for each result folder
-for result_name in simple_udp_4veh simple_udp_8veh simple_udp_16veh simple_raftwave_4veh simple_raftwave_8veh simple_raftwave_16veh; do
+for result_name in simple_udp_4veh_${CLUSTER_MODE} simple_udp_8veh_${CLUSTER_MODE} simple_udp_16veh_${CLUSTER_MODE} simple_raftwave_4veh_${CLUSTER_MODE} simple_raftwave_8veh_${CLUSTER_MODE} simple_raftwave_16veh_${CLUSTER_MODE}; do
     result_dir="$RESULTS_BASE/$result_name"
     if [ -d "$result_dir" ]; then
         python3 - "$result_dir" "$NUM_ITERATIONS" 2>/dev/null << 'AGGSCRIPT' || true
@@ -226,10 +231,10 @@ AGGSCRIPT
 done
 
 # Run plot
-echo -e "${GREEN}Running plot_comparison.py --simple...${NC}"
+echo -e "${GREEN}Running plot_comparison.py --simple --mode ${CLUSTER_MODE}...${NC}"
 cd "$SCRIPT_DIR"
-python3 plot_comparison.py --simple
+python3 plot_comparison.py --simple --mode "$CLUSTER_MODE"
 
 echo ""
-echo -e "${GREEN}Done. Results in results/simple_udp_* and results/simple_raftwave_*${NC}"
-echo -e "Plots: results/simple_wave_vs_udp_comparison.png"
+echo -e "${GREEN}Done. Results in results/simple_udp_*_${CLUSTER_MODE} and results/simple_raftwave_*_${CLUSTER_MODE}${NC}"
+echo -e "Plots: results/simple_wave_vs_udp_comparison_${CLUSTER_MODE}.png"

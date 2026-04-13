@@ -84,6 +84,7 @@ void WaveRaftApplication::initialize(int stage)
             resultsFileName_          = par("resultsFile").stdstringValue();
             resultsFileCloseAtSec_    = par("resultsFileCloseAtSec").doubleValue();
             isPriorityVehicle_        = par("isPriorityVehicle").boolValue();
+            clusterMode_              = par("clusterMode").stdstringValue();
         } catch (std::exception& e) {
             std::cerr << "Vehicle " << myId_ << " ERROR reading params: " << e.what() << std::endl;
         }

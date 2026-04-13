@@ -188,6 +188,7 @@ void RaftAppBase::startNewRound()
     activeVehicles_.clear();
     activeVehicles_.insert(myId_);
     collectedLaneLeaders_.clear();
+    collectedAllVehicles_.clear();
     collectedLeaderDBs_.clear();
 
     // Reset QC assembly for the new round.
@@ -211,7 +212,7 @@ void RaftAppBase::startNewRound()
         if (!hasPassedIntersection_ && !raftStarted_) {
             std::cout << NOW << " [ROUND][V" << myId_ << "] Round " << roundNumber_
                       << " discovery window elapsed — attempting cluster formation." << std::endl;
-            sendLaneLeaderBeacon();
+            sendClusterBeacon();
             scheduleClusterFormationLoop();
         }
     });
@@ -225,13 +226,17 @@ void RaftAppBase::startNewRound()
 // Once all approach lanes are represented → formCluster() with the collected IDs.
 // A 500ms retry loop keeps broadcasting until raftStarted_.
 
-// Broadcast own lane-leader announcement and check if cluster is complete.
-void RaftAppBase::sendLaneLeaderBeacon()
+// Broadcast cluster-readiness announcement and check if cluster is complete.
+// In laneLeaders mode: only lane leaders call this.
+// In allVehicles mode: every stopped vehicle calls this.
+void RaftAppBase::sendClusterBeacon()
 {
-    if (raftStarted_ || hasPassedIntersection_ || !isLaneLeader_) return;
+    if (raftStarted_ || hasPassedIntersection_) return;
+    if (clusterMode_ == "laneLeaders" && !isLaneLeader_) return;
 
     // Register self
     collectedLaneLeaders_[myLaneIndex_] = myId_;
+    collectedAllVehicles_.insert(myId_);
 
     // Payload: [vehicleId:4B][laneIndex:4B]
     std::vector<uint8_t> data(sizeof(int) * 2);
@@ -239,24 +244,37 @@ void RaftAppBase::sendLaneLeaderBeacon()
     memcpy(data.data() + sizeof(int), &myLaneIndex_, sizeof(int));
     sendRaftBroadcast(/*CLUSTER_JOIN_INVITE*/ 0x15, data);
 
-    int numLanes = (int)approachEdgeList_.size();
-    std::cout << NOW << " [DBG][V" << myId_ << "] LANE_LEADER_BEACON sent"
-              << " laneIdx=" << myLaneIndex_
-              << " collected=" << collectedLaneLeaders_.size() << "/" << numLanes << std::endl;
+    if (clusterMode_ == "allVehicles") {
+        std::cout << NOW << " [DBG][V" << myId_ << "] CLUSTER_BEACON sent"
+                  << " laneIdx=" << myLaneIndex_
+                  << " collected=" << collectedAllVehicles_.size() << "/" << totalVehicles_ << std::endl;
+    } else {
+        int numLanes = (int)approachEdgeList_.size();
+        std::cout << NOW << " [DBG][V" << myId_ << "] CLUSTER_BEACON sent"
+                  << " laneIdx=" << myLaneIndex_
+                  << " collected=" << collectedLaneLeaders_.size() << "/" << numLanes << std::endl;
+    }
 
     tryFormClusterFromCollected();
 }
 
-// Check if all lane leaders have announced — if so, form the cluster.
+// Check if enough vehicles have announced — if so, form the cluster.
+// In laneLeaders mode: triggers when all lanes have a leader.
+// In allVehicles mode: triggers when all totalVehicles_ have announced.
 // Also broadcasts CLUSTER_FORM_BROADCAST so every member can independently call formCluster().
 void RaftAppBase::tryFormClusterFromCollected()
 {
     if (raftStarted_) return;
-    int numLanes = (int)approachEdgeList_.size();
-    if ((int)collectedLaneLeaders_.size() < numLanes) return;
 
     std::set<int> members;
-    for (auto& kv : collectedLaneLeaders_) members.insert(kv.second);
+    if (clusterMode_ == "allVehicles") {
+        if ((int)collectedAllVehicles_.size() < totalVehicles_) return;
+        members = collectedAllVehicles_;
+    } else {
+        int numLanes = (int)approachEdgeList_.size();
+        if ((int)collectedLaneLeaders_.size() < numLanes) return;
+        for (auto& kv : collectedLaneLeaders_) members.insert(kv.second);
+    }
 
     std::cout << NOW << " [DBG][V" << myId_ << "] ALL LANES PRESENT — forming cluster ["
               << members.size() << "]: [";
@@ -313,16 +331,16 @@ void RaftAppBase::scheduleClusterFormationLoop()
 {
     scheduleOneshotMs(500.0, [this]() {
         if (!raftStarted_ && !hasPassedIntersection_) {
-            if (isLaneLeader_ && hasStoppedAtIntersection_)
-                sendLaneLeaderBeacon();
+            if ((clusterMode_ == "allVehicles" || isLaneLeader_) && hasStoppedAtIntersection_)
+                sendClusterBeacon();
             scheduleClusterFormationLoop();
         }
     });
 }
 
-// Receive a lane leader announcement.
-// If we are a lane leader: store it and check if cluster is complete.
-// Non-lane-leaders ignore it — they wait for COORD_PASS_ORDER_BROADCAST.
+// Receive a cluster-readiness announcement.
+// In laneLeaders mode: only lane leaders store and trigger formation.
+// In allVehicles mode: every vehicle stores and triggers formation.
 void RaftAppBase::handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId)
 {
     if (raftStarted_ || hasPassedIntersection_) return;
@@ -336,15 +354,23 @@ void RaftAppBase::handleClusterJoinInvite(const std::vector<uint8_t>& data, int 
     if (laneIndex < 0 || laneIndex >= (int)approachEdgeList_.size()) return;
 
     collectedLaneLeaders_[laneIndex] = vehicleId;
+    collectedAllVehicles_.insert(vehicleId);
 
-    std::cout << NOW << " [DBG][V" << myId_ << "] LANE_LEADER_BEACON from V" << senderId
-              << " lane=" << laneIndex
-              << " collected=" << collectedLaneLeaders_.size()
-              << "/" << approachEdgeList_.size() << std::endl;
+    if (clusterMode_ == "allVehicles") {
+        std::cout << NOW << " [DBG][V" << myId_ << "] CLUSTER_BEACON from V" << senderId
+                  << " lane=" << laneIndex
+                  << " collected=" << collectedAllVehicles_.size()
+                  << "/" << totalVehicles_ << std::endl;
+    } else {
+        std::cout << NOW << " [DBG][V" << myId_ << "] CLUSTER_BEACON from V" << senderId
+                  << " lane=" << laneIndex
+                  << " collected=" << collectedLaneLeaders_.size()
+                  << "/" << approachEdgeList_.size() << std::endl;
+    }
 
-    // Only lane leaders trigger cluster formation
-    if (isLaneLeader_) {
-        collectedLaneLeaders_[myLaneIndex_] = myId_;  // ensure self is registered
+    if (clusterMode_ == "allVehicles" || isLaneLeader_) {
+        if (clusterMode_ == "laneLeaders")
+            collectedLaneLeaders_[myLaneIndex_] = myId_;  // ensure self is registered
         tryFormClusterFromCollected();
     }
 }
@@ -441,8 +467,8 @@ void RaftAppBase::onFirstStoppedAtIntersection()
     }
     std::cout << "] LanesInView: " << distinctLanes.size() << std::endl;
 
-    if (isLaneLeader_) {
-        sendLaneLeaderBeacon();
+    if (clusterMode_ == "allVehicles" || isLaneLeader_) {
+        sendClusterBeacon();
         scheduleClusterFormationLoop();
     }
 

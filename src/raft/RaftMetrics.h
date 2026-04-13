@@ -35,7 +35,8 @@ public:
         int logEntriesProposed,
         int logEntriesCommitted,
         int myBatch,
-        const std::vector<int>& clusterMembers
+        const std::vector<int>& clusterMembers,
+        const std::string& clusterMode
     );
 
     // Accessors for static state

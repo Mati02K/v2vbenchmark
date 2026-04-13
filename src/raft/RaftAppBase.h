@@ -82,6 +82,15 @@ protected:
     double        discoveryBeaconInterval_;
     double        clusterTriggerDistance_;  // kept for NED param compat, not used for formation
 
+    // ============ CLUSTER MODE ============
+    // "laneLeaders" = only lane leaders join RAFT (default, current behavior)
+    // "allVehicles" = every vehicle joins RAFT cluster
+    std::string   clusterMode_;
+
+    // collectedAllVehicles_: all vehicles that announced readiness (for allVehicles mode).
+    // In laneLeaders mode, collectedLaneLeaders_ (keyed by lane) is used instead.
+    std::set<int> collectedAllVehicles_;
+
     // ============ INTERSECTION EDGES ============
     std::set<std::string>    intersectionEdges_;
     std::vector<std::string> approachEdgeList_;
@@ -227,7 +236,7 @@ protected:
     void handlePeerBeacon(const std::vector<uint8_t>& data, int senderId);
     void updateLaneLeaderFlag();
     void startNewRound();
-    void sendLaneLeaderBeacon();
+    void sendClusterBeacon();
     void tryFormClusterFromCollected();
     void scheduleClusterFormationLoop();
     void handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId);

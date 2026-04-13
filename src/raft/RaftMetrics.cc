@@ -63,7 +63,8 @@ void RaftMetrics::writeVehicleJSON(
     int logEntriesProposed,
     int logEntriesCommitted,
     int myBatch,
-    const std::vector<int>& clusterMembers)
+    const std::vector<int>& clusterMembers,
+    const std::string& clusterMode)
 {
     if (!resultsFileOpened_) return;
 
@@ -83,6 +84,7 @@ void RaftMetrics::writeVehicleJSON(
     resultsFile_ << "    \"was_leader\": "           << (wasLeader ? "true" : "false") << ",\n";
     resultsFile_ << "    \"coordination_method\": \"" << coordinationMethod << "\",\n";
     resultsFile_ << "    \"transport\": \""          << transport << "\",\n";
+    resultsFile_ << "    \"cluster_mode\": \""       << clusterMode << "\",\n";
     resultsFile_ << "    \"timestamps_ms\": {\n";
     resultsFile_ << "      \"stopped\": "            << std::fixed << std::setprecision(1) << stoppedMs << ",\n";
     resultsFile_ << "      \"cluster_formed\": "     << clusterFormedMs << ",\n";

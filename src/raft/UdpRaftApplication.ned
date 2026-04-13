@@ -23,6 +23,9 @@ simple UdpRaftApplication extends VeinsInetApplicationBase
         string resultsFile = default("raft_results.json");
         double resultsFileCloseAtSec = default(299);
 
+        // Cluster formation mode: "laneLeaders" or "allVehicles"
+        string clusterMode = default("laneLeaders");
+
         // Per-run override
         bool isPriorityVehicle = default(false);
 }
