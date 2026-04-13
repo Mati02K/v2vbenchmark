@@ -237,4 +237,4 @@ python3 plot_comparison.py --simple --mode "$CLUSTER_MODE"
 
 echo ""
 echo -e "${GREEN}Done. Results in results/simple_udp_*_${CLUSTER_MODE} and results/simple_raftwave_*_${CLUSTER_MODE}${NC}"
-echo -e "Plots: results/simple_wave_vs_udp_comparison_${CLUSTER_MODE}.png"
+echo -e "Plots: results/throughput_${CLUSTER_MODE}.png (and 4 more)"
