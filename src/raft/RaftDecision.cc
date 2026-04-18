@@ -34,6 +34,70 @@ bool RaftAppBase::movementsConflict(int laneA, int turnA, int laneB, int turnB)
     return true;
 }
 
+// ============ STATIC HELPERS ============
+
+// Returns true if the vehicle's blocker has already been scheduled (or has none).
+static bool isBlockerScheduled(const VehicleProposal& v, const std::set<int>& scheduled)
+{
+    return (v.blockedByVehicleId < 0) || scheduled.count(v.blockedByVehicleId) > 0;
+}
+
+// Checks whether vehicle v conflicts with any vehicle already in the given batch.
+static bool conflictsWithBatch(
+    const VehicleProposal& v,
+    const PassBatch& batch,
+    const std::map<int, VehicleProposal>& proposals)
+{
+    for (int i = 0; i < batch.numVehicles; i++) {
+        int eid = batch.vehicleIds[i];
+        int lA  = proposals.count(eid) ? proposals.at(eid).laneIndex    : 0;
+        int tA  = proposals.count(eid) ? proposals.at(eid).intendedTurn : 0;
+        if (RaftAppBase::movementsConflict(lA, tA, v.laneIndex, v.intendedTurn))
+            return true;
+    }
+    return false;
+}
+
+// Adds vehicle v to the current open batch, opening a new batch if there is a conflict.
+static void addVehicleToBatch(
+    const VehicleProposal& v,
+    PassScheduleEntry& schedule,
+    std::set<int>& scheduled,
+    const std::map<int, VehicleProposal>& proposals)
+{
+    while (schedule.numBatches < 16) {
+        PassBatch& b = schedule.batches[schedule.numBatches];
+        if (!conflictsWithBatch(v, b, proposals) && b.numVehicles < 8) {
+            b.vehicleIds[b.numVehicles++] = v.vehicleId;
+            scheduled.insert(v.vehicleId);
+            return;
+        }
+        if (b.numVehicles > 0) schedule.numBatches++;
+    }
+}
+
+// Fills the current open batch with non-conflicting vehicles from normalPool.
+// Removes scheduled vehicles from normalPool in place.
+// Does NOT open a new batch — only tops up the batch that priority scheduling opened.
+static void fillBatchWithNormals(
+    std::vector<VehicleProposal>& normalPool,
+    PassScheduleEntry& schedule,
+    std::set<int>& scheduled,
+    const std::map<int, VehicleProposal>& proposals)
+{
+    PassBatch& b = schedule.batches[schedule.numBatches];
+    for (auto it = normalPool.begin(); it != normalPool.end() && b.numVehicles < 8; ) {
+        if (!isBlockerScheduled(*it, scheduled)) { ++it; continue; }
+        if (!conflictsWithBatch(*it, b, proposals)) {
+            b.vehicleIds[b.numVehicles++] = it->vehicleId;
+            scheduled.insert(it->vehicleId);
+            it = normalPool.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
 // ============ DECISION ALGORITHM ============
 // Takes all collected proposals and returns the batch schedule.
 //
@@ -43,9 +107,10 @@ bool RaftAppBase::movementsConflict(int laneA, int turnA, int laneB, int turnB)
 //   Step 2 — Schedule ALL vehicles from priority lanes first, round-robining
 //             between priority lanes if more than one. Within each priority lane,
 //             vehicles go in queue order (blocker before blocked).
+//             After each vehicle is placed into a batch, fill remaining slots
+//             with compatible normal-lane vehicles (no conflict, blocker ready).
 //             This continues until the priority vehicle itself is scheduled.
-//   Step 3 — Schedule remaining (non-priority-lane) vehicles using the normal
-//             fairness algorithm (wait time, distance, lane).
+//   Step 3 — Schedule remaining vehicles using the normal fairness algorithm.
 //   If no priority lanes exist, skip to Step 3 directly.
 
 PassScheduleEntry RaftAppBase::computePassOrder(
@@ -56,61 +121,43 @@ PassScheduleEntry RaftAppBase::computePassOrder(
     memset(&schedule, 0, sizeof(schedule));
     std::set<int> scheduled;
 
-    auto blockerScheduled = [&](const VehicleProposal& v) {
-        return (v.blockedByVehicleId < 0) || scheduled.count(v.blockedByVehicleId) > 0;
-    };
-
-    // Helper: add one vehicle to the current batch; open a new batch if there's a conflict.
-    auto addToBatch = [&](const VehicleProposal& v) {
-        while (schedule.numBatches < 16) {
-            PassBatch& b = schedule.batches[schedule.numBatches];
-            bool conflict = false;
-            for (int i = 0; i < b.numVehicles && !conflict; i++) {
-                int eid = b.vehicleIds[i];
-                int lA  = proposals.count(eid) ? proposals.at(eid).laneIndex   : 0;
-                int tA  = proposals.count(eid) ? proposals.at(eid).intendedTurn : 0;
-                if (movementsConflict(lA, tA, v.laneIndex, v.intendedTurn)) conflict = true;
-            }
-            if (!conflict && b.numVehicles < 8) {
-                b.vehicleIds[b.numVehicles++] = v.vehicleId;
-                scheduled.insert(v.vehicleId);
-                return;
-            }
-            // Current batch is full or has a conflict — open a new one.
-            if (b.numVehicles > 0) schedule.numBatches++;
-        }
-    };
-
     // ---- Step 1: identify priority lanes ----
     std::set<int> priorityLanes;
-    for (const auto& kv : proposals)
-    {
+    for (const auto& kv : proposals) {
         if (kv.second.isPriority)
-        {
             priorityLanes.insert(kv.second.laneIndex);
-        }
     }
 
     if (!priorityLanes.empty()) {
         std::cout << "[PRIORITY] Priority vehicle detected in lane(s): ";
-        for (int l : priorityLanes)
-        {
-            std::cout << l << " ";
-        }
+        for (int l : priorityLanes) std::cout << l << " ";
         std::cout << std::endl;
     }
+
+    // Build normal pool (non-priority-lane vehicles) sorted by fairness criteria.
+    // This pool is used to top up each priority batch with compatible vehicles.
+    std::vector<VehicleProposal> normalPool;
+    for (const auto& kv : proposals) {
+        if (!priorityLanes.count(kv.second.laneIndex))
+            normalPool.push_back(kv.second);
+    }
+    std::sort(normalPool.begin(), normalPool.end(),
+              [](const VehicleProposal& a, const VehicleProposal& b) {
+                  if (a.isFirstInLane != b.isFirstInLane) return a.isFirstInLane > b.isFirstInLane;
+                  double waitDiff = a.waitingTimeMs - b.waitingTimeMs;
+                  if (std::abs(waitDiff) > 500.0) return waitDiff > 0;
+                  if (a.laneIndex != b.laneIndex) return a.laneIndex < b.laneIndex;
+                  return a.distanceToJunction < b.distanceToJunction;
+              });
 
     // ---- Step 2: schedule priority lanes (round-robin between them) ----
     // For each priority lane: schedule vehicles in queue order (closest to junction first)
     // until the priority vehicle in that lane is scheduled. Then that lane is "done".
 
-    // Build per-lane vehicle lists (sorted by distance, closest first)
     std::map<int, std::vector<VehicleProposal>> laneVehicles;
     for (const auto& kv : proposals) {
         if (priorityLanes.count(kv.second.laneIndex))
-        {
             laneVehicles[kv.second.laneIndex].push_back(kv.second);
-        }
     }
     for (auto& kv : laneVehicles) {
         std::sort(kv.second.begin(), kv.second.end(),
@@ -119,9 +166,7 @@ PassScheduleEntry RaftAppBase::computePassOrder(
                   });
     }
 
-    // Track which priority lanes still have their priority vehicle unscheduled
     std::set<int> activePriorityLanes = priorityLanes;
-    // Round-robin index across priority lanes
     std::vector<int> prioLaneOrder(priorityLanes.begin(), priorityLanes.end());
 
     bool progress = true;
@@ -130,16 +175,16 @@ PassScheduleEntry RaftAppBase::computePassOrder(
         for (int lane : prioLaneOrder) {
             if (!activePriorityLanes.count(lane)) continue;
             auto& lvec = laneVehicles[lane];
-            // Schedule the next unscheduled vehicle in this lane
             for (auto it = lvec.begin(); it != lvec.end(); ) {
                 if (scheduled.count(it->vehicleId)) { it = lvec.erase(it); continue; }
-                if (!blockerScheduled(*it)) { ++it; continue; }
+                if (!isBlockerScheduled(*it, scheduled)) { ++it; continue; }
                 bool wasAmb = it->isPriority;
-                addToBatch(*it);
+                addVehicleToBatch(*it, schedule, scheduled, proposals);
+                // Fill the batch opened for this priority vehicle with compatible normals.
+                fillBatchWithNormals(normalPool, schedule, scheduled, proposals);
                 it = lvec.erase(it);
                 progress = true;
                 if (wasAmb) {
-                    // Priority vehicle in this lane has been scheduled — lane loses priority
                     activePriorityLanes.erase(lane);
                     std::cout << "[PRIORITY] Priority vehicle in lane " << lane
                               << " scheduled — lane priority released." << std::endl;
@@ -149,35 +194,34 @@ PassScheduleEntry RaftAppBase::computePassOrder(
             if (lvec.empty()) activePriorityLanes.erase(lane);
         }
     }
-    // Flush any remaining batches from priority lanes (vehicles after the priority vehicle)
-    // They go into the pool for the normal algorithm below.
 
     // ---- Step 3: normal fairness algorithm for remaining vehicles ----
+    // Rebuild pool: remaining normals (from normalPool, minus those already pulled
+    // into priority batches) plus any priority-lane vehicles after the priority vehicle.
     std::vector<VehicleProposal> pool;
     for (const auto& kv : proposals) {
         if (!scheduled.count(kv.second.vehicleId))
-        {
             pool.push_back(kv.second);
-        }
     }
+    std::sort(pool.begin(), pool.end(),
+              [](const VehicleProposal& a, const VehicleProposal& b) {
+                  if (a.isFirstInLane != b.isFirstInLane) return a.isFirstInLane > b.isFirstInLane;
+                  double waitDiff = a.waitingTimeMs - b.waitingTimeMs;
+                  if (std::abs(waitDiff) > 500.0) return waitDiff > 0;
+                  if (a.laneIndex != b.laneIndex) return a.laneIndex < b.laneIndex;
+                  return a.distanceToJunction < b.distanceToJunction;
+              });
 
-    std::sort(pool.begin(), pool.end(), [](const VehicleProposal& a, const VehicleProposal& b) {
-        if (a.isFirstInLane != b.isFirstInLane) return a.isFirstInLane > b.isFirstInLane;
-        double waitDiff = a.waitingTimeMs - b.waitingTimeMs;
-        if (std::abs(waitDiff) > 500.0) return waitDiff > 0;
-        if (a.laneIndex != b.laneIndex) return a.laneIndex < b.laneIndex;
-        return a.distanceToJunction < b.distanceToJunction;
-    });
-
-    // Ensure current batch is committed before starting normal pool
+    // Commit the last batch opened by Step 2 (if non-empty) before starting Step 3.
     if (schedule.numBatches < 16 && schedule.batches[schedule.numBatches].numVehicles > 0)
         schedule.numBatches++;
 
     while (!pool.empty() && schedule.numBatches < 16) {
         PassBatch& batch = schedule.batches[schedule.numBatches];
 
+        // Pick the highest-priority vehicle whose blocker is already scheduled.
         auto primaryIt = pool.begin();
-        while (primaryIt != pool.end() && !blockerScheduled(*primaryIt)) ++primaryIt;
+        while (primaryIt != pool.end() && !isBlockerScheduled(*primaryIt, scheduled)) ++primaryIt;
         if (primaryIt == pool.end()) primaryIt = pool.begin();
 
         VehicleProposal primary = *primaryIt;
@@ -185,20 +229,16 @@ PassScheduleEntry RaftAppBase::computePassOrder(
         scheduled.insert(primary.vehicleId);
         pool.erase(primaryIt);
 
+        // Fill remaining slots with compatible vehicles.
         for (auto it = pool.begin(); it != pool.end() && batch.numVehicles < 8; ) {
-            if (!blockerScheduled(*it)) { ++it; continue; }
-            bool conflict = false;
-            for (int i = 0; i < batch.numVehicles && !conflict; i++) {
-                int eid = batch.vehicleIds[i];
-                int lA  = proposals.count(eid) ? proposals.at(eid).laneIndex   : 0;
-                int tA  = proposals.count(eid) ? proposals.at(eid).intendedTurn : 0;
-                if (movementsConflict(lA, tA, it->laneIndex, it->intendedTurn)) conflict = true;
-            }
-            if (!conflict) {
+            if (!isBlockerScheduled(*it, scheduled)) { ++it; continue; }
+            if (!conflictsWithBatch(*it, batch, proposals)) {
                 batch.vehicleIds[batch.numVehicles++] = it->vehicleId;
                 scheduled.insert(it->vehicleId);
                 it = pool.erase(it);
-            } else ++it;
+            } else {
+                ++it;
+            }
         }
         schedule.numBatches++;
     }

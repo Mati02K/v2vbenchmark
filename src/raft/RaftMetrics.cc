@@ -48,6 +48,7 @@ void RaftMetrics::writeVehicleJSON(
     const std::string& lane,
     const std::string& route,
     bool wasLeader,
+    bool isPriorityVehicle,
     const std::string& coordinationMethod,
     const std::string& transport,
     double stoppedMs,
@@ -81,8 +82,9 @@ void RaftMetrics::writeVehicleJSON(
     resultsFile_ << "    \"vehicle_id\": "          << vehicleId << ",\n";
     resultsFile_ << "    \"lane\": \""               << lane << "\",\n";
     resultsFile_ << "    \"route\": \""              << route << "\",\n";
-    resultsFile_ << "    \"was_leader\": "           << (wasLeader ? "true" : "false") << ",\n";
-    resultsFile_ << "    \"coordination_method\": \"" << coordinationMethod << "\",\n";
+    resultsFile_ << "    \"was_leader\": "              << (wasLeader ? "true" : "false") << ",\n";
+    resultsFile_ << "    \"is_priority_vehicle\": "    << (isPriorityVehicle ? "true" : "false") << ",\n";
+    resultsFile_ << "    \"coordination_method\": \""  << coordinationMethod << "\",\n";
     resultsFile_ << "    \"transport\": \""          << transport << "\",\n";
     resultsFile_ << "    \"cluster_mode\": \""       << clusterMode << "\",\n";
     resultsFile_ << "    \"timestamps_ms\": {\n";

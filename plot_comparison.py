@@ -87,13 +87,16 @@ def calculateMetrics(runsData):
         if rdPerVeh:
             metrics['raftDecisionTime'].append(sum(rdPerVeh))
 
-        # Throughput: raft vehicles / time span
-        raftPassed = [v['timestamps_ms']['passed'] for v in raftVehicles
-                      if v['timestamps_ms'].get('passed', 0) > 0]
-        if len(raftPassed) >= 1:
-            raftTimeMs = max(raftPassed) - min(raftPassed)
-            if raftTimeMs > 0:
-                metrics['throughput'].append(len(raftVehicles) / (raftTimeMs / 1000.0))
+        # Throughput: N / mean(passed - stopped) per vehicle
+        waitTimes = [
+            v['timestamps_ms']['passed'] - v['timestamps_ms']['stopped']
+            for v in raftVehicles
+            if v['timestamps_ms'].get('passed', 0) > 0 and v['timestamps_ms'].get('stopped', 0) > 0
+        ]
+        if waitTimes:
+            avgWaitMs = sum(waitTimes) / len(waitTimes)
+            if avgWaitMs > 0:
+                metrics['throughput'].append(len(raftVehicles) / (avgWaitMs / 1000.0))
 
         # Fallback rate per run
         fallbackCount = sum(1 for v in runData if v.get('coordination_method') == 'fallback')
@@ -303,75 +306,86 @@ def plotCdfWaitTime(mode):
 
 
 def plotAmbulanceWaitTime(mode):
-    """Bar chart: ambulance vs normal vehicle wait time, one subplot per vehicle count."""
-    ambulanceIds = {4: 3, 8: 7, 16: 14}
-
-    ambWait = {p: {} for p in PROTOCOLS}
+    """Bar chart: priority / normal / all vehicle wait time, one subplot per vehicle count.
+    Gracefully handles nopriority runs by showing only Normal + All bars."""
+    prioWait = {p: {} for p in PROTOCOLS}
     normWait = {p: {} for p in PROTOCOLS}
+    allWait  = {p: {} for p in PROTOCOLS}
 
     for protocol in PROTOCOLS:
         for vc in VEHICLE_COUNTS:
-            ambId = ambulanceIds.get(vc)
             runs = loadRunsForMode(PROTOCOL_PREFIXES[protocol], vc, mode)
-            ambTimes, normTimes = [], []
+            prioTimes, normTimes = [], []
             for runData in runs:
                 for v in runData:
                     if v.get('coordination_method') == 'fallback':
                         continue
-                    passedMs = v['timestamps_ms'].get('passed', 0)
+                    passedMs  = v['timestamps_ms'].get('passed', 0)
                     stoppedMs = v['timestamps_ms'].get('stopped', 0)
-                    if passedMs <= 0:
+                    if passedMs <= 0 or stoppedMs <= 0:
                         continue
-                    startedMs = v['timestamps_ms'].get('started_moving', 0)
-                    if stoppedMs > 0:
-                        latencyS = (passedMs - stoppedMs) / 1000.0
-                    elif startedMs > 0:
-                        latencyS = (passedMs - startedMs) / 1000.0
-                    else:
-                        continue
-                    if v['vehicle_id'] == ambId:
-                        ambTimes.append(latencyS)
+                    latencyS = (passedMs - stoppedMs) / 1000.0
+                    if v.get('is_priority_vehicle', False):
+                        prioTimes.append(latencyS)
                     else:
                         normTimes.append(latencyS)
-            ambWait[protocol][vc] = np.mean(ambTimes) if ambTimes else 0.0
-            normWait[protocol][vc] = np.mean(normTimes) if normTimes else 0.0
+            prioWait[protocol][vc] = np.mean(prioTimes) if prioTimes else None
+            normWait[protocol][vc] = np.mean(normTimes) if normTimes else None
+            allWait[protocol][vc]  = np.mean(prioTimes + normTimes) if (prioTimes or normTimes) else None
 
-    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(14, 5), sharey=False)
-    fig.suptitle(f'Wait Time: Ambulance vs Normal [{mode}]\nStopped to passed (seconds)',
-                 fontsize=13, fontweight='bold')
+    # Determine if any run had a priority vehicle at all
+    hasPrio = any(
+        prioWait[p][vc] is not None
+        for p in PROTOCOLS for vc in VEHICLE_COUNTS
+        if vc in prioWait[p]
+    )
 
-    barW = 0.3
-    groupGap = 0.9
-    ambColor = '#e74c3c'
+    prioColor = '#e74c3c'
     normColor = '#95a5a6'
+    allColor  = '#2ecc71'
+    barW      = 0.3
+    groupGap  = 1.2
+
+    if hasPrio:
+        barsPerGroup = 3  # Priority, Normal, All
+        titleStr = f'Wait Time: Priority vs Normal vs All [{mode}]\nStopped to passed (seconds)'
+    else:
+        barsPerGroup = 2  # Normal, All only
+        titleStr = f'Wait Time: All Vehicles [{mode}]\nStopped to passed (seconds)'
+
+    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(16, 5), sharey=False)
+    fig.suptitle(titleStr, fontsize=13, fontweight='bold')
 
     for col, vc in enumerate(VEHICLE_COUNTS):
         ax = axes[col]
-        xWave = np.array([0.0, barW])
-        xUdp = xWave + barW + groupGap
 
-        wAmb = ambWait['wave'].get(vc, 0)
-        wNorm = normWait['wave'].get(vc, 0)
-        uAmb = ambWait['udp'].get(vc, 0)
-        uNorm = normWait['udp'].get(vc, 0)
+        wPrio = prioWait['wave'].get(vc) or 0.0
+        wNorm = normWait['wave'].get(vc) or 0.0
+        wAll  = allWait['wave'].get(vc)  or 0.0
+        uPrio = prioWait['udp'].get(vc)  or 0.0
+        uNorm = normWait['udp'].get(vc)  or 0.0
+        uAll  = allWait['udp'].get(vc)   or 0.0
 
-        ax.bar(xWave[0], wAmb, width=barW, color=ambColor, alpha=0.9,
-               edgecolor='black', linewidth=0.7)
-        ax.bar(xWave[1], wNorm, width=barW, color=normColor, alpha=0.9,
-               edgecolor='black', linewidth=0.7)
-        ax.bar(xUdp[0], uAmb, width=barW, color=ambColor, alpha=0.9,
-               edgecolor='black', linewidth=0.7, hatch='//')
-        ax.bar(xUdp[1], uNorm, width=barW, color=normColor, alpha=0.9,
-               edgecolor='black', linewidth=0.7, hatch='//')
+        if hasPrio:
+            barVals   = [(wPrio, prioColor), (wNorm, normColor), (wAll, allColor)]
+            udpVals   = [(uPrio, prioColor), (uNorm, normColor), (uAll, allColor)]
+        else:
+            barVals   = [(wNorm, normColor), (wAll, allColor)]
+            udpVals   = [(uNorm, normColor), (uAll, allColor)]
 
-        for xPos, val in [(xWave[0], wAmb), (xWave[1], wNorm),
-                          (xUdp[0], uAmb), (xUdp[1], uNorm)]:
-            if val > 0:
-                ax.text(xPos, val + 0.03, f'{val:.1f}s', ha='center', va='bottom',
-                        fontsize=8, fontweight='bold')
+        xWave = np.arange(len(barVals), dtype=float) * barW
+        xUdp  = xWave + barW * barsPerGroup + groupGap
+
+        for entries, xPositions, hatch in [(barVals, xWave, None), (udpVals, xUdp, '//')]:
+            for xPos, (val, color) in zip(xPositions, entries):
+                ax.bar(xPos, val, width=barW, color=color, alpha=0.9,
+                       edgecolor='black', linewidth=0.7, hatch=hatch)
+                if val > 0:
+                    ax.text(xPos, val + 0.03, f'{val:.1f}s', ha='center', va='bottom',
+                            fontsize=8, fontweight='bold')
 
         midWave = float(np.mean(xWave))
-        midUdp = float(np.mean(xUdp))
+        midUdp  = float(np.mean(xUdp))
         ax.annotate('WAVE', xy=(midWave, -0.09), xycoords=('data', 'axes fraction'),
                     ha='center', va='top', fontsize=9, fontweight='bold',
                     color=PROTOCOL_COLORS['wave'])
@@ -380,21 +394,24 @@ def plotAmbulanceWaitTime(mode):
                     color=PROTOCOL_COLORS['udp'])
 
         ax.set_xticks([])
-        ax.set_title(f'{vc} Vehicles\n(ambulance=V{ambulanceIds[vc]})',
-                     fontsize=11, fontweight='bold')
+        ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
         if col == 0:
             ax.set_ylabel('Mean Crossing Time (s)', fontsize=10)
-        ax.set_xlim(-barW * 0.8, float(xUdp[1]) + barW * 1.2)
-        maxVal = max(wAmb, wNorm, uAmb, uNorm, 0.1)
+        ax.set_xlim(-barW * 0.8, float(xUdp[-1]) + barW * 1.2)
+        allVals = [wPrio, wNorm, wAll, uPrio, uNorm, uAll] if hasPrio else [wNorm, wAll, uNorm, uAll]
+        maxVal = max(allVals + [0.1])
         ax.set_ylim(0, maxVal * 1.25 + 0.5)
         ax.grid(True, alpha=0.3, axis='y')
 
         if col == 0:
-            legendElements = [
-                Patch(facecolor=ambColor, edgecolor='black', label='Ambulance'),
+            legendElements = []
+            if hasPrio:
+                legendElements.append(Patch(facecolor=prioColor, edgecolor='black', label='Priority vehicle'))
+            legendElements += [
                 Patch(facecolor=normColor, edgecolor='black', label='Normal vehicles'),
-                Patch(facecolor='white', edgecolor='black', label='WAVE (solid)'),
-                Patch(facecolor='white', edgecolor='black', hatch='//', label='UDP (hatched)'),
+                Patch(facecolor=allColor,  edgecolor='black', label='All vehicles'),
+                Patch(facecolor='white',   edgecolor='black', label='WAVE (solid)'),
+                Patch(facecolor='white',   edgecolor='black', hatch='//', label='UDP (hatched)'),
             ]
             ax.legend(handles=legendElements, fontsize=8, loc='upper right')
 

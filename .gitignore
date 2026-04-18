@@ -1,6 +1,4 @@
 benchmark/out/simulations/**/results/*.vec
-CLAUDE.md
-.claude/
 docs/
 ./out/
 ./simulations/intersection_8/results/General-#0.vec
@@ -8,13 +6,14 @@ simulations/simple_intersection_4/.qtenvrc
 # OMNeT++ result files
 *.vec
 *.sca
+# Results — ignore data files, keep plots
 results/
+!results/*.png
 # Build artifacts
 out/
+src/benchmark
 src/benchmark_dbg
 *.o
 *.exe
 *.so
-
-# Debug binaries
-benchmark_dbg
+__pycache__/

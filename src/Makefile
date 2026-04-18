@@ -108,7 +108,7 @@ endif
 MSGC:=$(MSGC) --msg6
 
 # RAFT library C source files
-RAFT_DIR = ../third_party/raft
+RAFT_DIR = ../lib/raft
 RAFT_OBJS = \
     $O/raft_c/raft_server.o \
     $O/raft_c/raft_server_properties.o \
@@ -117,6 +117,17 @@ RAFT_OBJS = \
 
 # Add RAFT objects to the link
 EXTRA_OBJS += $(RAFT_OBJS)
+
+# Crypto library
+CRYPTO_DIR  = ../lib/crypto
+CRYPTO_OBJS = $O/crypto/CryptoAuth.o
+EXTRA_OBJS  += $(CRYPTO_OBJS)
+LIBS        += -lssl -lcrypto
+
+$O/crypto/CryptoAuth.o: $(CRYPTO_DIR)/CryptoAuth.cc
+	@mkdir -p $O/crypto
+	@echo "Compiling Crypto: $<"
+	$(Q)$(CXX) -c $(CXXFLAGS) $(INCLUDE_PATH) -o $@ $<
 
 # Force RAFT files to be built before any .cc files are compiled
 # This ensures they exist when $(wildcard) is evaluated during linking

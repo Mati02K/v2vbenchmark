@@ -294,9 +294,12 @@ protected:
 
     // ---- RaftDecision.cc: pure crossing-order algorithm ----
     int               getLaneIndex(const std::string& lane);
-    bool              movementsConflict(int laneA, int turnA, int laneB, int turnB);
     PassScheduleEntry computePassOrder(const std::map<int, VehicleProposal>& proposals,
                                        const std::set<int>& activeVehicles);
+
+public:
+    // Public so file-scope helpers in RaftDecision.cc can call it without friend boilerplate.
+    static bool movementsConflict(int laneA, int turnA, int laneB, int turnB);
 
     // ---- RaftCoordination.cc: send QC/schedule to all + execute the pass ----
     void sendPassOrderBroadcast();

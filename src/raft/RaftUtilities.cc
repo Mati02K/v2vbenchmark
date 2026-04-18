@@ -129,7 +129,7 @@ void RaftAppBase::calculateWayOfSight()
 
         // Step 2: use TraCI leader to determine physical queue position.
         try {
-            auto leader = traciVehicle_->getLeader(intersectionStopDistance_ * 4.0);
+            auto leader = traciVehicle_->getLeader(intersectionStopDistance_ * (totalVehicles_ / 2.0));
             if (leader.first.empty()) {
                 wayOfSight_         = true;
                 vehicleInFrontOfMe_ = -1;
@@ -320,6 +320,7 @@ void RaftAppBase::outputMetricsJSON()
         myLane_,
         myRoute_,
         wasElectedLeader_,
+        isPriorityVehicle_,
         coordinationMethod_,
         transportName_,
         timeStopped_.dbl()       * 1000.0,

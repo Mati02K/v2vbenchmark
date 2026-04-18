@@ -578,7 +578,6 @@ void RaftAppBase::handleFrontStop(const std::string& roadId, double dist)
                 resumeMovement();
             }
         } else {
-            timeStopped_ = NOW;
             stopVehicle();
             std::cout << simTime() << " [STOP_CHECK][V" << myId_ << "] STOPPED (front) dist="
                       << dist << "m batch=" << myBatch_ << " curBatch=" << currentBatch_
@@ -599,7 +598,6 @@ void RaftAppBase::handleFrontStop(const std::string& roadId, double dist)
 void RaftAppBase::handleQueuedStop(const std::string& roadId, double dist, double speed)
 {
     hasStoppedAtIntersection_ = true;
-    timeStopped_     = NOW;
     intersectionEdge_ = roadId;
     calculateWayOfSight();
     std::cout << simTime() << " [STOP_CHECK][V" << myId_ << "] QUEUED (no hard stop) dist=" << dist
@@ -620,6 +618,17 @@ void RaftAppBase::checkAndStopAtIntersection()
     }
 
     if (hasPassedIntersection_ || !traciVehicle_) return;
+
+    // Record first time vehicle enters the intersection zone, even if already moving.
+    if (timeStopped_ == SIMTIME_ZERO) {
+        try {
+            double dist = getDistanceToJunction();
+            if (dist >= 0 && dist < intersectionStopDistance_ * (totalVehicles_ / 2.0)) {
+                timeStopped_ = NOW;
+            }
+        } catch (...) {}
+    }
+
     if (timeStartedMoving_ > SIMTIME_ZERO) return;
 
     try {
@@ -643,7 +652,7 @@ void RaftAppBase::checkAndStopAtIntersection()
 
         bool closeEnough = (dist >= 0 && dist <= intersectionStopDistance_);
         bool queued      = (!closeEnough && speed < 1.5 &&
-                            dist >= 0 && dist < intersectionStopDistance_ * 4.0 &&
+                            dist >= 0 && dist < intersectionStopDistance_ * (totalVehicles_ / 2.0) &&
                             !hasStoppedAtIntersection_);
 
         if (closeEnough) {
@@ -671,7 +680,7 @@ void RaftAppBase::checkAndAdvanceInQueue()
         if (dist < 0 || dist <= intersectionStopDistance_) return;  // handled by checkAndStop
 
         // Ask TraCI for the leading vehicle and gap ahead
-        auto leader = traciVehicle_->getLeader(intersectionStopDistance_ * 4.0);
+        auto leader = traciVehicle_->getLeader(intersectionStopDistance_ * (totalVehicles_ / 2.0));
 
         // Gap opened: no leader visible, or gap > 1× stop distance
         bool gapOpened = leader.first.empty() ||

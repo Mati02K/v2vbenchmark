@@ -20,6 +20,7 @@ public:
         const std::string& lane,
         const std::string& route,
         bool wasLeader,
+        bool isPriorityVehicle,
         const std::string& coordinationMethod,
         const std::string& transport,         // "udp" or "wave"
         double stoppedMs,
