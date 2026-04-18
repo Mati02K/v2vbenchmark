@@ -6,6 +6,8 @@ simulations/simple_intersection_4/.qtenvrc
 # OMNeT++ result files
 *.vec
 *.sca
+# Stale simulation artifacts
+simulations/**/*.json
 # Results — ignore data files, keep plots
 results/
 !results/*.png
