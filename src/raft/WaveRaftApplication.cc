@@ -224,11 +224,19 @@ void WaveRaftApplication::handleSelfMsg(cMessage* msg)
 {
     if (msg == checkTimer_) {
         checkAndStopAtIntersection();
-        checkAndAdvanceInQueue();
+
+        // if there is a front vehicle who moved at the intersection
+        if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) 
+        {
+            checkAndAdvanceInQueue();
+        }
+
+        // vehicle left
         if ((hasStoppedAtIntersection_ || timeStartedMoving_ > SIMTIME_ZERO) && !hasPassedIntersection_)
         {
             checkIfLeftIntersection();
         }
+
         // only reschedule if we haven't passed the intersection yet; once we've passed, we can stop all timers and ignore future messages
         // this saves msg sent in bandwidth
         if (!hasPassedIntersection_)
@@ -252,8 +260,6 @@ void WaveRaftApplication::handleSelfMsg(cMessage* msg)
     else if (strcmp(msg->getName(), "oneshotTimer") == 0) {
         auto it = oneshotCallbacks_.find(msg);
         if (it != oneshotCallbacks_.end()) {
-            std::cout << std::fixed << std::setprecision(1) << (simTime().dbl()*1000.0)
-                      << "ms Vehicle " << myId_ << " EXECUTING oneshot cb" << std::endl;
             auto fn = it->second;
             oneshotCallbacks_.erase(it);
             oneshotTimers_.erase(std::remove(oneshotTimers_.begin(), oneshotTimers_.end(), msg),
@@ -323,9 +329,6 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             break;
         case benchmark::COORD_STATUS_RESPONSE:
             handleDbResponse(payload, protocolSender);
-            break;
-        case benchmark::COORD_VEHICLE_PASSED:
-            if (payload.size() >= 1) handleVehiclePassed((int)payload[0]);
             break;
         case benchmark::COORD_VEHICLE_LEFT:
             if (payload.size() >= sizeof(VehicleLeftEntry)) {
@@ -413,8 +416,6 @@ double WaveRaftApplication::getRandomDouble(double lo, double hi)
 void WaveRaftApplication::scheduleOneshotMs(double delayMs, std::function<void()> fn)
 {
     cMessage* tmsg = new cMessage("oneshotTimer");
-    std::cout << std::fixed << std::setprecision(1) << (simTime().dbl()*1000.0) 
-              << "ms Vehicle " << myId_ << " scheduling oneshot IN " << delayMs << "ms" << std::endl;
     oneshotCallbacks_[tmsg] = fn;
     oneshotTimers_.push_back(tmsg);
     scheduleAt(simTime() + SimTime(delayMs / 1000.0), tmsg);

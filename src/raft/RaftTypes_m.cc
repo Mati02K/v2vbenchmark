@@ -1,5 +1,5 @@
 //
-// Generated file, do not edit! Created by nedtool 5.6 from raft/RaftTypes.msg.
+// Generated file, do not edit! Created by nedtool 5.6 from RaftTypes.msg.
 //
 
 // Disable warnings about unused variables, empty switch stmts, etc:
@@ -26,7 +26,6 @@
 
 #include <iostream>
 #include <sstream>
-#include <memory>
 #include "RaftTypes_m.h"
 
 namespace omnetpp {
@@ -68,7 +67,7 @@ void doParsimUnpacking(omnetpp::cCommBuffer *buffer, std::list<T,A>& l)
 {
     int n;
     doParsimUnpacking(buffer, n);
-    for (int i = 0; i < n; i++) {
+    for (int i=0; i<n; i++) {
         l.push_back(T());
         doParsimUnpacking(buffer, l.back());
     }
@@ -88,7 +87,7 @@ void doParsimUnpacking(omnetpp::cCommBuffer *buffer, std::set<T,Tr,A>& s)
 {
     int n;
     doParsimUnpacking(buffer, n);
-    for (int i = 0; i < n; i++) {
+    for (int i=0; i<n; i++) {
         T x;
         doParsimUnpacking(buffer, x);
         s.insert(x);
@@ -111,7 +110,7 @@ void doParsimUnpacking(omnetpp::cCommBuffer *buffer, std::map<K,V,Tr,A>& m)
 {
     int n;
     doParsimUnpacking(buffer, n);
-    for (int i = 0; i < n; i++) {
+    for (int i=0; i<n; i++) {
         K k; V v;
         doParsimUnpacking(buffer, k);
         doParsimUnpacking(buffer, v);
@@ -149,39 +148,11 @@ void doParsimUnpacking(omnetpp::cCommBuffer *, T& t)
 
 }  // namespace omnetpp
 
-namespace {
-template <class T> inline
-typename std::enable_if<std::is_polymorphic<T>::value && std::is_base_of<omnetpp::cObject,T>::value, void *>::type
-toVoidPtr(T* t)
-{
-    return (void *)(static_cast<const omnetpp::cObject *>(t));
-}
-
-template <class T> inline
-typename std::enable_if<std::is_polymorphic<T>::value && !std::is_base_of<omnetpp::cObject,T>::value, void *>::type
-toVoidPtr(T* t)
-{
-    return (void *)dynamic_cast<const void *>(t);
-}
-
-template <class T> inline
-typename std::enable_if<!std::is_polymorphic<T>::value, void *>::type
-toVoidPtr(T* t)
-{
-    return (void *)static_cast<const void *>(t);
-}
-
-}
-
 namespace benchmark {
 
 // forward
 template<typename T, typename A>
 std::ostream& operator<<(std::ostream& out, const std::vector<T,A>& vec);
-
-// Template rule to generate operator<< for shared_ptr<T>
-template<typename T>
-inline std::ostream& operator<<(std::ostream& out,const std::shared_ptr<T>& t) { return out << t.get(); }
 
 // Template rule which fires if a struct or class doesn't have operator<<
 template<typename T>
@@ -200,7 +171,7 @@ inline std::ostream& operator<<(std::ostream& out, const std::vector<T,A>& vec)
         out << *it;
     }
     out.put('}');
-
+    
     char buf[32];
     sprintf(buf, " (size=%u)", (unsigned int)vec.size());
     out.write(buf, strlen(buf));
@@ -219,7 +190,6 @@ EXECUTE_ON_STARTUP(
     e->insert(RAFT_APPEND_ENTRIES_RESPONSE, "RAFT_APPEND_ENTRIES_RESPONSE");
     e->insert(COORD_STATUS_REQUEST, "COORD_STATUS_REQUEST");
     e->insert(COORD_STATUS_RESPONSE, "COORD_STATUS_RESPONSE");
-    e->insert(COORD_VEHICLE_PASSED, "COORD_VEHICLE_PASSED");
     e->insert(COORD_VEHICLE_LEFT, "COORD_VEHICLE_LEFT");
     e->insert(COORD_PASS_ORDER_BROADCAST, "COORD_PASS_ORDER_BROADCAST");
     e->insert(QC_SIGN_REQUEST, "QC_SIGN_REQUEST");

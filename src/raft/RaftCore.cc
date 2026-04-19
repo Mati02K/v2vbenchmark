@@ -11,7 +11,7 @@
 //   7. tryAssembleQC() assembles QC → calls sendPassOrderBroadcast() (RaftCoordination.cc)
 
 #include "raft/RaftAppBase.h"
-#include "raft/RaftLogger.h"
+#include "raft/RaftTypes_m.h"
 
 #include <algorithm>
 #include <cstring>
@@ -27,23 +27,11 @@ extern "C" {
 // ============ RAFT PERIODIC ============
 
 // ---- checkElectionFailures --------------------------------------------------
-// Increments failedElectionCount_ when term advances without this node winning.
-// Activates fallback if too many consecutive failures while stopped.
+// Tracks election rounds for metrics.
 void RaftAppBase::checkElectionFailures(raft_term_t currentTerm)
 {
     if (currentTerm <= lastCheckedTerm_) return;
     electionRounds_++;
-    if (!raft_is_leader(raftServer_)) {
-        failedElectionCount_++;
-        if (failedElectionCount_ >= maxFailedElections_
-            && hasStoppedAtIntersection_ && !hasCommittedOrder_) {
-            isFallbackMode_     = true;
-            coordinationMethod_ = "fallback";
-            handleFallback();
-        }
-    } else {
-        failedElectionCount_ = 0;
-    }
     lastCheckedTerm_ = currentTerm;
 }
 
@@ -60,45 +48,6 @@ void RaftAppBase::checkLeadershipChange()
     }
 }
 
-// ---- checkCoordinationTimeout -----------------------------------------------
-// Cluster formed but coordination is stuck (STATUS_REQUEST responses lost, etc.).
-// Skips if a follower already has a known leader (leader is still working).
-void RaftAppBase::checkCoordinationTimeout(simtime_t now)
-{
-    // Follower with a known leader — leader is in charge, do not time out.
-    if (!isLeader_ && raftServer_) {
-        if (raft_get_current_leader(raftServer_) != -1) return;
-    }
-
-    simtime_t refTime;
-    if (isLeader_ && timeElected_ > SIMTIME_ZERO) {
-        refTime = timeElected_;
-    } else {
-        refTime = (timeStopped_ > timeClusterFormed_) ? timeStopped_ : timeClusterFormed_;
-    }
-
-    double extraPerVehicle = electionTimeoutBaseMs_ / 1000.0;
-    double raftTimeout = (intersectionStopTimeMs_ + statusCollectionTimeoutMs_ +
-                          electionTimeoutBaseMs_ * 4 + electionTimeoutJitterMs_ * 2 +
-                          totalVehicles_ * extraPerVehicle * 1000.0 + 15000) / 1000.0;
-
-    if ((now - refTime).dbl() > raftTimeout) {
-        RAFT_LOG("RAFT TIMEOUT: " << (now - refTime).dbl() * 1000.0
-                 << "ms since ref (threshold=" << raftTimeout * 1000.0 << "ms)");
-        handleFallback();
-    }
-}
-
-// ---- checkDiscoveryTimeout --------------------------------------------------
-// Safety net: cluster never formed (discovery beacons never reached enough vehicles).
-void RaftAppBase::checkDiscoveryTimeout(simtime_t now)
-{
-    double discTimeout = 15.0 + totalVehicles_ * 2.0;
-    if ((now - timeStopped_).dbl() > discTimeout) {
-        RAFT_LOG("DISCOVERY TIMEOUT (safety net): " << (now - timeStopped_).dbl() * 1000.0 << "ms");
-        handleFallback();
-    }
-}
 
 // ---- processRaftPeriodic ----------------------------------------------------
 // Called every 20ms. Ticks the RAFT library and runs watchdog checks.
@@ -114,33 +63,20 @@ void RaftAppBase::processRaftPeriodic()
     int msecElapsed = static_cast<int>(delta.dbl() * 1000.0);
     if (msecElapsed <= 0) return;
 
-    static int print_count = 0;
-    if (print_count++ < 10) {
-        RAFT_LOG("processRaftPeriodic delta=" << delta << " ms=" << msecElapsed);
-    }
-
     // Tick the RAFT library — sends heartbeats, triggers elections.
     int old_state = raft_get_state(raftServer_);
     raft_periodic(raftServer_, msecElapsed);
     int new_state = raft_get_state(raftServer_);
 
     if (old_state != new_state) {
-        RAFT_LOG("RAFT STATE " << old_state << " -> " << new_state);
-        if (new_state == 2) RAFT_LOG("CANDIDATE — starting election");
+        std::cout << simTime() << " [DBG][V" << myId_ << "] RAFT STATE " << old_state << " -> " << new_state << std::endl;
+        if (new_state == 2) {
+            std::cout << simTime() << " [DBG][V" << myId_ << "] CANDIDATE — starting election" << std::endl;
+        }
     }
 
     checkElectionFailures(raft_get_current_term(raftServer_));
-    if (isFallbackMode_) return;  // checkElectionFailures may have activated fallback
-
     checkLeadershipChange();
-
-    if (hasStoppedAtIntersection_ && !hasCommittedOrder_ && !isFallbackMode_) {
-        if (timeClusterFormed_ > SIMTIME_ZERO) {
-            checkCoordinationTimeout(now);
-        } else {
-            checkDiscoveryTimeout(now);
-        }
-    }
 }
 
 // ============ RAFT STATIC CALLBACKS ============
@@ -183,9 +119,8 @@ int RaftAppBase::logGetNodeId(raft_server_t*, void* user_data,
 
 int RaftAppBase::doSendRequestVote(raft_node_t* node, msg_requestvote_t* msg)
 {
-    RAFT_LOG("sendRequestVote called for node " << raft_node_get_id(node));
     auto data = serializeRequestVote(msg);
-    sendRaftToPeer(raft_node_get_id(node) - 1, /*RAFT_REQUEST_VOTE*/ 32, data);
+    sendRaftToPeer(raft_node_get_id(node) - 1, benchmark::RAFT_REQUEST_VOTE, data);
     return 0;
 }
 
@@ -196,91 +131,54 @@ int RaftAppBase::doSendAppendEntries(raft_node_t* node, msg_appendentries_t* msg
     int targetVehicleId = static_cast<int>(reinterpret_cast<intptr_t>(udata));
     if (activeVehicles_.find(targetVehicleId) == activeVehicles_.end()) return 0;
 
-    RAFT_LOG_LEADER("SENDING AppendEntries to vehicle " << targetVehicleId
-                    << " (n_entries=" << msg->n_entries
-                    << ", leader_commit=" << msg->leader_commit << ")");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] SENDING AppendEntries to V" << targetVehicleId
+              << " n_entries=" << msg->n_entries << " leader_commit=" << msg->leader_commit << std::endl;
 
     auto data = serializeAppendEntries(msg);
-    sendRaftToPeer(targetVehicleId, /*RAFT_APPEND_ENTRIES*/ 0x22, data);
+    sendRaftToPeer(targetVehicleId, benchmark::RAFT_APPEND_ENTRIES, data);
     return 0;
 }
 
 int RaftAppBase::doLogOffer(raft_entry_t* entry, raft_index_t entry_idx)
 {
-    RAFT_LOG("doLogOffer entry #" << entry_idx << " (len=" << entry->data.len << ")");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] doLogOffer entry #" << entry_idx << " len=" << entry->data.len << std::endl;
     return (entry->data.len >= 1) ? 0 : -1;
 }
 
 int RaftAppBase::doLogGetNodeId(raft_entry_t* entry, raft_index_t entry_idx)
 {
-    if (!entry || entry->data.len < 1) return -1;
-    uint8_t* data = static_cast<uint8_t*>(entry->data.buf);
-    LogEntryType type = static_cast<LogEntryType>(data[0]);
-
-    if (type == VEHICLE_LEFT && entry->data.len >= sizeof(VehicleLeftEntry) + 1) {
-        VehicleLeftEntry* leftEntry = reinterpret_cast<VehicleLeftEntry*>(data + 1);
-        return getNodeIdFromVehicleId(leftEntry->vehicleId);
-    }
     return -1;
 }
 
-// Once quorum is reached and entry is committed, this callback applies the log entry to the state machine (pass order, vehicle left).
+// Once quorum is reached, apply the committed pass schedule.
 int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
 {
-    RAFT_LOG("doApplyLog entry #" << entry_idx
-             << " (lastApplied=" << lastAppliedIndex_
-             << ", len=" << entry->data.len << ")");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] doApplyLog entry #" << entry_idx
+              << " lastApplied=" << lastAppliedIndex_ << " len=" << entry->data.len << std::endl;
 
     if (entry_idx <= lastAppliedIndex_) return 0;
-    if (entry->data.len < 1)           return 0;
+    if (entry->data.len < sizeof(PassScheduleEntry)) return 0;
 
-    uint8_t* data       = static_cast<uint8_t*>(entry->data.buf);
-    uint8_t  entry_type = data[0];
+    PassScheduleEntry* schedule = reinterpret_cast<PassScheduleEntry*>(entry->data.buf);
+    std::cout << simTime() << " [DBG][V" << myId_ << "] APPLYING pass schedule entry #" << entry_idx
+              << " (" << schedule->numBatches << " batches)" << std::endl;
 
-    if (entry_type == PASS_ORDER) {
-        PassScheduleEntry* schedule = reinterpret_cast<PassScheduleEntry*>(data + 1);
-        RAFT_LOG("APPLYING PASS_ORDER entry #" << entry_idx
-                 << " (" << schedule->numBatches << " batches)");
+    memcpy(&committedSchedule_, schedule, sizeof(PassScheduleEntry));
+    hasCommittedOrder_ = true;
+    if (hasStoppedAtIntersection_ && timeStopped_ > SIMTIME_ZERO) {
+        timeOrderCommitted_ = NOW;
+    }
+    logEntriesCommitted_++;
+    lastAppliedIndex_ = entry_idx;
 
-        memcpy(&committedSchedule_, schedule, sizeof(PassScheduleEntry));
-        hasCommittedOrder_ = true;
-        if (hasStoppedAtIntersection_ && timeStopped_ > SIMTIME_ZERO) {
-            timeOrderCommitted_ = NOW;
-        }
-        logEntriesCommitted_++;
-        lastAppliedIndex_ = entry_idx;
-
-        if (proposedTimes_.count(entry_idx)) {
-            double delta = (NOW - proposedTimes_[entry_idx]).dbl();
-            totalRaftDecisionTimeSec_ += delta;
-            proposedTimes_.erase(entry_idx);
-        }
-
-        // QC was already assembled before this commit — start movement and notify queued vehicles.
-        // All cluster members broadcast so queued vehicles get the schedule even if one packet drops.
-        applyCommittedPassOrder();
-        sendPassOrderBroadcast();
-        return 0;
+    if (proposedTimes_.count(entry_idx)) {
+        double delta = (NOW - proposedTimes_[entry_idx]).dbl();
+        totalRaftDecisionTimeSec_ += delta;
+        proposedTimes_.erase(entry_idx);
     }
 
-    if (entry_type == VEHICLE_LEFT) {
-        VehicleLeftEntry* leftEntry = reinterpret_cast<VehicleLeftEntry*>(data + 1);
-        RAFT_LOG("APPLYING VEHICLE_LEFT entry #" << entry_idx
-                 << " - vehicle " << leftEntry->vehicleId
-                 << " left batch " << leftEntry->batchId);
-        logEntriesCommitted_++;
-        lastAppliedIndex_ = entry_idx;
-
-        if (proposedTimes_.count(entry_idx)) {
-            double delta = (NOW - proposedTimes_[entry_idx]).dbl();
-            totalRaftDecisionTimeSec_ += delta;
-            proposedTimes_.erase(entry_idx);
-        }
-
-        applyVehicleLeftFromRaft(leftEntry->vehicleId, leftEntry->batchId);
-        return 0;
-    }
-
+    sendPassOrderBroadcast();
+    applyCommittedPassOrder();
     return 0;
 }
 
@@ -408,10 +306,8 @@ void RaftAppBase::onBecameLeader()
         std::cout << v << " ";
     }
     std::cout << "]" << std::endl;
-    RAFT_LOG("BECAME LEADER (term=" << raft_get_current_term(raftServer_) << ")");
     wasElectedLeader_     = true;
     timeElected_          = NOW;
-    failedElectionCount_  = 0;
 
     if (hasCommittedOrder_) return;
 
@@ -424,7 +320,7 @@ void RaftAppBase::onBecameLeader()
 
 void RaftAppBase::onLostLeadership()
 {
-    RAFT_LOG("LOST leadership");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] LOST leadership" << std::endl;
     waitingForStatus_ = false;
 }
 
@@ -435,12 +331,11 @@ void RaftAppBase::sendStatusRequest()
     std::cout << simTime() << " [DBG][V" << myId_ << "] SEND_STATUS_REQUEST to "
               << activeVehicles_.size() << " active vehicles, timeout="
               << statusCollectionTimeoutMs_ << "ms" << std::endl;
-    RAFT_LOG_LEADER("sending STATUS_REQUEST (timeout=" << statusCollectionTimeoutMs_ << "ms)");
 
     // Payload carries senderId — must be non-empty for INET UDP compatibility
     std::vector<uint8_t> data(sizeof(int));
     memcpy(data.data(), &myId_, sizeof(int));
-    sendRaftBroadcast(/*COORD_STATUS_REQUEST*/ 0x30, data);
+    sendRaftBroadcast(benchmark::COORD_STATUS_REQUEST, data);
 
     timeStatusRequestSent_ = NOW;
     waitingForStatus_     = true;
@@ -486,7 +381,7 @@ void RaftAppBase::sendDbResponse(int toLeader)
         off += sizeof(VehicleProposal);
     }
 
-    sendRaftToPeer(toLeader, /*COORD_DB_RESPONSE*/ 0x31, data);
+    sendRaftToPeer(toLeader, benchmark::COORD_STATUS_RESPONSE, data);
 
     std::cout << simTime() << " [DBG][V" << myId_ << "] DB_RESPONSE sent to V" << toLeader
               << " numEntries=" << numEntries << std::endl;
@@ -547,7 +442,7 @@ void RaftAppBase::collectStatusAndDecide()
         statusCollectionTimeMs_ += (NOW - timeStatusRequestSent_).dbl() * 1000.0;
     }
 
-    RAFT_LOG_LEADER("status collection timeout — collected DBs from " << collectedLeaderDBs_.size() << " leaders");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] status collection timeout — DBs from " << collectedLeaderDBs_.size() << " leaders" << std::endl;
     proposePassOrder();
 }
 
@@ -598,7 +493,7 @@ void RaftAppBase::proposePassOrder()
             dflt.distanceToJunction = 0.0;
             allProposals[vid]       = dflt;
             allVehicleIds.insert(vid);
-            RAFT_LOG_LEADER("lane leader " << vid << " DB response lost — using default proposal");
+            std::cout << simTime() << " [DBG][V" << myId_ << "] lane leader V" << vid << " DB response lost — using default proposal" << std::endl;
         }
     }
 
@@ -634,7 +529,7 @@ void RaftAppBase::proposePassOrder()
     if (schedule.numBatches == 0) return;
 
     // Log schedule
-    RAFT_LOG_LEADER("PASS_SCHEDULE computed (" << schedule.numBatches << " batches) — starting QC signing before RAFT submission:");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_SCHEDULE computed (" << schedule.numBatches << " batches)" << std::endl;
     for (int b = 0; b < schedule.numBatches; b++) {
         std::cout << "  Batch " << b << ": [";
         for (int v = 0; v < schedule.batches[b].numVehicles; v++) {
@@ -654,16 +549,6 @@ void RaftAppBase::proposePassOrder()
     sendQCSignRequest();
 }
 
-void RaftAppBase::applyVehicleLeftFromRaft(int vehicleId, int batchId)
-{
-    RAFT_LOG("RAFT-confirmed: vehicle " << vehicleId
-             << " left batch " << batchId);
-    markRaftNodeInactive(vehicleId);
-    activeVehicles_.erase(vehicleId);
-    vehiclesLeftInBatch_.insert(vehicleId);
-    checkBatchAdvance();
-}
-
 // ============ QUORUM CERTIFICATE ============
 
 // Leader broadcasts [round || pendingSchedule_] to all cluster members asking them to sign.
@@ -679,7 +564,7 @@ void RaftAppBase::sendQCSignRequest()
     memcpy(data.data(),                    &rn,               sizeof(uint32_t));
     memcpy(data.data() + sizeof(uint32_t), &pendingSchedule_, sizeof(PassScheduleEntry));
 
-    sendRaftBroadcast(/*QC_SIGN_REQUEST*/ 0x36, data);
+    sendRaftBroadcast(benchmark::QC_SIGN_REQUEST, data);
     std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_REQUEST broadcast (round=" << roundNumber_
               << " clusterSize=" << activeVehicles_.size() << ")" << std::endl;
 
@@ -738,7 +623,7 @@ void RaftAppBase::handleQCSignRequest(const std::vector<uint8_t>& data)
 
 void RaftAppBase::sendQCSignResponse(int toLeader, const std::vector<uint8_t>& respData)
 {
-    sendRaftToPeer(toLeader, /*QC_SIGN_RESPONSE*/ 0x37, respData);
+    sendRaftToPeer(toLeader, benchmark::QC_SIGN_RESPONSE, respData);
 }
 
 void RaftAppBase::handleQCSignResponse(const std::vector<uint8_t>& data, int senderId)
@@ -805,15 +690,13 @@ void RaftAppBase::tryAssembleQC()
 
     std::cout << NOW << " [QC][V" << myId_ << "] QC assembled: round=" << qc.round
               << " numSigs=" << qc.numSigs
-              << " — submitting PASS_ORDER to RAFT log" << std::endl;
+              << " — submitting pass schedule to RAFT log" << std::endl;
 
-    // NOW submit to RAFT — quorum of signatures already collected.
-    // doApplyLog() will call applyCommittedPassOrder() (start movement) and
-    // sendPassOrderBroadcast() (deliver QC + schedule to queued vehicles).
-    size_t entrySize = 1 + sizeof(PassScheduleEntry);
+    // Submit pass schedule to RAFT — quorum of signatures already collected.
+    // doApplyLog() will call sendPassOrderBroadcast() and applyCommittedPassOrder().
+    size_t entrySize = sizeof(PassScheduleEntry);
     uint8_t* entryData = new uint8_t[entrySize];
-    entryData[0] = static_cast<uint8_t>(PASS_ORDER);
-    memcpy(entryData + 1, &pendingSchedule_, sizeof(PassScheduleEntry));
+    memcpy(entryData, &pendingSchedule_, sizeof(PassScheduleEntry));
 
     raft_entry_t entry;
     memset(&entry, 0, sizeof(entry));
@@ -826,9 +709,9 @@ void RaftAppBase::tryAssembleQC()
     if (raft_recv_entry(raftServer_, &entry, &response) == 0) {
         logEntriesProposed_++;
         proposedTimes_[response.idx] = NOW;
-        RAFT_LOG_LEADER("submitted PASS_SCHEDULE entry #" << response.idx << " (QC pre-verified)");
+        std::cout << simTime() << " [DBG][V" << myId_ << "] submitted PASS_SCHEDULE entry #" << response.idx << std::endl;
     } else {
-        RAFT_LOG_LEADER("FAILED to submit PASS_SCHEDULE to RAFT");
+        std::cerr << "Vehicle " << myId_ << " FAILED to submit PASS_SCHEDULE to RAFT" << std::endl;
         delete[] entryData;
     }
 }

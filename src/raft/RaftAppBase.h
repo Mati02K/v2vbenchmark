@@ -121,9 +121,6 @@ protected:
     std::set<int> proposedLeft_;      // dedup guard: prevents double-proposing the same vehicle exit to RAFT
     bool         passOrderProposed_;  // guard: prevent double proposePassOrder() calls
 
-    // Dedup for VEHICLE_LEFT: prevent double-applying the same vehicle's exit notification
-    std::set<int> gossipSeenVehicleLeft_;
-
     /** Vehicles that passed/left before we formed our cluster. */
     std::set<int> vehiclesLeftBeforeFormed_;
 
@@ -159,7 +156,6 @@ protected:
 
     // ============ FALLBACK STATE ============
     bool         isFallbackMode_;
-    int          failedElectionCount_;
     raft_term_t  lastCheckedTerm_;
 
     // ============ CONFIGURABLE PARAMETERS ============
@@ -168,7 +164,6 @@ protected:
     int    electionTimeoutJitterMs_;
     int    requestTimeoutMs_;
     double intersectionStopDistance_;
-    int    maxFailedElections_;
     int    fallbackWaitMinMs_;
     int    fallbackWaitMaxMs_;
     int    passConfirmationMs_;
@@ -254,8 +249,6 @@ protected:
     void processRaftPeriodic();
     void checkElectionFailures(raft_term_t currentTerm);
     void checkLeadershipChange();
-    void checkCoordinationTimeout(simtime_t now);
-    void checkDiscoveryTimeout(simtime_t now);
     static int  sendRequestVote(raft_server_t*, void*, raft_node_t*, msg_requestvote_t*);
     static int  sendAppendEntries(raft_server_t*, void*, raft_node_t*, msg_appendentries_t*);
     static int  logOffer(raft_server_t*, void*, raft_entry_t*, raft_index_t);
@@ -284,7 +277,6 @@ protected:
     void handleDbResponse(const std::vector<uint8_t>& data, int senderId);
     void collectStatusAndDecide();
     void proposePassOrder();
-    void applyVehicleLeftFromRaft(int vehicleId, int batchId);
     void sendQCSignRequest();
     void handleQCSignRequest(const std::vector<uint8_t>& data);
     void sendQCSignResponse(int toLeader, const std::vector<uint8_t>& respData);
@@ -305,11 +297,10 @@ public:
     void sendPassOrderBroadcast();
     void handlePassOrderBroadcast(const std::vector<uint8_t>& data);
     void applyCommittedPassOrder();
-    void handleVehiclePassed(int vehicleId);
     void handleVehicleLeft(int vehicleId, int batchId);
-    void sendVehiclePassed();
     void sendVehicleLeft();
     void scheduleVehicleLeftTimeout(int batchIndex);
+    void onVehicleLeftTimeout(int batchIndex);
     void checkBatchAdvance();
     void checkIfLeftIntersection();
 

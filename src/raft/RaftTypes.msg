@@ -4,26 +4,25 @@
 namespace benchmark;
 
 enum RaftMsgType {
-    // Discovery
-    PEER_BEACON                    = 16;   // 0x10
-    CLUSTER_JOIN_INVITE            = 21;   // 0x15
-    CLUSTER_FORM_BROADCAST         = 22;   // 0x16 — broadcast member list so all members call formCluster()
+    // Discovery (1-10)
+    PEER_BEACON                    = 1;
+    CLUSTER_JOIN_INVITE            = 2;
+    CLUSTER_FORM_BROADCAST         = 3;
 
-    // RAFT Core
-    RAFT_REQUEST_VOTE              = 32;   // 0x20
-    RAFT_REQUEST_VOTE_RESPONSE     = 33;   // 0x21
-    RAFT_APPEND_ENTRIES            = 34;   // 0x22
-    RAFT_APPEND_ENTRIES_RESPONSE   = 35;   // 0x23
+    // RAFT Core (11-20)
+    RAFT_REQUEST_VOTE              = 11;
+    RAFT_REQUEST_VOTE_RESPONSE     = 12;
+    RAFT_APPEND_ENTRIES            = 13;
+    RAFT_APPEND_ENTRIES_RESPONSE   = 14;
 
-    // Coordination
-    COORD_STATUS_REQUEST           = 48;   // 0x30
-    COORD_STATUS_RESPONSE          = 49;   // 0x31
-    COORD_VEHICLE_PASSED           = 51;   // 0x33
-    COORD_VEHICLE_LEFT             = 52;   // 0x34
-    COORD_PASS_ORDER_BROADCAST     = 53;   // 0x35
+    // Coordination (21-30)
+    COORD_STATUS_REQUEST           = 21;
+    COORD_STATUS_RESPONSE          = 22;
+    COORD_VEHICLE_LEFT             = 23;
+    COORD_PASS_ORDER_BROADCAST     = 24;
 
-    // Quorum Certificate (multi-round RAFT)
-    QC_SIGN_REQUEST                = 54;   // 0x36 — leader asks cluster members to sign committed schedule
-    QC_SIGN_RESPONSE               = 55;   // 0x37 — member returns its signature
-    QC_BROADCAST                   = 56;   // 0x38 — leader broadcasts assembled QC to all vehicles
+    // Quorum Certificate (31-40)
+    QC_SIGN_REQUEST                = 31;
+    QC_SIGN_RESPONSE               = 32;
+    QC_BROADCAST                   = 33;
 }

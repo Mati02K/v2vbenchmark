@@ -1,7 +1,21 @@
 MSGC:=$(MSGC) --msg6
 
+# CryptoAuth C++ source (lives outside src/, so opp_makemake --deep misses it)
+CRYPTO_DIR = ../lib/crypto
+CRYPTO_OBJS = $O/crypto/CryptoAuth.o
+
+EXTRA_OBJS += $(CRYPTO_OBJS)
+LIBS += -lssl -lcrypto
+
+$(OBJS): | $(CRYPTO_OBJS)
+
+$O/crypto/CryptoAuth.o: $(CRYPTO_DIR)/CryptoAuth.cc $(CRYPTO_DIR)/CryptoAuth.h
+	@mkdir -p $O/crypto
+	@echo "Compiling CryptoAuth: $<"
+	$(Q)$(CXX) -c $(CXXFLAGS) -I$(CRYPTO_DIR) -I. -o $@ $<
+
 # RAFT library C source files
-RAFT_DIR = ../third_party/raft
+RAFT_DIR = ../lib/raft
 RAFT_OBJS = \
     $O/raft_c/raft_server.o \
     $O/raft_c/raft_server_properties.o \

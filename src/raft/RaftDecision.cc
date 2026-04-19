@@ -4,7 +4,6 @@
 // applyCommittedPassOrder() has moved to RaftCoordination.cc (execution, not algorithm).
 
 #include "raft/RaftAppBase.h"
-#include "raft/RaftLogger.h"
 
 #include <algorithm>
 #include <cstring>

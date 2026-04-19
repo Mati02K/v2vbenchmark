@@ -5,7 +5,6 @@
 //         and metrics output.
 
 #include "raft/RaftAppBase.h"
-#include "raft/RaftLogger.h"
 #include "veins/base/utils/FindModule.h"
 
 #include <cstring>
@@ -206,7 +205,7 @@ void RaftAppBase::stopVehicle()
         traciVehicle_->setSpeedMode(0);
         traciVehicle_->setSpeed(0);
     }
-    catch (...) { RAFT_LOG_ERR("could not stop vehicle"); }
+    catch (...) { std::cerr << "Vehicle " << myId_ << " could not stop vehicle" << std::endl; }
 }
 
 void RaftAppBase::resumeMovement()
@@ -219,7 +218,6 @@ void RaftAppBase::resumeMovement()
               << " isLeader=" << isLeader_
               << " fallback=" << isFallbackMode_ << std::endl;
     timeStartedMoving_ = NOW;
-    RAFT_LOG("RESUMING movement");
     try {
         traciVehicle_->setSpeedMode(0);
         traciVehicle_->setParameter("jmIgnoreFoeProb",  "1.0");
@@ -229,7 +227,7 @@ void RaftAppBase::resumeMovement()
         if (speed <= 0) speed = 13.89;
         traciVehicle_->setSpeed(speed);
         timeStartedMoving_ = NOW;
-    } catch (...) { RAFT_LOG_ERR("could not resume speed"); }
+    } catch (...) { std::cerr << "Vehicle " << myId_ << " could not resume speed" << std::endl; }
 }
 
 // ============ FALLBACK ============
@@ -243,11 +241,9 @@ void RaftAppBase::handleFallback()
     std::cout << simTime() << " [DBG][V" << myId_ << "] FALLBACK ACTIVATED"
               << " wos=" << wayOfSight_
               << " frontVeh=" << vehicleInFrontOfMe_
-              << " failedElections=" << failedElectionCount_
               << " stopped=" << hasStoppedAtIntersection_
               << " committed=" << hasCommittedOrder_
               << " isLeader=" << isLeader_ << std::endl;
-    RAFT_LOG("FALLBACK MODE activated");
     if (wayOfSight_ || vehicleInFrontOfMe_ == -1
         || !activeVehicles_.count(vehicleInFrontOfMe_)) {
         resumeMovement();
@@ -257,7 +253,7 @@ void RaftAppBase::handleFallback()
         int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
         int posInLane       = myId_ % vehiclesPerSide;
         int delayMs         = fallbackWaitMinMs_ + posInLane * 2000;
-        RAFT_LOG("FALLBACK queued (pos=" << posInLane << ") — forced resume in " << delayMs << "ms");
+        std::cout << simTime() << " [DBG][V" << myId_ << "] FALLBACK queued pos=" << posInLane << " resume in " << delayMs << "ms" << std::endl;
         scheduleOneshotMs(delayMs, [this]() {
             if (!hasPassedIntersection_) resumeMovement();
         });
@@ -295,7 +291,7 @@ void RaftAppBase::markRaftNodeInactive(int vehicleId)
         raft_node_t* node = raft_get_node(raftServer_, getNodeIdFromVehicleId(vehicleId));
         if (node) {
             raft_node_set_active(node, 0);
-            RAFT_LOG("RAFT node for vehicle " << vehicleId << " marked INACTIVE (left intersection)");
+            std::cout << simTime() << " [DBG][V" << myId_ << "] RAFT node V" << vehicleId << " marked INACTIVE (left intersection)" << std::endl;
         }
     } else {
         /* We haven't formed yet; record for when we do (late-joiner case). */

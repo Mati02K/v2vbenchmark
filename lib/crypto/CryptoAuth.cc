@@ -117,8 +117,8 @@ std::string CryptoAuth::verifyCert(const VehicleCert& cert)
     bool valid = ecdsaVerify(caPub, tbs.data(), tbs.size(), cert.caSignature, cert.caSignatureLen);
 
     if (valid) {
-        std::cout << "[CryptoAuth] ACCEPT: cert valid — issuer=" << issuer
-                  << " role=" << cert.role << std::endl;
+        // std::cout << "[CryptoAuth] ACCEPT: cert valid — issuer=" << issuer
+        //           << " role=" << cert.role << std::endl;
         return std::string(cert.role);
     } else {
         std::cout << "[CryptoAuth] REJECT: cert signature invalid (fake " << cert.role

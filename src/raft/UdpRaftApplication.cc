@@ -184,7 +184,9 @@ void UdpRaftApplication::handleMessageWhenUp(cMessage* msg)
 {
     if (msg == checkTimer_) {
         checkAndStopAtIntersection();
-        checkAndAdvanceInQueue();
+        if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) {
+            checkAndAdvanceInQueue();
+        }
         if ((hasStoppedAtIntersection_ || timeStartedMoving_ > SIMTIME_ZERO) && !hasPassedIntersection_)
             checkIfLeftIntersection();
         if (!hasPassedIntersection_)
@@ -288,9 +290,6 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             break;
         case benchmark::COORD_STATUS_RESPONSE:
             handleDbResponse(data, sender);
-            break;
-        case benchmark::COORD_VEHICLE_PASSED:
-            if (!data.empty()) handleVehiclePassed((int)data[0]);
             break;
         case benchmark::COORD_VEHICLE_LEFT:
             if (data.size() >= sizeof(VehicleLeftEntry)) {
@@ -425,7 +424,7 @@ void UdpRaftApplication::handleRequestVote(const std::vector<uint8_t>& data,
     if (raft_recv_requestvote(raftServer_, node, &msg, &resp) == 0) {
         int senderVehicleId = msg.candidate_id - 1;
         auto respData = serializeRequestVoteResponse(&resp);
-        sendRaftToPeer(senderVehicleId, 0x21, respData);
+        sendRaftToPeer(senderVehicleId, benchmark::RAFT_REQUEST_VOTE_RESPONSE, respData);
     }
 }
 
@@ -468,7 +467,7 @@ void UdpRaftApplication::handleAppendEntries(const std::vector<uint8_t>& data,
         msg_appendentries_response_t resp;
         raft_recv_appendentries(raftServer_, node, &msg, &resp);
         auto respData = serializeAppendEntriesResponse(&resp);
-        sendRaftToPeer(senderVehicleId, 0x23, respData);
+        sendRaftToPeer(senderVehicleId, benchmark::RAFT_APPEND_ENTRIES_RESPONSE, respData);
     }
     if (msg.entries) delete[] msg.entries;
 }

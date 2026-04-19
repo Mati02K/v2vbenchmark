@@ -11,13 +11,6 @@ extern "C" {
 #include "../../lib/raft/raft_types.h"
 }
 
-// ============ LOG ENTRY TYPES ============
-
-enum LogEntryType : uint8_t {
-    PASS_ORDER   = 3,
-    VEHICLE_LEFT = 4
-};
-
 // ============ SHARED DATA STRUCTS ============
 
 struct VehicleProposal {

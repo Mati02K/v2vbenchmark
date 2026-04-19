@@ -8,7 +8,6 @@
 //   RaftUtilities.cc   — intersection detection, movement control, fallback, gossip relay
 
 #include "raft/RaftAppBase.h"
-#include "raft/RaftLogger.h"
 
 #include <cstring>
 
@@ -42,7 +41,6 @@ RaftAppBase::RaftAppBase()
     , qcRetryCount_(0)
     , hasPrevRoundQC_(false)
     , isFallbackMode_(false)
-    , failedElectionCount_(0)
     , lastCheckedTerm_(0)
     , totalVehicles_(4)
     , electionTimeoutBaseMs_(500)
@@ -50,14 +48,13 @@ RaftAppBase::RaftAppBase()
     , requestTimeoutMs_(200)
     , intersectionStopDistance_(5.0)
 
-    , maxFailedElections_(10)
     , fallbackWaitMinMs_(100)
     , fallbackWaitMaxMs_(300)
     , passConfirmationMs_(500)
     , statusCollectionTimeoutMs_(800)
-    , fallbackClusterTimeoutMs_(50000)
+    , fallbackClusterTimeoutMs_(75000)
     , intersectionStopTimeMs_(0)
-    , vehicleLeftTimeoutMs_(500)
+    , vehicleLeftTimeoutMs_(1000)
     , qcSignTimeoutMs_(200)
     , maxQcRetries_(5)
     , clusterMode_("laneLeaders")

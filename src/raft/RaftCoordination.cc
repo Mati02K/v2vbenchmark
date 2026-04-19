@@ -9,7 +9,7 @@
 //   checkIfLeftIntersection() detects physical exit → sends notifications + writes metrics.
 
 #include "raft/RaftAppBase.h"
-#include "raft/RaftLogger.h"
+#include "raft/RaftTypes_m.h"
 
 #include <cstring>
 #include <iostream>
@@ -29,12 +29,11 @@ void RaftAppBase::sendPassOrderBroadcast()
     std::vector<uint8_t> data(sizeof(PassScheduleEntry) + sizeof(QuorumCertificate));
     memcpy(data.data(),                          &committedSchedule_, sizeof(PassScheduleEntry));
     memcpy(data.data() + sizeof(PassScheduleEntry), &prevRoundQC_,    sizeof(QuorumCertificate));
-    sendRaftBroadcast(/*COORD_PASS_ORDER_BROADCAST*/ 0x35, data);
+    sendRaftBroadcast(benchmark::COORD_PASS_ORDER_BROADCAST, data);
 
     std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST sent (with QC): "
               << committedSchedule_.numBatches << " batches, QC round=" << prevRoundQC_.round
               << " numSigs=" << prevRoundQC_.numSigs << std::endl;
-    RAFT_LOG("PASS_ORDER_BROADCAST sent (" << committedSchedule_.numBatches << " batches + QC)");
 }
 
 // Non-cluster (queued) vehicles receive the committed schedule + QC here.
@@ -50,6 +49,9 @@ void RaftAppBase::handlePassOrderBroadcast(const std::vector<uint8_t>& data)
                   << " < " << sizeof(PassScheduleEntry) << ")" << std::endl;
         return;
     }
+
+    // Gossip relay: rebroadcast once so vehicles further back in the queue also learn.
+    sendRaftBroadcast(benchmark::COORD_PASS_ORDER_BROADCAST, data);
 
     PassScheduleEntry schedule;
     memcpy(&schedule, data.data(), sizeof(PassScheduleEntry));
@@ -72,15 +74,16 @@ void RaftAppBase::handlePassOrderBroadcast(const std::vector<uint8_t>& data)
             prevRoundQC_    = qc;
             hasPrevRoundQC_ = true;
             qcAssembled_    = true;
-            for (int b = 0; b < qc.schedule.numBatches; b++)
-                for (int v = 0; v < qc.schedule.batches[b].numVehicles; v++)
+            for (int b = 0; b < qc.schedule.numBatches; b++) {
+                for (int v = 0; v < qc.schedule.batches[b].numVehicles; v++) {
                     scheduledVehicles_.insert(qc.schedule.batches[b].vehicleIds[v]);
+                }
+            }
             std::cout << simTime() << " [QC][V" << myId_ << "] QC stored from PASS_ORDER_BROADCAST:"
                       << " round=" << qc.round << " numSigs=" << qc.numSigs << std::endl;
         }
     }
 
-    RAFT_LOG("PASS_ORDER_BROADCAST applied (" << committedSchedule_.numBatches << " batches)");
     applyCommittedPassOrder();
 }
 
@@ -90,6 +93,7 @@ void RaftAppBase::applyCommittedPassOrder()
 {
     if (hasPassedIntersection_) return;
 
+    // Find my batch from the list
     myBatch_ = -1;
     for (int b = 0; b < committedSchedule_.numBatches; b++) {
         for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
@@ -113,7 +117,6 @@ void RaftAppBase::applyCommittedPassOrder()
     }
 
     if (myBatch_ < 0) {
-        RAFT_LOG("NOT SCHEDULED - using fallback");
         std::cout << simTime() << " [DBG][V" << myId_ << "] NOT IN SCHEDULE! Using fallback." << std::endl;
         int fallbackDelayMs = committedSchedule_.numBatches * 5000 + 10000;
         scheduleOneshotMs(fallbackDelayMs, [this]() {
@@ -126,9 +129,6 @@ void RaftAppBase::applyCommittedPassOrder()
         return;
     }
 
-    RAFT_LOG("assigned to batch " << myBatch_
-             << " (current batch: " << currentBatch_ << ")");
-
     std::cout << simTime() << " [DBG][V" << myId_ << "] ASSIGNED batch=" << myBatch_
               << " currentBatch=" << currentBatch_
               << " hasCommitted=" << hasCommittedOrder_
@@ -137,86 +137,27 @@ void RaftAppBase::applyCommittedPassOrder()
     if (myBatch_ == 0) {
         std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH 0 -> calling resumeMovement immediately" << std::endl;
         resumeMovement();
-    } else if (!hasStoppedAtIntersection_ && traciVehicle_) {
-        // Vehicle is still approaching — advance at full speed toward stop line so it
-        // arrives ready instead of creeping in behind a stopped queue.
-        try {
-            double maxSpd = traciVehicle_->getMaxSpeed();
-            if (maxSpd <= 0) maxSpd = 13.89;
-            traciVehicle_->setSpeedMode(31);   // SUMO safety on (collision avoidance in lane)
-            traciVehicle_->setSpeed(maxSpd);
-            std::cout << simTime() << " [ADV][V" << myId_ << "] batch=" << myBatch_
-                      << " advancing to stop line at max speed (dist="
-                      << getDistanceToJunction() << "m)" << std::endl;
-        } catch (...) {}
     }
-    // Schedule 1.5s timeout: if VEHICLE_LEFT not received from vehicles in current batch, assume they left
     scheduleVehicleLeftTimeout(currentBatch_);
 
     if (myBatch_ != 0) {
-        // Primary mechanism: checkBatchAdvance() will call resumeMovement() once
-        // the previous batch has fully cleared via VEHICLE_LEFT broadcasts.
-        // Safety fallback fires if VEHICLE_LEFT messages are lost or ghost vehicles
-        // in the schedule never send them. 6 s per batch prevents endless waiting.
-        int safetyDelayMs = myBatch_ * 6000;
-        std::cout << simTime() << " [DBG][V" << myId_ << "] WAITING for batch " << myBatch_
-                  << " (safetyFallback in " << safetyDelayMs << "ms)" << std::endl;
-        scheduleOneshotMs(safetyDelayMs, [this, expectedBatch = myBatch_]() {
-            if (!hasPassedIntersection_ && currentBatch_ < expectedBatch) {
-                std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH SAFETY TIMER: forcing batch "
-                          << expectedBatch << " (lost VEHICLE_LEFT?)" << std::endl;
-                RAFT_LOG("BATCH SAFETY FALLBACK (lost VEHICLE_LEFT?) for batch " << expectedBatch);
-                currentBatch_ = expectedBatch;
-                resumeMovement();
-            }
-        });
-        RAFT_LOG("waiting for batch " << myBatch_ << " via checkBatchAdvance");
+        std::cout << simTime() << " [DBG][V" << myId_ << "] WAITING for batch " << myBatch_ << std::endl;
     }
 }
 
 // ============ VEHICLE PASSED / LEFT (follower-side) ============
 
-void RaftAppBase::handleVehiclePassed(int vehicleId)
-{
-    std::cout << simTime() << " [DBG][V" << myId_ << "] VEHICLE_PASSED: V" << vehicleId
-              << " frontVeh=" << vehicleInFrontOfMe_
-              << " myBatch=" << myBatch_ << " curBatch=" << currentBatch_ << std::endl;
-    RAFT_LOG("RECEIVED vehicle-passed from vehicle " << vehicleId);
-    markRaftNodeInactive(vehicleId);
-    activeVehicles_.erase(vehicleId);
-    if (vehicleId == vehicleInFrontOfMe_) {
-        wayOfSight_ = true;
-        vehicleInFrontOfMe_ = -1;
-
-        // Chain movement: when the vehicle in front of us passes, we must advance
-        // toward the stop line. This applies BOTH to (a) vehicles not yet stopped,
-        // AND (b) queued vehicles (hasStoppedAtIntersection_=true) waiting behind.
-        if (!hasPassedIntersection_ && traciVehicle_ && timeStartedMoving_ == SIMTIME_ZERO) {
-            std::cout << simTime() << " [CHAIN][V" << myId_ << "] Front V" << vehicleId
-                      << " passed -> advancing" << std::endl;
-            RAFT_LOG("front vehicle passed — advancing");
-            try {
-                // If we have a decision and it's our turn: go at full speed like resumeMovement().
-                // Otherwise: restore car-following so SUMO advances us safely to the stop line.
-                bool myTurn = hasCommittedOrder_ && myBatch_ != -1
-                           && myBatch_ <= currentBatch_ && !hasPassedIntersection_;
-                if (myTurn) {
-                    std::cout << simTime() << " [CHAIN][V" << myId_ << "] it's our turn (batch="
-                              << myBatch_ << ") — resuming at max speed" << std::endl;
-                    resumeMovement();
-                } else {
-                    traciVehicle_->setSpeedMode(31);
-                    traciVehicle_->setSpeed(-1);
-                }
-            } catch (...) {}
-        }
-    }
-}
-
 void RaftAppBase::handleVehicleLeft(int vehicleId, int batchId)
 {
-    if (gossipSeenVehicleLeft_.count(vehicleId)) return;
-    gossipSeenVehicleLeft_.insert(vehicleId);
+    if (vehiclesLeftInBatch_.count(vehicleId)) return;
+
+    // Gossip relay: rebroadcast once so vehicles further back in the queue also learn.
+    VehicleLeftEntry relay; 
+    relay.vehicleId = vehicleId; 
+    relay.batchId = batchId;
+    std::vector<uint8_t> relayData(sizeof(VehicleLeftEntry));
+    memcpy(relayData.data(), &relay, sizeof(relay));
+    sendRaftBroadcast(benchmark::COORD_VEHICLE_LEFT, relayData);
 
     std::cout << simTime() << " [DBG][V" << myId_ << "] VEHICLE_LEFT: V" << vehicleId
               << " batch=" << batchId
@@ -224,67 +165,50 @@ void RaftAppBase::handleVehicleLeft(int vehicleId, int batchId)
               << " vehiclesLeftSoFar=[";
     for (int v : vehiclesLeftInBatch_) std::cout << v << " ";
     std::cout << "]" << std::endl;
-    RAFT_LOG("RECEIVED vehicle-left from vehicle " << vehicleId);
 
     markRaftNodeInactive(vehicleId);
     activeVehicles_.erase(vehicleId);
     vehiclesLeftInBatch_.insert(vehicleId);
     checkBatchAdvance();
 
-    // Remove from vehicleDB_ after 2 seconds so lane leader flag stays fresh
     scheduleOneshotMs(2000.0, [this, vehicleId]() {
         vehicleDB_.erase(vehicleId);
-        std::cout << simTime() << " [DBG][V" << myId_ << "] vehicleDB_ cleaned V"
-                  << vehicleId << " (2s post-exit)" << std::endl;
     });
 }
 
-// ============ SEND EXIT NOTIFICATIONS ============
-
-void RaftAppBase::sendVehiclePassed()
-{
-    RAFT_LOG("BROADCASTING vehicle-passed");
-    std::vector<uint8_t> data = {static_cast<uint8_t>(myId_)};
-    sendRaftBroadcast(/*COORD_VEHICLE_PASSED*/ 0x33, data);
-}
+// ============ SEND EXIT NOTIFICATION ============
 
 void RaftAppBase::sendVehicleLeft()
 {
-    RAFT_LOG("sending vehicle-left (broadcast, isLeader=" << isLeader_
-             << ", myBatch=" << myBatch_ << ")");
+    std::cout << simTime() << " [DBG][V" << myId_ << "] VEHICLE_LEFT broadcast (batch=" << myBatch_ << ")" << std::endl;
     VehicleLeftEntry e; e.vehicleId = myId_; e.batchId = myBatch_;
     std::vector<uint8_t> data(sizeof(VehicleLeftEntry));
     memcpy(data.data(), &e, sizeof(e));
-    sendRaftBroadcast(/*COORD_VEHICLE_LEFT*/ 0x34, data);
+    sendRaftBroadcast(benchmark::COORD_VEHICLE_LEFT, data);
 }
 
 // ============ VEHICLE_LEFT TIMEOUT ============
 
+void RaftAppBase::onVehicleLeftTimeout(int batchIndex)
+{
+    if (hasPassedIntersection_ || !hasCommittedOrder_) return;
+    if (currentBatch_ != batchIndex) return;
+    if (batchIndex >= (int)committedSchedule_.numBatches) return;
+
+    PassBatch& batch = committedSchedule_.batches[batchIndex];
+    for (int v = 0; v < batch.numVehicles; v++) {
+        int vid = batch.vehicleIds[v];
+        if (!vehiclesLeftInBatch_.count(vid)) {
+            handleVehicleLeft(vid, batchIndex);
+        }
+    }
+}
+
 void RaftAppBase::scheduleVehicleLeftTimeout(int batchIndex)
 {
     if (batchIndex >= committedSchedule_.numBatches) return;
-    int timeoutMs = vehicleLeftTimeoutMs_;
-    scheduleOneshotMs(timeoutMs, [this, batchForTimeout = batchIndex]() {
-        if (hasPassedIntersection_ || !hasCommittedOrder_) return;
-        if (currentBatch_ != batchForTimeout) return;  // already advanced past this batch
-        if (batchForTimeout >= (int)committedSchedule_.numBatches) return;
-
-        PassBatch& batch = committedSchedule_.batches[batchForTimeout];
-        bool anyAdded = false;
-        for (int v = 0; v < batch.numVehicles; v++) {
-            int vid = batch.vehicleIds[v];
-            if (!vehiclesLeftInBatch_.count(vid)) {
-                RAFT_LOG("VEHICLE_LEFT timeout: assuming V" << vid << " left (batch " << batchForTimeout << ")");
-                std::cout << simTime() << " [DBG][V" << myId_ << "] VEHICLE_LEFT TIMEOUT: assuming V"
-                          << vid << " left (batch " << batchForTimeout << ")" << std::endl;
-                markRaftNodeInactive(vid);
-                activeVehicles_.erase(vid);
-                vehiclesLeftInBatch_.insert(vid);
-                gossipSeenVehicleLeft_.insert(vid);
-                anyAdded = true;
-            }
-        }
-        if (anyAdded) checkBatchAdvance();
+    scheduleOneshotMs(vehicleLeftTimeoutMs_, [this, batchForTimeout = batchIndex]() {
+        onVehicleLeftTimeout(batchForTimeout);
     });
 }
 
@@ -293,38 +217,33 @@ void RaftAppBase::scheduleVehicleLeftTimeout(int batchIndex)
 void RaftAppBase::checkBatchAdvance()
 {
     if (hasPassedIntersection_ || !hasCommittedOrder_) return;
+    // All batches already processed — nothing left to advance.
     if (currentBatch_ >= committedSchedule_.numBatches) return;
 
+    // Check whether every vehicle in the current batch has reported leaving.
     PassBatch& batch = committedSchedule_.batches[currentBatch_];
     bool allLeft = true;
-    std::string missing = "";
     for (int v = 0; v < batch.numVehicles; v++) {
-        int vid = batch.vehicleIds[v];
-        if (!vehiclesLeftInBatch_.count(vid)) {
+        if (!vehiclesLeftInBatch_.count(batch.vehicleIds[v])) {
             allLeft = false;
-            missing += std::to_string(vid) + " ";
+            break;
         }
     }
 
-    std::cout << simTime() << " [DBG][V" << myId_ << "] CHECK_BATCH_ADVANCE curBatch=" << currentBatch_
-              << " allLeft=" << allLeft
-              << " missing=[" << missing << "]"
-              << " vehiclesLeft=[";
-    for (int v : vehiclesLeftInBatch_) std::cout << v << " ";
-    std::cout << "]" << std::endl;
-
     if (allLeft) {
+        // Advance to next batch and reset per-batch tracking.
         currentBatch_++;
         vehiclesLeftInBatch_.clear();
-        RAFT_LOG("BATCH ADVANCE: now on batch " << currentBatch_);
         std::cout << simTime() << " [DBG][V" << myId_ << "] BATCH ADVANCED to " << currentBatch_
                   << " myBatch=" << myBatch_ << std::endl;
+
+        // If this vehicle belongs to the newly active batch, start moving.
         if (myBatch_ == currentBatch_ && !hasPassedIntersection_) {
-            RAFT_LOG("MY BATCH - starting movement");
             std::cout << simTime() << " [DBG][V" << myId_ << "] MY BATCH NOW ACTIVE -> resumeMovement()" << std::endl;
             resumeMovement();
         }
-        // Schedule 1.5s timeout for new current batch (if not past last batch)
+
+        // Arm a timeout in case some vehicles in the new batch never broadcast VEHICLE_LEFT.
         if (currentBatch_ < committedSchedule_.numBatches) {
             scheduleVehicleLeftTimeout(currentBatch_);
         }
@@ -338,8 +257,7 @@ void RaftAppBase::checkIfLeftIntersection()
     if (!hasPassedIntersection_ && hasPassedIntersectionEdge()) {
         hasPassedIntersection_ = true;
         timePassed_            = NOW;
-        RAFT_LOG("LEFT intersection");
-        sendVehiclePassed();
+        std::cout << simTime() << " [DBG][V" << myId_ << "] LEFT intersection" << std::endl;
         sendVehicleLeft();
         outputMetricsJSON();
     }

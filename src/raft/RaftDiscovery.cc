@@ -9,7 +9,7 @@
 // After formCluster() returns, RaftCore.cc takes over.
 
 #include "raft/RaftAppBase.h"
-#include "raft/RaftLogger.h"
+#include "raft/RaftTypes_m.h"
 
 #include <algorithm>
 #include <cstring>
@@ -44,7 +44,7 @@ void RaftAppBase::sendPeerBeacon()
     std::vector<uint8_t> data(sizeof(SignedProposal));
     memcpy(data.data(), &sp, sizeof(SignedProposal));
     // Send proposal to everyone
-    sendRaftBroadcast(/*PEER_BEACON*/ 0x10, data);
+    sendRaftBroadcast(benchmark::PEER_BEACON, data);
 }
 
 // Receive a PEER_BEACON: verify cert, set isPriority in vehicleDB_.
@@ -95,7 +95,7 @@ void RaftAppBase::updateLaneLeaderFlag()
     isLaneLeader_ = isLaneLeaderByTraci();
     wayOfSight_   = isLaneLeader_;  // no vehicle ahead = clear line of sight
 
-    // Still maintain vehicleInFrontOfMe_ from beacon data — needed by handleVehiclePassed()
+    // Still maintain vehicleInFrontOfMe_ from beacon data — needed by handleVehicleLeft()
     // so it knows which vehicle ID to watch for before advancing in the queue.
     vehicleInFrontOfMe_ = -1;
     if (!isLaneLeader_) {
@@ -177,11 +177,9 @@ void RaftAppBase::startNewRound()
     statusResponseCount_ = 0;
     proposedLeft_.clear();
     vehiclesLeftInBatch_.clear();
-    gossipSeenVehicleLeft_.clear();
     currentBatch_        = 0;
     myBatch_             = -1;
     lastAppliedIndex_    = 0;
-    failedElectionCount_ = 0;
     lastCheckedTerm_     = 0;
     lastRaftPeriodicRun_ = SIMTIME_ZERO;
     clusterPhase_        = PHASE_DISCOVERY;
@@ -242,7 +240,7 @@ void RaftAppBase::sendClusterBeacon()
     std::vector<uint8_t> data(sizeof(int) * 2);
     memcpy(data.data(),              &myId_,        sizeof(int));
     memcpy(data.data() + sizeof(int), &myLaneIndex_, sizeof(int));
-    sendRaftBroadcast(/*CLUSTER_JOIN_INVITE*/ 0x15, data);
+    sendRaftBroadcast(benchmark::CLUSTER_JOIN_INVITE, data);
 
     if (clusterMode_ == "allVehicles") {
         std::cout << NOW << " [DBG][V" << myId_ << "] CLUSTER_BEACON sent"
@@ -291,7 +289,7 @@ void RaftAppBase::tryFormClusterFromCollected()
         memcpy(bcastData.data() + sizeof(int) * (1 + idx), &vid, sizeof(int));
         idx++;
     }
-    sendRaftBroadcast(/*CLUSTER_FORM_BROADCAST*/ 0x16, bcastData);
+    sendRaftBroadcast(benchmark::CLUSTER_FORM_BROADCAST, bcastData);
 
     raftStarted_ = true;
     formCluster(members);
@@ -395,7 +393,7 @@ void RaftAppBase::formCluster(const std::set<int>& members)
     // Initialise RAFT server
     raft_server_t* s = raft_new();
     if (!s) {
-        RAFT_LOG_ERR("raft_new() returned nullptr!");
+        std::cerr << "Vehicle " << myId_ << " raft_new() returned nullptr!" << std::endl;
         return;
     }
     raftServer_ = s;
@@ -421,7 +419,7 @@ void RaftAppBase::formCluster(const std::set<int>& members)
         void* udata = reinterpret_cast<void*>(static_cast<intptr_t>(vid));
         raft_node_t* node = raft_add_node(raftServer_, udata, nodeId, (vid == myId_) ? 1 : 0);
         if (!node) {
-            RAFT_LOG_ERR("Failed to add Raft node for vehicle " << vid);
+            std::cerr << "Vehicle " << myId_ << " failed to add Raft node for vehicle " << vid << std::endl;
         }
     }
 
@@ -431,7 +429,7 @@ void RaftAppBase::formCluster(const std::set<int>& members)
         raft_node_t* node = raft_get_node(raftServer_, getNodeIdFromVehicleId(vid));
         if (node) {
             raft_node_set_active(node, 0);
-            RAFT_LOG("RAFT node for vehicle " << vid << " marked INACTIVE (left before we formed)");
+            std::cout << simTime() << " [DBG][V" << myId_ << "] RAFT node V" << vid << " marked INACTIVE (left before cluster formed)" << std::endl;
         }
     }
     vehiclesLeftBeforeFormed_.clear();
@@ -474,11 +472,9 @@ void RaftAppBase::onFirstStoppedAtIntersection()
 
     // Fallback: if RAFT cluster hasn't formed within fallbackClusterTimeoutMs_, activate fallback
     scheduleOneshotMs((double)fallbackClusterTimeoutMs_, [this]() {
-        if (!raftStarted_ && !hasPassedIntersection_) {
-            std::cout << NOW << " [WARN][V" << myId_ << "] CLUSTER_TIMEOUT (" << fallbackClusterTimeoutMs_
-                      << "ms): RAFT not started. vehicleDB_=" << vehicleDB_.size()
-                      << ". Activating fallback." << std::endl;
-            coordinationMethod_ = "fallback";
+        if (!hasPassedIntersection_ && !hasCommittedOrder_) {
+            std::cout << NOW << " [WARN][V" << myId_ << "] FALLBACK TIMEOUT (" << fallbackClusterTimeoutMs_
+                      << "ms): no committed order. vehicleDB_=" << vehicleDB_.size() << std::endl;
             handleFallback();
         }
     });
@@ -549,7 +545,6 @@ void RaftAppBase::handleClusterJunctionStop(const std::string& roadId, const std
               << " road=" << roadId << " approachEdge=" << intersectionEdge_
               << " laneIdx=" << myLaneIndex_ << " wos=" << wayOfSight_
               << " isLeader=" << isLeader_ << std::endl;
-    RAFT_LOG("STOPPED (cluster-junction) approachEdge=" << intersectionEdge_);
     onFirstStoppedAtIntersection();
 }
 
@@ -583,7 +578,6 @@ void RaftAppBase::handleFrontStop(const std::string& roadId, double dist)
                       << dist << "m batch=" << myBatch_ << " curBatch=" << currentBatch_
                       << " committed=" << hasCommittedOrder_
                       << " isLeader=" << isLeader_ << std::endl;
-            RAFT_LOG("STOPPED (front) at dist=" << dist << "m");
         }
     } else {
         // Re-apply hard stop if still waiting (prevents SUMO creep).
@@ -604,7 +598,6 @@ void RaftAppBase::handleQueuedStop(const std::string& roadId, double dist, doubl
               << "m speed=" << speed << "m/s road=" << roadId
               << " wos=" << wayOfSight_ << " frontVeh=" << vehicleInFrontOfMe_
               << " isLeader=" << isLeader_ << std::endl;
-    RAFT_LOG("QUEUED at dist=" << dist << "m speed=" << speed << "m/s");
     onFirstStoppedAtIntersection();
 }
 
@@ -670,7 +663,6 @@ void RaftAppBase::checkAndStopAtIntersection()
 // Once the vehicle reaches the stop line it is re-caught by checkAndStopAtIntersection.
 void RaftAppBase::checkAndAdvanceInQueue()
 {
-    if (!hasStoppedAtIntersection_ || hasPassedIntersection_ || timeStartedMoving_ > SIMTIME_ZERO) return;
     if (!traciVehicle_) return;
     try {
         double speed = traciVehicle_->getSpeed();
@@ -697,10 +689,8 @@ void RaftAppBase::checkAndAdvanceInQueue()
         }
 
         if (gapOpened) {
-            std::cout << simTime() << " [QUEUE_ADV][V" << myId_ << "] RELEASING - front moved, taking place"
-                      << " dist=" << dist << "m gap=" << leader.second << "m" << std::endl;
-            RAFT_LOG("QUEUE ADVANCE (TraCI): gap=" << leader.second
-                     << "m dist=" << dist << "m leader=" << leader.first);
+            std::cout << simTime() << " [QUEUE_ADV][V" << myId_ << "] RELEASING gap=" << leader.second
+                      << "m dist=" << dist << "m leader=" << leader.first << std::endl;
             traciVehicle_->setSpeedMode(31);  // all SUMO safety checks on
             traciVehicle_->setSpeed(-1);       // SUMO car-following takes over
         }
