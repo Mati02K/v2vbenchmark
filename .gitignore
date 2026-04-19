@@ -19,3 +19,4 @@ src/benchmark_dbg
 *.exe
 *.so
 __pycache__/
+.claude/
