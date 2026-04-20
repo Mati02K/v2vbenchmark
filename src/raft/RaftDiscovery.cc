@@ -122,11 +122,11 @@ void RaftAppBase::updateLaneLeaderFlag()
     //   3. A PASS_ORDER was already committed in a previous round.
     //   4. We are not already in the process of forming a new cluster.
     //   5. There exist vehicles in vehicleDB_ that were not scheduled in the previous round.
-    if (!wasLaneLeader && isLaneLeader_ &&
+    if ((!wasLaneLeader || allowMultipleRounds_) && isLaneLeader_ &&
         hasStoppedAtIntersection_ && hasCommittedOrder_ &&
         !hasPassedIntersection_ && !seekingNewCluster_ && !isFallbackMode_) {
 
-        if (hasUnscheduledVehicles()) {
+        if (hasUnscheduledVehicles() || allowMultipleRounds_) {
             std::cout << NOW << " [ROUND][V" << myId_ << "] Lane leader promotion detected"
                       << " (prev wasLaneLeader=" << wasLaneLeader << ") — starting new RAFT round." << std::endl;
             startNewRound();
@@ -149,11 +149,17 @@ void RaftAppBase::startNewRound()
     seekingNewCluster_ = true;
     roundNumber_++;
 
-    // Build scheduledVehicles_ from our local committed schedule.
-    // (QC_BROADCAST may have already populated this; we add our own copy as a safety net.)
-    for (int b = 0; b < committedSchedule_.numBatches; b++) {
-        for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
-            scheduledVehicles_.insert(committedSchedule_.batches[b].vehicleIds[v]);
+    forceFormCluster_ = false;
+
+    if (allowMultipleRounds_) {
+        scheduledVehicles_.clear();
+    } else {
+        // Build scheduledVehicles_ from our local committed schedule.
+        // (QC_BROADCAST may have already populated this; we add our own copy as a safety net.)
+        for (int b = 0; b < committedSchedule_.numBatches; b++) {
+            for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
+                scheduledVehicles_.insert(committedSchedule_.batches[b].vehicleIds[v]);
+            }
         }
     }
 
@@ -209,6 +215,19 @@ void RaftAppBase::startNewRound()
                       << " discovery window elapsed — attempting cluster formation." << std::endl;
             sendClusterBeacon();
             scheduleClusterFormationLoop();
+
+            if (allowMultipleRounds_) {
+                // After 1s of beaconing, force-form with whoever responded — no count check.
+                scheduleOneshotMs(1000.0, [this]() {
+                    if (!raftStarted_ && !hasPassedIntersection_ &&
+                        (int)collectedAllVehicles_.size() >= 2) {
+                        std::cout << NOW << " [ROUND][V" << myId_ << "] Force-forming cluster with "
+                                  << collectedAllVehicles_.size() << " present vehicles." << std::endl;
+                        forceFormCluster_ = true;
+                        tryFormClusterFromCollected();
+                    }
+                });
+            }
         }
     });
 }
@@ -262,7 +281,9 @@ void RaftAppBase::tryFormClusterFromCollected()
     if (raftStarted_) return;
 
     std::set<int> members;
-    if (clusterMode_ == "allVehicles") {
+    if (forceFormCluster_) {
+        members = collectedAllVehicles_;
+    } else if (clusterMode_ == "allVehicles") {
         if ((int)collectedAllVehicles_.size() < totalVehicles_) return;
         members = collectedAllVehicles_;
     } else {

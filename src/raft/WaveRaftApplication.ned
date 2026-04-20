@@ -29,4 +29,7 @@ simple WaveRaftApplication extends DemoBaseApplLayer
 
         // Per-run override
         bool isPriorityVehicle = default(false);
+
+        // Test knob: if true, start a new RAFT round even when all vehicles are already scheduled
+        bool allowMultipleRounds = default(false);
 }

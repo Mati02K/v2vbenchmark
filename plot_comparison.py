@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
 RAFT Intersection Benchmark Plotter
-Compares WAVE vs UDP performance across vehicle counts.
+Generates 9 comparison plots: laneLeaders vs allVehicles vs multirounds,
+priority vs nopriority, across UDP and WAVE transports.
 
 Usage:
-  python3 plot_comparison.py --simple                          # laneLeaders plots
-  python3 plot_comparison.py --simple --mode allVehicles       # allVehicles plots
-  python3 plot_comparison.py --simple --compare-modes          # side-by-side comparison
+  python3 plot_comparison.py          # generate all 9 comparison plots
 """
 
 import argparse
@@ -14,6 +13,7 @@ import json
 import os
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
@@ -21,7 +21,26 @@ VEHICLE_COUNTS = [4, 8, 16]
 PROTOCOLS = ['wave', 'udp']
 PROTOCOL_PREFIXES = {'wave': 'simple_raftwave', 'udp': 'simple_udp'}
 PROTOCOL_LABELS = {'wave': 'WAVE (802.11p)', 'udp': 'UDP (802.11a)'}
-PROTOCOL_COLORS = {'wave': '#9b59b6', 'udp': '#3498db'}
+
+MODES = ['laneLeaders', 'allVehicles', 'allVehicles_multirounds']
+MODE_LABELS = {
+    'laneLeaders':             'Lane Leaders',
+    'allVehicles':             'All Vehicles',
+    'allVehicles_multirounds': 'Multi-Rounds',
+}
+MODE_COLORS = {
+    'laneLeaders':             '#3498db',
+    'allVehicles':             '#2ecc71',
+    'allVehicles_multirounds': '#e67e22',
+}
+
+PRIORITY_VARIANTS = ['priority', 'nopriority']
+PRIORITY_SUFFIXES = {'priority': '', 'nopriority': '_nopriority'}
+PRIORITY_LINESTYLES = {'priority': '-', 'nopriority': '--'}
+PRIORITY_DISPLAY = {'priority': 'Priority', 'nopriority': 'No Priority'}
+
+PRIO_COLOR = '#e74c3c'
+NORM_COLOR = '#95a5a6'
 
 
 # ============================================================
@@ -66,28 +85,26 @@ def loadRunsForMode(protocolPrefix, vc, mode):
 def calculateMetrics(runsData):
     """Calculate aggregate metrics (mean/std) from a list of per-run vehicle arrays."""
     metrics = {
-        'raftDecisionTime': [],
-        'throughput': [],
-        'waitTime': [],
-        'msgSentPerVehicle': [],
-        'msgReceivedPerVehicle': [],
-        'fallbackRate': [],
+        'raftDecisionTime':    [],
+        'throughput':          [],
+        'waitTime':            [],
+        'msgSentPerVehicle':   [],
+        'msgRecvPerVehicle':   [],
+        'fallbackRate':        [],
     }
 
     for runData in runsData:
         if not runData:
             continue
         numVehicles = len(runData)
-
-        # RAFT decision time: sum across non-fallback vehicles
         raftVehicles = [v for v in runData if v.get('coordination_method') != 'fallback']
+
         rdPerVeh = [v['durations_ms'].get('raft_decision_time', 0)
                     for v in raftVehicles
                     if v['durations_ms'].get('raft_decision_time', 0) > 0]
         if rdPerVeh:
             metrics['raftDecisionTime'].append(sum(rdPerVeh))
 
-        # Throughput: N / mean(passed - stopped) per vehicle
         waitTimes = [
             v['timestamps_ms']['passed'] - v['timestamps_ms']['stopped']
             for v in raftVehicles
@@ -98,17 +115,14 @@ def calculateMetrics(runsData):
             if avgWaitMs > 0:
                 metrics['throughput'].append(len(raftVehicles) / (avgWaitMs / 1000.0))
 
-        # Fallback rate per run
         fallbackCount = sum(1 for v in runData if v.get('coordination_method') == 'fallback')
         metrics['fallbackRate'].append(fallbackCount / numVehicles if numVehicles > 0 else 0)
 
-        # Average messages per vehicle
         totalSent = sum(v['messages']['sent'] for v in runData)
         totalRecv = sum(v['messages']['received'] for v in runData)
         metrics['msgSentPerVehicle'].append(totalSent / numVehicles if numVehicles > 0 else 0)
-        metrics['msgReceivedPerVehicle'].append(totalRecv / numVehicles if numVehicles > 0 else 0)
+        metrics['msgRecvPerVehicle'].append(totalRecv / numVehicles if numVehicles > 0 else 0)
 
-        # Per-vehicle wait times
         for v in runData:
             metrics['waitTime'].append(v['durations_ms']['total_wait_time'])
 
@@ -121,14 +135,19 @@ def calculateMetrics(runsData):
     return result
 
 
-def loadDataForMode(mode):
-    """Load and compute metrics for all protocol x vehicle-count combinations."""
+def loadAllData():
+    """Load metrics for all (protocol, mode, priority, vc) combinations.
+    Missing result directories are silently skipped."""
     data = {}
     for protocol in PROTOCOLS:
-        for vc in VEHICLE_COUNTS:
-            runs = loadRunsForMode(PROTOCOL_PREFIXES[protocol], vc, mode)
-            if runs:
-                data[(protocol, vc)] = calculateMetrics(runs)
+        prefix = PROTOCOL_PREFIXES[protocol]
+        for mode in MODES:
+            for prio in PRIORITY_VARIANTS:
+                fullMode = mode + PRIORITY_SUFFIXES[prio]
+                for vc in VEHICLE_COUNTS:
+                    runs = loadRunsForMode(prefix, vc, fullMode)
+                    if runs:
+                        data[(protocol, mode, prio, vc)] = calculateMetrics(runs)
     return data
 
 
@@ -143,444 +162,142 @@ def savePlot(fig, path):
     print(f"  Saved: {os.path.basename(path)}")
 
 
-def getMetricValues(data, protocol, metric, scale=1.0):
+def getValues(data, protocol, mode, prio, metric, scale=1.0):
     """Extract mean/std arrays for a metric across all vehicle counts."""
     means, stds = [], []
     for vc in VEHICLE_COUNTS:
-        key = (protocol, vc)
+        key = (protocol, mode, prio, vc)
         if key in data and metric in data[key]:
             means.append(data[key][metric]['mean'] * scale)
             stds.append(data[key][metric]['std'] * scale)
         else:
-            means.append(0)
-            stds.append(0)
+            means.append(None)
+            stds.append(None)
     return means, stds
 
 
+def buildLegend():
+    """Build a shared legend: one entry per mode (color) + one per priority (linestyle)."""
+    handles = []
+    for mode in MODES:
+        handles.append(Line2D([0], [0], color=MODE_COLORS[mode], linewidth=2,
+                               label=MODE_LABELS[mode]))
+    for prio in PRIORITY_VARIANTS:
+        handles.append(Line2D([0], [0], color='black',
+                               linestyle=PRIORITY_LINESTYLES[prio], linewidth=1.5,
+                               label=PRIORITY_DISPLAY[prio]))
+    return handles
+
+
 # ============================================================
-# Single-Mode Plots (WAVE vs UDP for one cluster mode)
+# Non-Ambulance Line Plots (per transport)
 # ============================================================
 
-def plotThroughput(data, mode):
-    """Bar chart: system throughput (veh/s) for WAVE vs UDP."""
+def plotMetricLine(data, transport, metric, title, ylabel, outputPrefix, scale=1.0):
+    """Line chart per transport: 6 lines (3 modes × 2 priority), x = vehicle count."""
     fig, ax = plt.subplots(figsize=(8, 5))
-    fig.suptitle(f'System Throughput [{mode}]\nWAVE vs UDP across vehicle counts',
+    fig.suptitle(f'{title} — {PROTOCOL_LABELS[transport]}',
                  fontsize=13, fontweight='bold')
 
-    barWidth = 0.35
-    x = np.arange(len(VEHICLE_COUNTS))
+    x = np.array(VEHICLE_COUNTS)
+    hasAny = False
 
-    for i, protocol in enumerate(PROTOCOLS):
-        means, stds = getMetricValues(data, protocol, 'throughput')
-        offset = (i - 0.5) * barWidth
-        bars = ax.bar(x + offset, means, barWidth, yerr=stds,
-                      label=PROTOCOL_LABELS[protocol], color=PROTOCOL_COLORS[protocol],
-                      alpha=0.8, capsize=5, edgecolor='black', linewidth=0.5)
-        for bar, mean in zip(bars, means):
-            if mean > 0:
-                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
-                        f'{mean:.3f}', ha='center', va='bottom', fontsize=8, fontweight='bold')
-
-    ax.set_xlabel('Number of Vehicles', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Vehicles/second', fontsize=11, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels([f'{vc} veh' for vc in VEHICLE_COUNTS])
-    ax.legend(bbox_to_anchor=(0.5, -0.15), loc='upper center', ncol=2, fontsize=9)
-    ax.grid(True, alpha=0.3, axis='y')
-    ax.set_ylim(bottom=0)
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
-
-    savePlot(fig, os.path.join(RESULTS_DIR, f'throughput_{mode}.png'))
-
-
-def plotFallbacks(data, mode):
-    """Bar chart: fallback rate (%) for WAVE vs UDP."""
-    fig, ax = plt.subplots(figsize=(8, 5))
-    fig.suptitle(f'Fallback Rate [{mode}]\nVehicles passing without RAFT consensus',
-                 fontsize=13, fontweight='bold')
-
-    barWidth = 0.35
-    x = np.arange(len(VEHICLE_COUNTS))
-
-    for i, protocol in enumerate(PROTOCOLS):
-        means, stds = getMetricValues(data, protocol, 'fallbackRate', scale=100)
-        offset = (i - 0.5) * barWidth
-        bars = ax.bar(x + offset, means, barWidth, yerr=stds,
-                      label=PROTOCOL_LABELS[protocol], color=PROTOCOL_COLORS[protocol],
-                      alpha=0.8, capsize=5, edgecolor='black', linewidth=0.5)
-        for bar, mean in zip(bars, means):
-            if mean > 0:
-                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
-                        f'{mean:.1f}%', ha='center', va='bottom', fontsize=9, fontweight='bold')
-
-    ax.set_xlabel('Number of Vehicles', fontsize=11, fontweight='bold')
-    ax.set_ylabel('Fallback Rate (%)', fontsize=11, fontweight='bold')
-    ax.set_xticks(x)
-    ax.set_xticklabels([f'{vc} veh' for vc in VEHICLE_COUNTS])
-    ax.legend(bbox_to_anchor=(0.5, -0.15), loc='upper center', ncol=2, fontsize=9)
-    ax.grid(True, alpha=0.3, axis='y')
-    ax.set_ylim(bottom=0)
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
-
-    savePlot(fig, os.path.join(RESULTS_DIR, f'fallbacks_{mode}.png'))
-
-
-def plotMessages(data, mode):
-    """2-panel bar chart: avg messages sent and received per vehicle."""
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-    fig.suptitle(f'Average Messages per Vehicle [{mode}]\nWAVE vs UDP across vehicle counts',
-                 fontsize=13, fontweight='bold')
-
-    barWidth = 0.35
-    x = np.arange(len(VEHICLE_COUNTS))
-    configs = [
-        ('msgSentPerVehicle', 'Avg Sent per Vehicle'),
-        ('msgReceivedPerVehicle', 'Avg Received per Vehicle'),
-    ]
-
-    for col, (metric, title) in enumerate(configs):
-        ax = axes[col]
-        for i, protocol in enumerate(PROTOCOLS):
-            means, stds = getMetricValues(data, protocol, metric)
-            offset = (i - 0.5) * barWidth
-            bars = ax.bar(x + offset, means, barWidth, yerr=stds,
-                          label=PROTOCOL_LABELS[protocol], color=PROTOCOL_COLORS[protocol],
-                          alpha=0.8, capsize=5, edgecolor='black', linewidth=0.5)
-            for bar, mean in zip(bars, means):
-                if mean > 0:
-                    ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
-                            f'{mean:.0f}', ha='center', va='bottom', fontsize=8, fontweight='bold')
-        ax.set_xlabel('Number of Vehicles', fontsize=10, fontweight='bold')
-        ax.set_ylabel('Messages', fontsize=10, fontweight='bold')
-        ax.set_title(title, fontsize=11, fontweight='bold')
-        ax.set_xticks(x)
-        ax.set_xticklabels([f'{vc} veh' for vc in VEHICLE_COUNTS])
-        ax.legend(bbox_to_anchor=(0.5, -0.18), loc='upper center', ncol=2, fontsize=8)
-        ax.grid(True, alpha=0.3, axis='y')
-        ax.set_ylim(bottom=0)
-
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
-    savePlot(fig, os.path.join(RESULTS_DIR, f'messages_{mode}.png'))
-
-
-def plotCdfWaitTime(mode):
-    """CDF of total wait time per vehicle, one subplot per vehicle count."""
-    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(14, 5), sharey=True)
-    fig.suptitle(f'CDF of Total Wait Time [{mode}]\n'
-                 f'Time from stopping to crossing (RAFT only)',
-                 fontsize=13, fontweight='bold')
-
-    linestyles = {'wave': '-', 'udp': '--'}
-
-    for col, vc in enumerate(VEHICLE_COUNTS):
-        ax = axes[col]
-        for protocol in PROTOCOLS:
-            runs = loadRunsForMode(PROTOCOL_PREFIXES[protocol], vc, mode)
-            times = []
-            for runData in runs:
-                for v in runData:
-                    if v.get('coordination_method') == 'fallback':
-                        continue
-                    wt = v['durations_ms'].get('total_wait_time', 0)
-                    if wt > 0:
-                        times.append(wt / 1000.0)
-            if not times:
+    for mode in MODES:
+        for prio in PRIORITY_VARIANTS:
+            means, _ = getValues(data, transport, mode, prio, metric, scale)
+            if all(v is None for v in means):
                 continue
-            sortedT = np.sort(times)
-            cdf = np.arange(1, len(sortedT) + 1) / len(sortedT)
-            ax.plot(sortedT, cdf, color=PROTOCOL_COLORS[protocol],
-                    linestyle=linestyles[protocol], linewidth=2,
-                    label=f"{PROTOCOL_LABELS[protocol]} (n={len(times)})")
+            yVals = [v if v is not None else np.nan for v in means]
+            ax.plot(x, yVals,
+                    color=MODE_COLORS[mode],
+                    linestyle=PRIORITY_LINESTYLES[prio],
+                    linewidth=2, marker='o', markersize=6,
+                    label=f"{MODE_LABELS[mode]} / {PRIORITY_DISPLAY[prio]}")
+            hasAny = True
 
-        ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
-        ax.set_xlabel('Total Wait Time (s)', fontsize=10)
-        if col == 0:
-            ax.set_ylabel('CDF', fontsize=10)
-        ax.set_ylim(0, 1.05)
-        ax.set_xlim(left=0)
-        ax.legend(fontsize=8, loc='lower right')
-        ax.grid(True, alpha=0.3)
-
-    plt.tight_layout()
-    savePlot(fig, os.path.join(RESULTS_DIR, f'cdf_{mode}.png'))
-
-
-def plotAmbulanceWaitTime(mode):
-    """Bar chart: priority / normal / all vehicle wait time, one subplot per vehicle count.
-    Gracefully handles nopriority runs by showing only Normal + All bars."""
-    prioWait = {p: {} for p in PROTOCOLS}
-    normWait = {p: {} for p in PROTOCOLS}
-    allWait  = {p: {} for p in PROTOCOLS}
-
-    for protocol in PROTOCOLS:
-        for vc in VEHICLE_COUNTS:
-            runs = loadRunsForMode(PROTOCOL_PREFIXES[protocol], vc, mode)
-            prioTimes, normTimes = [], []
-            for runData in runs:
-                for v in runData:
-                    if v.get('coordination_method') == 'fallback':
-                        continue
-                    passedMs  = v['timestamps_ms'].get('passed', 0)
-                    stoppedMs = v['timestamps_ms'].get('stopped', 0)
-                    if passedMs <= 0 or stoppedMs <= 0:
-                        continue
-                    latencyS = (passedMs - stoppedMs) / 1000.0
-                    if v.get('is_priority_vehicle', False):
-                        prioTimes.append(latencyS)
-                    else:
-                        normTimes.append(latencyS)
-            prioWait[protocol][vc] = np.mean(prioTimes) if prioTimes else None
-            normWait[protocol][vc] = np.mean(normTimes) if normTimes else None
-            allWait[protocol][vc]  = np.mean(prioTimes + normTimes) if (prioTimes or normTimes) else None
-
-    # Determine if any run had a priority vehicle at all
-    hasPrio = any(
-        prioWait[p][vc] is not None
-        for p in PROTOCOLS for vc in VEHICLE_COUNTS
-        if vc in prioWait[p]
-    )
-
-    prioColor = '#e74c3c'
-    normColor = '#95a5a6'
-    allColor  = '#2ecc71'
-    barW      = 0.3
-    groupGap  = 1.2
-
-    if hasPrio:
-        barsPerGroup = 3  # Priority, Normal, All
-        titleStr = f'Wait Time: Priority vs Normal vs All [{mode}]\nStopped to passed (seconds)'
-    else:
-        barsPerGroup = 2  # Normal, All only
-        titleStr = f'Wait Time: All Vehicles [{mode}]\nStopped to passed (seconds)'
-
-    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(16, 5), sharey=False)
-    fig.suptitle(titleStr, fontsize=13, fontweight='bold')
-
-    for col, vc in enumerate(VEHICLE_COUNTS):
-        ax = axes[col]
-
-        wPrio = prioWait['wave'].get(vc) or 0.0
-        wNorm = normWait['wave'].get(vc) or 0.0
-        wAll  = allWait['wave'].get(vc)  or 0.0
-        uPrio = prioWait['udp'].get(vc)  or 0.0
-        uNorm = normWait['udp'].get(vc)  or 0.0
-        uAll  = allWait['udp'].get(vc)   or 0.0
-
-        if hasPrio:
-            barVals   = [(wPrio, prioColor), (wNorm, normColor), (wAll, allColor)]
-            udpVals   = [(uPrio, prioColor), (uNorm, normColor), (uAll, allColor)]
-        else:
-            barVals   = [(wNorm, normColor), (wAll, allColor)]
-            udpVals   = [(uNorm, normColor), (uAll, allColor)]
-
-        xWave = np.arange(len(barVals), dtype=float) * barW
-        xUdp  = xWave + barW * barsPerGroup + groupGap
-
-        for entries, xPositions, hatch in [(barVals, xWave, None), (udpVals, xUdp, '//')]:
-            for xPos, (val, color) in zip(xPositions, entries):
-                ax.bar(xPos, val, width=barW, color=color, alpha=0.9,
-                       edgecolor='black', linewidth=0.7, hatch=hatch)
-                if val > 0:
-                    ax.text(xPos, val + 0.03, f'{val:.1f}s', ha='center', va='bottom',
-                            fontsize=8, fontweight='bold')
-
-        midWave = float(np.mean(xWave))
-        midUdp  = float(np.mean(xUdp))
-        ax.annotate('WAVE', xy=(midWave, -0.09), xycoords=('data', 'axes fraction'),
-                    ha='center', va='top', fontsize=9, fontweight='bold',
-                    color=PROTOCOL_COLORS['wave'])
-        ax.annotate('UDP', xy=(midUdp, -0.09), xycoords=('data', 'axes fraction'),
-                    ha='center', va='top', fontsize=9, fontweight='bold',
-                    color=PROTOCOL_COLORS['udp'])
-
-        ax.set_xticks([])
-        ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
-        if col == 0:
-            ax.set_ylabel('Mean Crossing Time (s)', fontsize=10)
-        ax.set_xlim(-barW * 0.8, float(xUdp[-1]) + barW * 1.2)
-        allVals = [wPrio, wNorm, wAll, uPrio, uNorm, uAll] if hasPrio else [wNorm, wAll, uNorm, uAll]
-        maxVal = max(allVals + [0.1])
-        ax.set_ylim(0, maxVal * 1.25 + 0.5)
-        ax.grid(True, alpha=0.3, axis='y')
-
-        if col == 0:
-            legendElements = []
-            if hasPrio:
-                legendElements.append(Patch(facecolor=prioColor, edgecolor='black', label='Priority vehicle'))
-            legendElements += [
-                Patch(facecolor=normColor, edgecolor='black', label='Normal vehicles'),
-                Patch(facecolor=allColor,  edgecolor='black', label='All vehicles'),
-                Patch(facecolor='white',   edgecolor='black', label='WAVE (solid)'),
-                Patch(facecolor='white',   edgecolor='black', hatch='//', label='UDP (hatched)'),
-            ]
-            ax.legend(handles=legendElements, fontsize=8, loc='upper right')
-
-    plt.tight_layout()
-    savePlot(fig, os.path.join(RESULTS_DIR, f'ambulance_{mode}.png'))
-
-
-# ============================================================
-# Compare-Mode Plots (laneLeaders vs allVehicles side by side)
-# ============================================================
-
-COMPARE_MODES = ['laneLeaders', 'allVehicles']
-COMPARE_SERIES = [(p, m) for p in PROTOCOLS for m in COMPARE_MODES]
-COMPARE_COLORS = {
-    ('wave', 'laneLeaders'): '#9b59b6',
-    ('wave', 'allVehicles'): '#9b59b6',
-    ('udp', 'laneLeaders'): '#3498db',
-    ('udp', 'allVehicles'): '#3498db',
-}
-COMPARE_HATCHES = {
-    ('wave', 'laneLeaders'): '',
-    ('wave', 'allVehicles'): '//',
-    ('udp', 'laneLeaders'): '',
-    ('udp', 'allVehicles'): '//',
-}
-COMPARE_LABELS = {
-    ('wave', 'laneLeaders'): 'WAVE / Lane Leaders',
-    ('wave', 'allVehicles'): 'WAVE / All Vehicles',
-    ('udp', 'laneLeaders'): 'UDP / Lane Leaders',
-    ('udp', 'allVehicles'): 'UDP / All Vehicles',
-}
-
-
-def loadCompareData():
-    """Load metrics for all protocol x mode x vehicle-count combinations."""
-    data = {}
-    for protocol in PROTOCOLS:
-        prefix = PROTOCOL_PREFIXES[protocol]
-        for mode in COMPARE_MODES:
-            for vc in VEHICLE_COUNTS:
-                runs = loadRunsForMode(prefix, vc, mode)
-                if runs:
-                    data[(protocol, mode, vc)] = calculateMetrics(runs)
-    return data
-
-
-def getCompareValues(data, protocol, mode, metric, scale=1.0):
-    """Extract mean/std arrays for a metric across vehicle counts in compare mode."""
-    means, stds = [], []
-    for vc in VEHICLE_COUNTS:
-        key = (protocol, mode, vc)
-        if key in data and metric in data[key]:
-            means.append(data[key][metric]['mean'] * scale)
-            stds.append(data[key][metric]['std'] * scale)
-        else:
-            means.append(0)
-            stds.append(0)
-    return means, stds
-
-
-def plotCompareBars(data, metric, title, ylabel, outputName, scale=1.0, valueFmt='{:.3f}'):
-    """Generic 4-series bar chart for compare mode."""
-    fig, ax = plt.subplots(figsize=(10, 6))
-    fig.suptitle(title, fontsize=13, fontweight='bold')
-
-    barWidth = 0.18
-    x = np.arange(len(VEHICLE_COUNTS))
-
-    for i, (protocol, mode) in enumerate(COMPARE_SERIES):
-        means, stds = getCompareValues(data, protocol, mode, metric, scale)
-        offset = (i - 1.5) * barWidth
-        bars = ax.bar(x + offset, means, barWidth, yerr=stds,
-                      label=COMPARE_LABELS[(protocol, mode)],
-                      color=COMPARE_COLORS[(protocol, mode)],
-                      hatch=COMPARE_HATCHES[(protocol, mode)],
-                      alpha=0.85, capsize=4, edgecolor='black', linewidth=0.5)
-        for bar, mean in zip(bars, means):
-            if mean > 0:
-                ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
-                        valueFmt.format(mean), ha='center', va='bottom',
-                        fontsize=7, fontweight='bold')
+    if not hasAny:
+        plt.close(fig)
+        return
 
     ax.set_xlabel('Number of Vehicles', fontsize=11, fontweight='bold')
     ax.set_ylabel(ylabel, fontsize=11, fontweight='bold')
-    ax.set_xticks(x)
+    ax.set_xticks(VEHICLE_COUNTS)
     ax.set_xticklabels([f'{vc} veh' for vc in VEHICLE_COUNTS])
-    ax.legend(bbox_to_anchor=(0.5, -0.15), loc='upper center', ncol=4, fontsize=8)
-    ax.grid(True, alpha=0.3, axis='y')
+    ax.legend(handles=buildLegend(),
+              bbox_to_anchor=(1.01, 1), loc='upper left', fontsize=8, borderaxespad=0)
+    ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
-    plt.tight_layout(rect=[0, 0.05, 1, 1])
-
-    savePlot(fig, os.path.join(RESULTS_DIR, f'{outputName}_compare.png'))
-
-
-def plotCompareThroughput(data):
-    """Compare-mode throughput bar chart."""
-    plotCompareBars(data, 'throughput',
-                    'Throughput: Lane Leaders vs All Vehicles\n'
-                    'WAVE and UDP across vehicle counts',
-                    'Vehicles/second', 'throughput', valueFmt='{:.3f}')
+    plt.tight_layout()
+    savePlot(fig, os.path.join(RESULTS_DIR, f'{outputPrefix}_{transport}.png'))
 
 
-def plotCompareFallbacks(data):
-    """Compare-mode fallback rate bar chart."""
-    plotCompareBars(data, 'fallbackRate',
-                    'Fallback Rate: Lane Leaders vs All Vehicles',
-                    'Fallback Rate (%)', 'fallbacks', scale=100, valueFmt='{:.1f}%')
+def plotThroughput(data, transport):
+    plotMetricLine(data, transport, 'throughput',
+                   'System Throughput', 'Vehicles / second', 'throughput')
 
 
-def plotCompareMessages(data):
-    """Compare-mode 2-panel message chart (avg per vehicle)."""
+def plotFallbacks(data, transport):
+    plotMetricLine(data, transport, 'fallbackRate',
+                   'Fallback Rate', 'Fallback Rate (%)', 'fallbacks', scale=100)
+
+
+def plotMessages(data, transport):
+    """2-panel line chart: avg messages sent and received per vehicle."""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle('Messages per Vehicle: Lane Leaders vs All Vehicles',
+    fig.suptitle(f'Messages per Vehicle — {PROTOCOL_LABELS[transport]}',
                  fontsize=13, fontweight='bold')
 
-    barWidth = 0.18
-    x = np.arange(len(VEHICLE_COUNTS))
     configs = [
-        ('msgSentPerVehicle', 'Avg Sent per Vehicle'),
-        ('msgReceivedPerVehicle', 'Avg Received per Vehicle'),
+        ('msgSentPerVehicle',  'Avg Sent per Vehicle'),
+        ('msgRecvPerVehicle',  'Avg Received per Vehicle'),
     ]
+    x = np.array(VEHICLE_COUNTS)
+    hasAny = False
 
-    for col, (metric, title) in enumerate(configs):
+    for col, (metric, panelTitle) in enumerate(configs):
         ax = axes[col]
-        for i, (protocol, mode) in enumerate(COMPARE_SERIES):
-            means, stds = getCompareValues(data, protocol, mode, metric)
-            offset = (i - 1.5) * barWidth
-            bars = ax.bar(x + offset, means, barWidth, yerr=stds,
-                          label=COMPARE_LABELS[(protocol, mode)],
-                          color=COMPARE_COLORS[(protocol, mode)],
-                          hatch=COMPARE_HATCHES[(protocol, mode)],
-                          alpha=0.85, capsize=4, edgecolor='black', linewidth=0.5)
-            for bar, mean in zip(bars, means):
-                if mean > 0:
-                    ax.text(bar.get_x() + bar.get_width() / 2., bar.get_height(),
-                            f'{mean:.0f}', ha='center', va='bottom',
-                            fontsize=6, fontweight='bold')
+        for mode in MODES:
+            for prio in PRIORITY_VARIANTS:
+                means, _ = getValues(data, transport, mode, prio, metric)
+                if all(v is None for v in means):
+                    continue
+                yVals = [v if v is not None else np.nan for v in means]
+                ax.plot(x, yVals,
+                        color=MODE_COLORS[mode],
+                        linestyle=PRIORITY_LINESTYLES[prio],
+                        linewidth=2, marker='o', markersize=6)
+                hasAny = True
         ax.set_xlabel('Number of Vehicles', fontsize=10, fontweight='bold')
         ax.set_ylabel('Messages', fontsize=10, fontweight='bold')
-        ax.set_title(title, fontsize=11, fontweight='bold')
-        ax.set_xticks(x)
+        ax.set_title(panelTitle, fontsize=11, fontweight='bold')
+        ax.set_xticks(VEHICLE_COUNTS)
         ax.set_xticklabels([f'{vc} veh' for vc in VEHICLE_COUNTS])
-        ax.legend(bbox_to_anchor=(0.5, -0.18), loc='upper center', ncol=4, fontsize=7)
-        ax.grid(True, alpha=0.3, axis='y')
+        ax.grid(True, alpha=0.3)
         ax.set_ylim(bottom=0)
 
-    plt.tight_layout(rect=[0, 0.06, 1, 1])
-    savePlot(fig, os.path.join(RESULTS_DIR, 'messages_compare.png'))
+    if not hasAny:
+        plt.close(fig)
+        return
+
+    fig.legend(handles=buildLegend(),
+               bbox_to_anchor=(1.01, 0.5), loc='center left', fontsize=8, borderaxespad=0)
+    plt.tight_layout()
+    savePlot(fig, os.path.join(RESULTS_DIR, f'messages_{transport}.png'))
 
 
-def plotCompareCdfWaitTime():
-    """Compare-mode CDF of wait time (4 lines per subplot)."""
-    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(16, 5), sharey=True)
-    fig.suptitle('CDF of Wait Time: Lane Leaders vs All Vehicles\n'
-                 'Time from stopping to crossing (RAFT only)',
+def plotCdf(transport):
+    """CDF of total wait time per transport: 3 subpanels (4/8/16 veh), 6 lines each."""
+    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(15, 5), sharey=True)
+    fig.suptitle(f'CDF of Total Wait Time — {PROTOCOL_LABELS[transport]}\n'
+                 f'Time from stopping to crossing (RAFT vehicles only)',
                  fontsize=13, fontweight='bold')
-
-    linestyles = {
-        ('wave', 'laneLeaders'): '-',
-        ('wave', 'allVehicles'): '--',
-        ('udp', 'laneLeaders'): '-',
-        ('udp', 'allVehicles'): '--',
-    }
 
     for col, vc in enumerate(VEHICLE_COUNTS):
         ax = axes[col]
-        for protocol in PROTOCOLS:
-            for mode in COMPARE_MODES:
-                runs = loadRunsForMode(PROTOCOL_PREFIXES[protocol], vc, mode)
+        for mode in MODES:
+            for prio in PRIORITY_VARIANTS:
+                fullMode = mode + PRIORITY_SUFFIXES[prio]
+                runs = loadRunsForMode(PROTOCOL_PREFIXES[transport], vc, fullMode)
                 times = []
                 for runData in runs:
                     for v in runData:
@@ -594,75 +311,142 @@ def plotCompareCdfWaitTime():
                 sortedT = np.sort(times)
                 cdf = np.arange(1, len(sortedT) + 1) / len(sortedT)
                 ax.plot(sortedT, cdf,
-                        color=COMPARE_COLORS[(protocol, mode)],
-                        linestyle=linestyles[(protocol, mode)],
-                        linewidth=2,
-                        label=f"{COMPARE_LABELS[(protocol, mode)]} (n={len(times)})")
+                        color=MODE_COLORS[mode],
+                        linestyle=PRIORITY_LINESTYLES[prio],
+                        linewidth=2)
 
         ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
-        ax.set_xlabel('Total Wait Time (s)', fontsize=10)
+        ax.set_xlabel('Wait Time (s)', fontsize=10)
         if col == 0:
             ax.set_ylabel('CDF', fontsize=10)
         ax.set_ylim(0, 1.05)
         ax.set_xlim(left=0)
-        ax.legend(fontsize=7, loc='lower right')
         ax.grid(True, alpha=0.3)
 
+    fig.legend(handles=buildLegend(),
+               bbox_to_anchor=(1.01, 0.5), loc='center left', fontsize=8, borderaxespad=0)
     plt.tight_layout()
-    savePlot(fig, os.path.join(RESULTS_DIR, 'cdf_compare.png'))
+    savePlot(fig, os.path.join(RESULTS_DIR, f'cdf_{transport}.png'))
 
 
 # ============================================================
-# Entry Points
+# Ambulance Graph (priority vs nopriority across all combos)
 # ============================================================
 
-def generateSingleModePlots(mode):
-    """Generate all plots for a single cluster mode."""
-    print(f"Generating plots for mode: {mode}")
-    data = loadDataForMode(mode)
-    if not data:
-        print(f"  No data found for mode '{mode}'")
-        return
-    plotThroughput(data, mode)
-    plotFallbacks(data, mode)
-    plotMessages(data, mode)
-    plotCdfWaitTime(mode)
-    plotAmbulanceWaitTime(mode)
-    print(f"Done — 5 plots saved for {mode}.\n")
+def plotAmbulance():
+    """Grouped bar chart: priority vehicle vs normal vs nopriority crossing time.
+    3 subpanels (4/8/16 veh), 6 combo groups per subpanel (3 modes × 2 transports)."""
+    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(18, 6), sharey=False)
+    fig.suptitle('Ambulance (Priority Vehicle) Benefit\n'
+                 'Priority vehicle crossing time vs normal vs no-priority run',
+                 fontsize=13, fontweight='bold')
+
+    barW = 0.2
+    combos = [(t, m) for t in PROTOCOLS for m in MODES]
+    comboLabels = [f"{t.upper()}\n{MODE_LABELS[m][:4]}" for t, m in combos]
+    x = np.arange(len(combos))
+
+    for col, vc in enumerate(VEHICLE_COUNTS):
+        ax = axes[col]
+        prioVals, normVals, noPrioVals = [], [], []
+
+        for transport, mode in combos:
+            prefix = PROTOCOL_PREFIXES[transport]
+
+            prioRuns = loadRunsForMode(prefix, vc, mode + PRIORITY_SUFFIXES['priority'])
+            noPrioRuns = loadRunsForMode(prefix, vc, mode + PRIORITY_SUFFIXES['nopriority'])
+
+            prioTimes, normTimes = [], []
+            for runData in prioRuns:
+                for v in runData:
+                    if v.get('coordination_method') == 'fallback':
+                        continue
+                    passed = v['timestamps_ms'].get('passed', 0)
+                    stopped = v['timestamps_ms'].get('stopped', 0)
+                    if passed <= 0 or stopped <= 0:
+                        continue
+                    latency = (passed - stopped) / 1000.0
+                    if v.get('is_priority_vehicle', False):
+                        prioTimes.append(latency)
+                    else:
+                        normTimes.append(latency)
+
+            noPrioTimes = []
+            for runData in noPrioRuns:
+                for v in runData:
+                    if v.get('coordination_method') == 'fallback':
+                        continue
+                    passed = v['timestamps_ms'].get('passed', 0)
+                    stopped = v['timestamps_ms'].get('stopped', 0)
+                    if passed <= 0 or stopped <= 0:
+                        continue
+                    noPrioTimes.append((passed - stopped) / 1000.0)
+
+            prioVals.append(np.mean(prioTimes) if prioTimes else 0)
+            normVals.append(np.mean(normTimes) if normTimes else 0)
+            noPrioVals.append(np.mean(noPrioTimes) if noPrioTimes else 0)
+
+        ax.bar(x - barW, prioVals,  barW, label='Priority veh (prio run)',
+               color=PRIO_COLOR, alpha=0.85, edgecolor='black', linewidth=0.5)
+        ax.bar(x,         normVals,  barW, label='Normal veh (prio run)',
+               color=NORM_COLOR, alpha=0.85, edgecolor='black', linewidth=0.5)
+        ax.bar(x + barW,  noPrioVals, barW, label='All veh (noprio run)',
+               color='#7f8c8d', alpha=0.85, edgecolor='black', linewidth=0.5,
+               hatch='//')
+
+        ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
+        ax.set_xticks(x)
+        ax.set_xticklabels(comboLabels, fontsize=7)
+        if col == 0:
+            ax.set_ylabel('Mean Crossing Time (s)', fontsize=10)
+        ax.grid(True, alpha=0.3, axis='y')
+        ax.set_ylim(bottom=0)
+
+    legendHandles = [
+        Patch(facecolor=PRIO_COLOR, edgecolor='black', label='Priority vehicle (priority run)'),
+        Patch(facecolor=NORM_COLOR, edgecolor='black', label='Normal vehicles (priority run)'),
+        Patch(facecolor='#7f8c8d', edgecolor='black', hatch='//', label='All vehicles (nopriority run)'),
+    ]
+    fig.legend(handles=legendHandles,
+               bbox_to_anchor=(0.5, -0.02), loc='upper center', ncol=3, fontsize=9)
+    plt.tight_layout()
+    savePlot(fig, os.path.join(RESULTS_DIR, 'ambulance.png'))
 
 
-def generateModeComparison():
-    """Generate side-by-side comparison plots: laneLeaders vs allVehicles."""
-    print("Generating comparison plots (laneLeaders vs allVehicles)...")
-    data = loadCompareData()
+# ============================================================
+# Entry Point
+# ============================================================
+
+def generateAllPlots():
+    """Generate all 9 comparison plots."""
+    print("Loading data for all modes and priority variants...")
+    data = loadAllData()
+
     if not data:
-        print("  No data found for comparison")
+        print("No result data found. Run the benchmark first.")
         return
-    plotCompareThroughput(data)
-    plotCompareFallbacks(data)
-    plotCompareMessages(data)
-    plotCompareCdfWaitTime()
-    print("Done — 4 comparison plots saved.\n")
+
+    print("Generating plots...")
+    for transport in PROTOCOLS:
+        plotThroughput(data, transport)
+        plotFallbacks(data, transport)
+        plotMessages(data, transport)
+        plotCdf(transport)
+
+    plotAmbulance()
+    print(f"\nDone — 9 plots saved to {RESULTS_DIR}/")
 
 
 def main():
     parser = argparse.ArgumentParser(description='RAFT Intersection Benchmark Plotter')
-    parser.add_argument('--simple', action='store_true',
-                        help='Use simple_intersection results (required)')
-    parser.add_argument('--mode', default='laneLeaders',
-                        help='Cluster mode: laneLeaders or allVehicles')
-    parser.add_argument('--compare-modes', action='store_true',
-                        help='Side-by-side laneLeaders vs allVehicles plots')
+    parser.add_argument('--simple', action='store_true', help='(deprecated, ignored)')
+    parser.add_argument('--mode', default=None, help='(deprecated, ignored)')
     args = parser.parse_args()
 
-    if args.compare_modes:
-        generateModeComparison()
-        return
+    if args.mode:
+        print(f"Note: --mode is deprecated. Generating full comparison plots instead.")
 
-    if args.simple:
-        generateSingleModePlots(args.mode)
-    else:
-        print("Use --simple flag. Non-simple mode is deprecated.")
+    generateAllPlots()
 
 
 if __name__ == '__main__':

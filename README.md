@@ -196,14 +196,14 @@ cd ~/veins && python3 ./bin/veins_launchd -vv -c /usr/local/bin/sumo-gui
 cd ~/omnetpp-workspace/benchmark
 
 # 10 iterations, laneLeaders mode (default), priority vehicle rotates each run
-./run_simple_benchmark.sh 10
+./benchmark.sh 10
 
 # 10 iterations, allVehicles mode (all vehicles participate in RAFT)
-./run_simple_benchmark.sh 10 allVehicles
+./benchmark.sh 10 allVehicles
 
 # 10 iterations, nopriority (no priority vehicle — all vehicles treated equally)
-./run_simple_benchmark.sh 10 laneLeaders nopriority
-./run_simple_benchmark.sh 10 allVehicles nopriority
+./benchmark.sh 10 laneLeaders nopriority
+./benchmark.sh 10 allVehicles nopriority
 ```
 
 Each run covers **4, 8, and 16 vehicles × UDP + WAVE** automatically (6 scenario combinations per benchmark call).

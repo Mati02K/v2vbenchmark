@@ -179,6 +179,8 @@ protected:
 
     // ============ CRYPTO / AUTHENTICATION ============
     bool         isPriorityVehicle_;                          // set from NED parameter
+    bool         allowMultipleRounds_;                        // if true, start new round even when all vehicles scheduled
+    bool         forceFormCluster_;                           // set by timer when allowMultipleRounds_: bypass count check in tryFormClusterFromCollected
     EVP_PKEY*    myPrivKey_;                            // vehicle's EC private key
     uint8_t      myPubKey_[CRYPTO_PUBKEY_BYTES];        // vehicle's EC public key
     VehicleCert  myCert_;                               // cert signed by appropriate CA
