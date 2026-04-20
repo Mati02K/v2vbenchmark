@@ -22,12 +22,8 @@ public:
         bool wasLeader,
         bool isPriorityVehicle,
         const std::string& coordinationMethod,
-        const std::string& transport,         // "udp" or "wave"
+        const std::string& transport,
         double stoppedMs,
-        double clusterFormedMs,
-        double electedMs,
-        double orderCommittedMs,
-        double startedMovingMs,
         double passedMs,
         double raftDecisionTimeMs,
         int messagesSent,

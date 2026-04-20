@@ -183,7 +183,12 @@ void UdpRaftApplication::finish()
 void UdpRaftApplication::handleMessageWhenUp(cMessage* msg)
 {
     if (msg == checkTimer_) {
-        checkAndStopAtIntersection();
+        if (!hasPassedIntersection_) {
+            updateLaneLeaderFlag();
+        }
+        if (!hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) {
+            checkAndStopAtIntersection();
+        }
         if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) {
             checkAndAdvanceInQueue();
         }

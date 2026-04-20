@@ -67,7 +67,6 @@ VehicleProposal RaftAppBase::updateMyProposal()
 
     myProposal_.laneIndex          = myLaneIndex_;
     myProposal_.isFirstInLane      = isLaneLeaderByTraci();
-    myProposal_.blockedByVehicleId = myProposal_.isFirstInLane ? -1 : 0;
     myProposal_.waitingTimeMs      = (timeStopped_ > SIMTIME_ZERO)
                                      ? (NOW - timeStopped_).dbl() * 1000.0 : 0.0;
     myProposal_.distanceToJunction = calculateDistanceToJunction();
@@ -237,7 +236,6 @@ void RaftAppBase::handleFallback()
     if (hasPassedIntersection_) return;
     isFallbackMode_     = true;
     coordinationMethod_ = "fallback";
-    timeOrderCommitted_ = NOW;
     std::cout << simTime() << " [DBG][V" << myId_ << "] FALLBACK ACTIVATED"
               << " wos=" << wayOfSight_
               << " frontVeh=" << vehicleInFrontOfMe_
@@ -306,11 +304,6 @@ void RaftAppBase::outputMetricsJSON()
     if (metricsWritten_) return;
     metricsWritten_ = true;
 
-    // RAFT decision time = status collection + sum(commit - propose); leader election excluded
-    double raftDecisionMs = statusCollectionTimeMs_ + (totalRaftDecisionTimeSec_ * 1000.0);
-    // Only the leader who proposed the decision contributes (sub-cluster leaders that merged reset)
-    if (logEntriesProposed_ == 0) raftDecisionMs = 0.0;
-
     RaftMetrics::writeVehicleJSON(
         myId_,
         myLane_,
@@ -319,13 +312,9 @@ void RaftAppBase::outputMetricsJSON()
         isPriorityVehicle_,
         coordinationMethod_,
         transportName_,
-        timeStopped_.dbl()       * 1000.0,
-        timeClusterFormed_.dbl() * 1000.0,
-        timeElected_.dbl()       * 1000.0,
-        timeOrderCommitted_.dbl()* 1000.0,
-        timeStartedMoving_.dbl() * 1000.0,
-        timePassed_.dbl()        * 1000.0,
-        raftDecisionMs,
+        timeStopped_.dbl() * 1000.0,
+        timePassed_.dbl()  * 1000.0,
+        totalRaftTimeSec_  * 1000.0,
         messagesSent_,
         messagesReceived_,
         electionRounds_,

@@ -63,9 +63,6 @@ void RaftAppBase::handlePassOrderBroadcast(const std::vector<uint8_t>& data)
     hasCommittedOrder_ = true;
     coordinationMethod_ = "raft";
 
-    if (hasStoppedAtIntersection_ && timeStopped_ > SIMTIME_ZERO)
-        timeOrderCommitted_ = NOW;
-
     // Extract embedded QC if present.
     if (data.size() >= sizeof(PassScheduleEntry) + sizeof(QuorumCertificate)) {
         QuorumCertificate qc;

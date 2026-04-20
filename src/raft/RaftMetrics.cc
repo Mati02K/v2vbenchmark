@@ -52,10 +52,6 @@ void RaftMetrics::writeVehicleJSON(
     const std::string& coordinationMethod,
     const std::string& transport,
     double stoppedMs,
-    double clusterFormedMs,
-    double electedMs,
-    double orderCommittedMs,
-    double startedMovingMs,
     double passedMs,
     double raftDecisionTimeMs,
     int messagesSent,
@@ -70,9 +66,8 @@ void RaftMetrics::writeVehicleJSON(
     if (!resultsFileOpened_) return;
 
     // Derived metrics
-    double totalWaitTime    = (passedMs > 0 && stoppedMs > 0) ? (passedMs - stoppedMs) : 0;
-    double transitTime  = (passedMs > 0 && startedMovingMs > 0) ? (passedMs - startedMovingMs) : 0;
-    double throughput   = 0;  // intersection-level metric, computed post-hoc from aggregate stats
+    double totalWaitTime = (passedMs > 0 && stoppedMs > 0) ? (passedMs - stoppedMs) : 0;
+    double throughput    = 0;
 
     if (vehiclesCompleted_ > 0) {
         resultsFile_ << ",\n";
@@ -89,16 +84,11 @@ void RaftMetrics::writeVehicleJSON(
     resultsFile_ << "    \"cluster_mode\": \""       << clusterMode << "\",\n";
     resultsFile_ << "    \"timestamps_ms\": {\n";
     resultsFile_ << "      \"stopped\": "            << std::fixed << std::setprecision(1) << stoppedMs << ",\n";
-    resultsFile_ << "      \"cluster_formed\": "     << clusterFormedMs << ",\n";
-    resultsFile_ << "      \"elected\": "            << electedMs << ",\n";
-    resultsFile_ << "      \"order_committed\": "    << orderCommittedMs << ",\n";
-    resultsFile_ << "      \"started_moving\": "     << startedMovingMs << ",\n";
     resultsFile_ << "      \"passed\": "             << passedMs << "\n";
     resultsFile_ << "    },\n";
     resultsFile_ << "    \"durations_ms\": {\n";
     resultsFile_ << "      \"raft_decision_time\": " << raftDecisionTimeMs << ",\n";
     resultsFile_ << "      \"total_wait_time\": "    << totalWaitTime << ",\n";
-    resultsFile_ << "      \"transit_time\": "       << transitTime << ",\n";
     resultsFile_ << "      \"throughput\": "         << throughput << "\n";
     resultsFile_ << "    },\n";
     resultsFile_ << "    \"messages\": {\n";

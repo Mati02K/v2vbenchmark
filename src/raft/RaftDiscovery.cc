@@ -194,14 +194,11 @@ void RaftAppBase::startNewRound()
     collectedQCSigs_.clear();
 
     // Reset timing metrics for the new round.
-    timeClusterFormed_ = SIMTIME_ZERO;
-    timeElected_       = SIMTIME_ZERO;
-    timeOrderCommitted_= SIMTIME_ZERO;
-    logEntriesProposed_= 0;
+    timeRaftStarted_    = SIMTIME_ZERO;
+    logEntriesProposed_ = 0;
     logEntriesCommitted_= 0;
-    electionRounds_    = 0;
-    totalRaftDecisionTimeSec_ = 0.0;
-    statusCollectionTimeMs_   = 0.0;
+    electionRounds_     = 0;
+    totalRaftTimeSec_   = 0.0;
     coordinationMethod_ = "raft";
 
     // Wait 500ms for late beacons, then start cluster formation loop.
@@ -381,9 +378,9 @@ void RaftAppBase::formCluster(const std::set<int>& members)
 {
     if (clusterPhase_ != PHASE_DISCOVERY) return;  // already formed
 
-    clusterPhase_      = PHASE_FORMATION;
-    timeClusterFormed_ = NOW;
-    activeVehicles_    = members;
+    clusterPhase_    = PHASE_FORMATION;
+    timeRaftStarted_ = NOW;
+    activeVehicles_  = members;
 
     std::cout << NOW << " [DBG][V" << myId_ << "] FORM_CLUSTER " << members.size()
               << " members: [";
@@ -605,11 +602,6 @@ void RaftAppBase::handleQueuedStop(const std::string& roadId, double dist, doubl
 // Called on every timer tick. Coordinates when/whether to stop at the junction.
 void RaftAppBase::checkAndStopAtIntersection()
 {
-    if (!hasPassedIntersection_ && traciVehicle_)
-    {
-        updateLaneLeaderFlag();
-    }
-
     if (hasPassedIntersection_ || !traciVehicle_) return;
 
     // Record first time vehicle enters the intersection zone, even if already moving.

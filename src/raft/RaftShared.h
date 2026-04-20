@@ -21,7 +21,6 @@ struct VehicleProposal {
     int    laneIndex;           // Direction: 0=W, 1=S, 2=E, 3=N
     int    intendedTurn;        // 0=STRAIGHT, 1=LEFT, 2=RIGHT
     bool   isFirstInLane;
-    int    blockedByVehicleId;  // -1 = none
     double waitingTimeMs;
     double distanceToJunction;
     // Set by receiver ONLY after cert verification — never trust from raw payload.

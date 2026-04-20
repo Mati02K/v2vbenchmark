@@ -190,16 +190,11 @@ protected:
     // ============ METRICS ============
     simtime_t timeArrived_;
     simtime_t timeStopped_;
-    simtime_t timeClusterFormed_;
-    simtime_t timeElected_;
-    simtime_t timeOrderCommitted_;
+    simtime_t timeRaftStarted_;
     simtime_t timeStartedMoving_;
     simtime_t timePassed_;
 
-    double totalRaftDecisionTimeSec_;
-    std::map<raft_index_t, simtime_t> proposedTimes_;
-    simtime_t timeStatusRequestSent_;
-    double statusCollectionTimeMs_;
+    double totalRaftTimeSec_;
     int       messagesSent_;
     int       messagesReceived_;
     int       electionRounds_;
@@ -285,7 +280,6 @@ protected:
     bool verifyQC(const QuorumCertificate& qc) const;
 
     // ---- RaftDecision.cc: pure crossing-order algorithm ----
-    int               getLaneIndex(const std::string& lane);
     PassScheduleEntry computePassOrder(const std::map<int, VehicleProposal>& proposals,
                                        const std::set<int>& activeVehicles);
 

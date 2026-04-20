@@ -223,7 +223,13 @@ void WaveRaftApplication::handlePositionUpdate(cObject* obj)
 void WaveRaftApplication::handleSelfMsg(cMessage* msg)
 {
     if (msg == checkTimer_) {
-        checkAndStopAtIntersection();
+        if (!hasPassedIntersection_) {
+            updateLaneLeaderFlag();
+        }
+        
+        if (!hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) {
+            checkAndStopAtIntersection();
+        }
 
         // if there is a front vehicle who moved at the intersection
         if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) 

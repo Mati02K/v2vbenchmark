@@ -165,16 +165,11 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
 
     memcpy(&committedSchedule_, schedule, sizeof(PassScheduleEntry));
     hasCommittedOrder_ = true;
-    if (hasStoppedAtIntersection_ && timeStopped_ > SIMTIME_ZERO) {
-        timeOrderCommitted_ = NOW;
-    }
     logEntriesCommitted_++;
     lastAppliedIndex_ = entry_idx;
 
-    if (proposedTimes_.count(entry_idx)) {
-        double delta = (NOW - proposedTimes_[entry_idx]).dbl();
-        totalRaftDecisionTimeSec_ += delta;
-        proposedTimes_.erase(entry_idx);
+    if (timeRaftStarted_ > SIMTIME_ZERO) {
+        totalRaftTimeSec_ = (NOW - timeRaftStarted_).dbl();
     }
 
     sendPassOrderBroadcast();
@@ -306,8 +301,7 @@ void RaftAppBase::onBecameLeader()
         std::cout << v << " ";
     }
     std::cout << "]" << std::endl;
-    wasElectedLeader_     = true;
-    timeElected_          = NOW;
+    wasElectedLeader_ = true;
 
     if (hasCommittedOrder_) return;
 
@@ -337,7 +331,6 @@ void RaftAppBase::sendStatusRequest()
     memcpy(data.data(), &myId_, sizeof(int));
     sendRaftBroadcast(benchmark::COORD_STATUS_REQUEST, data);
 
-    timeStatusRequestSent_ = NOW;
     waitingForStatus_     = true;
     statusResponseCount_  = 0;
     collectedLeaderDBs_.clear();
@@ -426,9 +419,6 @@ void RaftAppBase::handleDbResponse(const std::vector<uint8_t>& data, int senderI
 
     if (statusResponseCount_ >= expectedResponses) {
         waitingForStatus_ = false;
-        if (timeStatusRequestSent_ > SIMTIME_ZERO) {
-            statusCollectionTimeMs_ += (NOW - timeStatusRequestSent_).dbl() * 1000.0;
-        }
         std::cout << simTime() << " [DBG][V" << myId_ << "] ALL DB RESPONSES COLLECTED -> proposePassOrder()" << std::endl;
         proposePassOrder();
     }
@@ -438,10 +428,6 @@ void RaftAppBase::collectStatusAndDecide()
 {
     if (!isLeader_ || hasPassedIntersection_ || hasCommittedOrder_) return;
     waitingForStatus_ = false;
-    if (timeStatusRequestSent_ > SIMTIME_ZERO) {
-        statusCollectionTimeMs_ += (NOW - timeStatusRequestSent_).dbl() * 1000.0;
-    }
-
     std::cout << simTime() << " [DBG][V" << myId_ << "] status collection timeout — DBs from " << collectedLeaderDBs_.size() << " leaders" << std::endl;
     proposePassOrder();
 }
@@ -488,7 +474,6 @@ void RaftAppBase::proposePassOrder()
             dflt.laneIndex          = (vid / vehiclesPerSide) % 4;
             dflt.intendedTurn       = 0;
             dflt.isFirstInLane      = true;
-            dflt.blockedByVehicleId = -1;
             dflt.waitingTimeMs      = 99999.0;
             dflt.distanceToJunction = 0.0;
             allProposals[vid]       = dflt;
@@ -708,7 +693,6 @@ void RaftAppBase::tryAssembleQC()
     msg_entry_response_t response;
     if (raft_recv_entry(raftServer_, &entry, &response) == 0) {
         logEntriesProposed_++;
-        proposedTimes_[response.idx] = NOW;
         std::cout << simTime() << " [DBG][V" << myId_ << "] submitted PASS_SCHEDULE entry #" << response.idx << std::endl;
     } else {
         std::cerr << "Vehicle " << myId_ << " FAILED to submit PASS_SCHEDULE to RAFT" << std::endl;

@@ -15,15 +15,6 @@
 
 // ============ LANE / TURN HELPERS ============
 
-int RaftAppBase::getLaneIndex(const std::string& lane)
-{
-    if (lane == "N2C") return 3;  // North (swapped with West)
-    if (lane == "S2C") return 1;
-    if (lane == "E2C") return 2;
-    if (lane == "W2C") return 0;  // West (swapped with North)
-    return 0;
-}
-
 bool RaftAppBase::movementsConflict(int laneA, int turnA, int laneB, int turnB)
 {
     if (laneA == laneB) return true;
@@ -34,12 +25,6 @@ bool RaftAppBase::movementsConflict(int laneA, int turnA, int laneB, int turnB)
 }
 
 // ============ STATIC HELPERS ============
-
-// Returns true if the vehicle's blocker has already been scheduled (or has none).
-static bool isBlockerScheduled(const VehicleProposal& v, const std::set<int>& scheduled)
-{
-    return (v.blockedByVehicleId < 0) || scheduled.count(v.blockedByVehicleId) > 0;
-}
 
 // Checks whether vehicle v conflicts with any vehicle already in the given batch.
 static bool conflictsWithBatch(
@@ -86,7 +71,6 @@ static void fillBatchWithNormals(
 {
     PassBatch& b = schedule.batches[schedule.numBatches];
     for (auto it = normalPool.begin(); it != normalPool.end() && b.numVehicles < 8; ) {
-        if (!isBlockerScheduled(*it, scheduled)) { ++it; continue; }
         if (!conflictsWithBatch(*it, b, proposals)) {
             b.vehicleIds[b.numVehicles++] = it->vehicleId;
             scheduled.insert(it->vehicleId);
@@ -107,7 +91,7 @@ static void fillBatchWithNormals(
 //             between priority lanes if more than one. Within each priority lane,
 //             vehicles go in queue order (blocker before blocked).
 //             After each vehicle is placed into a batch, fill remaining slots
-//             with compatible normal-lane vehicles (no conflict, blocker ready).
+//             with compatible normal-lane vehicles (no conflict).
 //             This continues until the priority vehicle itself is scheduled.
 //   Step 3 — Schedule remaining vehicles using the normal fairness algorithm.
 //   If no priority lanes exist, skip to Step 3 directly.
@@ -150,8 +134,8 @@ PassScheduleEntry RaftAppBase::computePassOrder(
               });
 
     // ---- Step 2: schedule priority lanes (round-robin between them) ----
-    // For each priority lane: schedule vehicles in queue order (closest to junction first)
-    // until the priority vehicle in that lane is scheduled. Then that lane is "done".
+    // For each priority lane: schedule vehicles closest-to-junction first
+    // until the priority vehicle is scheduled. Then that lane is "done".
 
     std::map<int, std::vector<VehicleProposal>> laneVehicles;
     for (const auto& kv : proposals) {
@@ -176,7 +160,6 @@ PassScheduleEntry RaftAppBase::computePassOrder(
             auto& lvec = laneVehicles[lane];
             for (auto it = lvec.begin(); it != lvec.end(); ) {
                 if (scheduled.count(it->vehicleId)) { it = lvec.erase(it); continue; }
-                if (!isBlockerScheduled(*it, scheduled)) { ++it; continue; }
                 bool wasAmb = it->isPriority;
                 addVehicleToBatch(*it, schedule, scheduled, proposals);
                 // Fill the batch opened for this priority vehicle with compatible normals.
@@ -218,19 +201,14 @@ PassScheduleEntry RaftAppBase::computePassOrder(
     while (!pool.empty() && schedule.numBatches < 16) {
         PassBatch& batch = schedule.batches[schedule.numBatches];
 
-        // Pick the highest-priority vehicle whose blocker is already scheduled.
         auto primaryIt = pool.begin();
-        while (primaryIt != pool.end() && !isBlockerScheduled(*primaryIt, scheduled)) ++primaryIt;
-        if (primaryIt == pool.end()) primaryIt = pool.begin();
 
         VehicleProposal primary = *primaryIt;
         batch.vehicleIds[batch.numVehicles++] = primary.vehicleId;
         scheduled.insert(primary.vehicleId);
         pool.erase(primaryIt);
 
-        // Fill remaining slots with compatible vehicles.
         for (auto it = pool.begin(); it != pool.end() && batch.numVehicles < 8; ) {
-            if (!isBlockerScheduled(*it, scheduled)) { ++it; continue; }
             if (!conflictsWithBatch(*it, batch, proposals)) {
                 batch.vehicleIds[batch.numVehicles++] = it->vehicleId;
                 scheduled.insert(it->vehicleId);
