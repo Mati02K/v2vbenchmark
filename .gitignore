@@ -8,9 +8,9 @@ simulations/simple_intersection_4/.qtenvrc
 *.sca
 # Stale simulation artifacts
 simulations/**/*.json
-# Results — ignore data files, keep plots
-results/
-!results/*.png
+# Results — ignore run data, track only plots
+results/**/*.json
+results/**/console.log
 # Build artifacts
 out/
 src/benchmark
