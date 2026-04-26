@@ -4,7 +4,6 @@
 //   RaftCore.cc        — RAFT election, log replication, serialization, proposal submission
 //   RaftDecision.cc    — crossing-order scheduling algorithm (edit to change pass policy)
 //   RaftCoordination.cc — follower-side handlers (status response, vehicle-passed/left)
-//   RaftExit.cc        — exit notifications, batch advancement, metrics output
 //   RaftUtilities.cc   — intersection detection, movement control, fallback, gossip relay
 
 #include "raft/RaftAppBase.h"
