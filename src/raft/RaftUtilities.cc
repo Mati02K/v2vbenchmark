@@ -54,13 +54,15 @@ void RaftAppBase::initMyProposal()
     myProposal_.vehicleId  = myId_;
     myProposal_.isPriority = isPriorityVehicle_;
     strncpy(myProposal_.laneEdgeId, myLane_.c_str(), sizeof(myProposal_.laneEdgeId) - 1);
+    strncpy(myProposal_.sumoId, mySumoId_.c_str(), sizeof(myProposal_.sumoId) - 1);
     myProposal_.intendedTurn = 0;  // STRAIGHT
     if (myRoute_.find("Left") != std::string::npos || myRoute_ == "rL")       myProposal_.intendedTurn = 1;
     else if (myRoute_.find("Right") != std::string::npos || myRoute_ == "rR") myProposal_.intendedTurn = 2;
 }
 
-// Refreshes only the dynamic fields of myProposal_ and returns a reference.
+// Refreshes the dynamic fields of myProposal_ and returns a reference.
 // Static fields (vehicleId, laneEdgeId, intendedTurn, isPriority) are untouched.
+// sumoId is refreshed too — see comment below.
 VehicleProposal RaftAppBase::updateMyProposal()
 {
     calculateWayOfSight();  // refresh wayOfSight_ / vehicleInFrontOfMe_
@@ -70,6 +72,14 @@ VehicleProposal RaftAppBase::updateMyProposal()
     myProposal_.waitingTimeMs      = (timeStopped_ > SIMTIME_ZERO)
                                      ? (NOW - timeStopped_).dbl() * 1000.0 : 0.0;
     myProposal_.distanceToJunction = calculateDistanceToJunction();
+
+    // sumoId is "static" but mySumoId_ only becomes available after mobility wires up,
+    // which is later than initMyProposal(). Refresh on every beacon so peers self-heal
+    // if they missed an early beacon — cost is one strncpy.
+    if (!mySumoId_.empty()) {
+        strncpy(myProposal_.sumoId, mySumoId_.c_str(), sizeof(myProposal_.sumoId) - 1);
+        myProposal_.sumoId[sizeof(myProposal_.sumoId) - 1] = '\0';
+    }
 
     if (traciVehicle_) {
         try {
@@ -236,18 +246,31 @@ void RaftAppBase::handleFallback()
     if (hasPassedIntersection_) return;
     isFallbackMode_     = true;
     coordinationMethod_ = "fallback";
+    int frontVeh = -1;
+    if (!isLaneLeader_) {
+        double myDist = calculateDistanceToJunction();
+        if (myDist < 0) myDist = 999999.0;
+        double closestFrontDist = 999999.0;
+        for (const auto& kv : vehicleDB_) {
+            if (kv.first == myId_) continue;
+            if (kv.second.laneIndex != myLaneIndex_) continue;
+            if (kv.second.distanceToJunction < myDist &&
+                kv.second.distanceToJunction < closestFrontDist) {
+                closestFrontDist = kv.second.distanceToJunction;
+                frontVeh = kv.first;
+            }
+        }
+    }
+
     std::cout << simTime() << " [DBG][V" << myId_ << "] FALLBACK ACTIVATED"
-              << " wos=" << wayOfSight_
-              << " frontVeh=" << vehicleInFrontOfMe_
+              << " frontVeh=" << frontVeh
               << " stopped=" << hasStoppedAtIntersection_
               << " committed=" << hasCommittedOrder_
               << " isLeader=" << isLeader_ << std::endl;
-    if (wayOfSight_ || vehicleInFrontOfMe_ == -1
-        || !activeVehicles_.count(vehicleInFrontOfMe_)) {
+
+    if (frontVeh == -1 || !activeVehicles_.count(frontVeh)) {
         resumeMovement();
     } else {
-        // Vehicle is queued behind another. Estimate queue position from lane layout
-        // and stagger departure to avoid simultaneous movement into the intersection.
         int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);
         int posInLane       = myId_ % vehiclesPerSide;
         int delayMs         = fallbackWaitMinMs_ + posInLane * 2000;
@@ -255,6 +278,39 @@ void RaftAppBase::handleFallback()
         scheduleOneshotMs(delayMs, [this]() {
             if (!hasPassedIntersection_) resumeMovement();
         });
+    }
+}
+
+// ============ ROAD TRACKING ============
+
+void RaftAppBase::updateRoadTracking()
+{
+    if (!traciVehicle_) return;
+    std::string roadId = traciVehicle_->getRoadId();
+    if (roadId == prevRoadId_) {
+        if (NOW - lastStopDebugPrint_ > 5.0) {
+            lastStopDebugPrint_ = NOW;
+            double spd = 999.0; try { spd = traciVehicle_->getSpeed(); } catch (...) {}
+            double d = getDistanceToJunction();
+            std::cout << simTime() << " [DBG][V" << myId_ << "] POS roadId=" << roadId
+                      << " dist=" << d << "m speed=" << spd << "m/s"
+                      << " onApproach=" << (intersectionEdges_.count(roadId) ? "YES" : "NO")
+                      << " stopped=" << hasStoppedAtIntersection_
+                      << " phase=" << clusterPhase_
+                      << " leader=" << isLeader_
+                      << " committed=" << hasCommittedOrder_
+                      << " myBatch=" << myBatch_
+                      << " curBatch=" << currentBatch_ << std::endl;
+        }
+        return;
+    }
+    prevRoadId_ = roadId;
+    double spd = 999.0; try { spd = traciVehicle_->getSpeed(); } catch (...) {}
+    std::cout << simTime() << " [DBG][V" << myId_ << "] ROAD_CHANGE -> " << roadId
+              << " dist=" << getDistanceToJunction() << "m speed=" << spd << "m/s"
+              << " onApproach=" << (intersectionEdges_.count(roadId) ? "YES" : "NO") << std::endl;
+    if (intersectionEdges_.count(roadId)) {
+        intersectionEdge_ = roadId;
     }
 }
 
@@ -308,20 +364,19 @@ void RaftAppBase::outputMetricsJSON()
         myId_,
         myLane_,
         myRoute_,
-        wasElectedLeader_,
         isPriorityVehicle_,
         coordinationMethod_,
         transportName_,
         timeStopped_.dbl() * 1000.0,
         timePassed_.dbl()  * 1000.0,
-        totalRaftTimeSec_  * 1000.0,
+        leaderElectionTimeMs_,
+        decisionLatencyMs_,
         messagesSent_,
         messagesReceived_,
         electionRounds_,
         logEntriesProposed_,
         logEntriesCommitted_,
         myBatch_,
-        std::vector<int>(activeVehicles_.begin(), activeVehicles_.end()),
         clusterMode_
     );
 }

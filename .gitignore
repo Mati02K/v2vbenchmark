@@ -19,3 +19,5 @@ src/benchmark_dbg
 *.exe
 *.so
 __pycache__/
+# Cloned reference repo — not part of this project
+DistributedSystemsforAVs/

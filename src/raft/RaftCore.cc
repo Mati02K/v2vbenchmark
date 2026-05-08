@@ -171,6 +171,11 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
     if (timeRaftStarted_ > SIMTIME_ZERO) {
         totalRaftTimeSec_ = (NOW - timeRaftStarted_).dbl();
     }
+    // T5 — commit observed. Decision latency = T2 -> T5 (status collection start -> commit).
+    // Only the leader has a non-zero T2 in practice; followers leave decisionLatencyMs_ at 0.
+    if (timeStatusCollectionStarted_ > SIMTIME_ZERO) {
+        decisionLatencyMs_ = (NOW - timeStatusCollectionStarted_).dbl() * 1000.0;
+    }
 
     sendPassOrderBroadcast();
     applyCommittedPassOrder();
@@ -303,6 +308,12 @@ void RaftAppBase::onBecameLeader()
     std::cout << "]" << std::endl;
     wasElectedLeader_ = true;
 
+    // T1 — leader elected. Captures cluster formation -> leader election time.
+    if (timeLeaderElected_ == SIMTIME_ZERO && timeRaftStarted_ > SIMTIME_ZERO) {
+        timeLeaderElected_     = NOW;
+        leaderElectionTimeMs_  = (timeLeaderElected_ - timeRaftStarted_).dbl() * 1000.0;
+    }
+
     if (hasCommittedOrder_) return;
 
     sendStatusRequest();
@@ -322,6 +333,9 @@ void RaftAppBase::onLostLeadership()
 
 void RaftAppBase::sendStatusRequest()
 {
+    // T2 — start of decision-making window (used for decision latency).
+    timeStatusCollectionStarted_ = NOW;
+
     std::cout << simTime() << " [DBG][V" << myId_ << "] SEND_STATUS_REQUEST to "
               << activeVehicles_.size() << " active vehicles, timeout="
               << statusCollectionTimeoutMs_ << "ms" << std::endl;

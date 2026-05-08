@@ -62,8 +62,10 @@ cd /home/mathesh/omnetpp-workspace/benchmark
 python3 plot_comparison.py
 ```
 
-This generates 9 PNGs:
+This generates 13 PNGs:
 - `throughput_wave.png`, `throughput_udp.png`
+- `leader_election_time_wave.png`, `leader_election_time_udp.png`
+- `decision_time_wave.png`, `decision_time_udp.png`
 - `fallbacks_wave.png`, `fallbacks_udp.png`
 - `messages_wave.png`, `messages_udp.png`
 - `cdf_wave.png`, `cdf_udp.png`

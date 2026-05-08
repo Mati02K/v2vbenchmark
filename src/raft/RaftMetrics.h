@@ -19,20 +19,19 @@ public:
         int vehicleId,
         const std::string& lane,
         const std::string& route,
-        bool wasLeader,
         bool isPriorityVehicle,
         const std::string& coordinationMethod,
         const std::string& transport,
         double stoppedMs,
         double passedMs,
-        double raftDecisionTimeMs,
+        double leaderElectionTimeMs,
+        double decisionLatencyMs,
         int messagesSent,
         int messagesReceived,
         int electionRounds,
         int logEntriesProposed,
         int logEntriesCommitted,
         int myBatch,
-        const std::vector<int>& clusterMembers,
         const std::string& clusterMode
     );
 

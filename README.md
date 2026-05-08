@@ -233,7 +233,6 @@ results/
       raft_results.json     ← per-vehicle metrics
       console.log           ← simulation stdout
     run_2/ ...
-    aggregate_stats.json    ← mean/std across all runs
 
   simple_raftwave_4veh_laneLeaders/   (WAVE equivalent)
   simple_udp_4veh_allVehicles/        (allVehicles cluster mode)

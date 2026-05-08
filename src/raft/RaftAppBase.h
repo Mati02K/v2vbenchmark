@@ -57,6 +57,9 @@ protected:
     veins::TraCICommandInterface*          traci_          = nullptr;
     veins::TraCICommandInterface::Vehicle* traciVehicle_   = nullptr;
 
+    std::string              mySumoId_;
+    std::map<int,std::string> sumoIdMap_;
+
     // ============ DISCOVERY STATE ============
     // vehicleDB_: all known vehicles (including self). Built from received PEER_BEACONs.
     // Key = vehicleId, Value = latest VehicleProposal from that vehicle.
@@ -117,7 +120,7 @@ protected:
     // Batch execution
     int          currentBatch_;
     int          myBatch_;
-    std::set<int> vehiclesLeftInBatch_;
+    std::set<int> vehiclesLeftInBatch_;  // vehicles confirmed cleared in currentBatch_
     std::set<int> proposedLeft_;      // dedup guard: prevents double-proposing the same vehicle exit to RAFT
     bool         passOrderProposed_;  // guard: prevent double proposePassOrder() calls
 
@@ -170,7 +173,7 @@ protected:
     int    statusCollectionTimeoutMs_;
     int    fallbackClusterTimeoutMs_;
     int    intersectionStopTimeMs_;
-    int    vehicleLeftTimeoutMs_;
+    int    batchExitPollMs_;
     int    qcSignTimeoutMs_;
     int    maxQcRetries_;
     std::string resultsFileName_;
@@ -192,11 +195,15 @@ protected:
     // ============ METRICS ============
     simtime_t timeArrived_;
     simtime_t timeStopped_;
-    simtime_t timeRaftStarted_;
+    simtime_t timeRaftStarted_;            // T0: cluster formed
+    simtime_t timeLeaderElected_;          // T1: this node observed itself becoming leader
+    simtime_t timeStatusCollectionStarted_;// T2: leader broadcast StatusRequest
     simtime_t timeStartedMoving_;
     simtime_t timePassed_;
 
     double totalRaftTimeSec_;
+    double leaderElectionTimeMs_;  // T0 -> T1, cluster formed to leader elected. Leader-only.
+    double decisionLatencyMs_;     // T2 -> T5, post-election decision-making. Leader-only.
     int       messagesSent_;
     int       messagesReceived_;
     int       electionRounds_;
@@ -237,7 +244,7 @@ protected:
     void checkAndStopAtIntersection();
     void onFirstStoppedAtIntersection();
     void checkAndAdvanceInQueue();
-    void updateRoadTracking(const std::string& roadId, const std::string& lastKnownRoad);
+    void updateRoadTracking();
     void handleClusterJunctionStop(const std::string& roadId, const std::string& lastKnownRoad);
     void handleFrontStop(const std::string& roadId, double dist);
     void handleQueuedStop(const std::string& roadId, double dist, double speed);
@@ -293,11 +300,7 @@ public:
     void sendPassOrderBroadcast();
     void handlePassOrderBroadcast(const std::vector<uint8_t>& data);
     void applyCommittedPassOrder();
-    void handleVehicleLeft(int vehicleId, int batchId);
-    void sendVehicleLeft();
-    void scheduleVehicleLeftTimeout(int batchIndex);
-    void onVehicleLeftTimeout(int batchIndex);
-    void checkBatchAdvance();
+    void pollBatchExit();
     void checkIfLeftIntersection();
 
     // ---- RaftUtilities.cc: shared helpers ----

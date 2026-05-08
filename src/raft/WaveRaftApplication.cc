@@ -203,20 +203,23 @@ void WaveRaftApplication::handlePositionUpdate(cObject* obj)
                 try {
                     traciVehicle_->setColor(veins::TraCIColor(255, 0, 0, 255)); // red
                     std::cout << "[V" << myId_ << "] Priority vehicle coloured RED in SUMO-GUI" << std::endl;
-                } catch (...) {}
+                } catch (const std::exception& e) {
+                    std::cout << "[V" << myId_ << "] WARNING: setColor failed: " << e.what() << std::endl;
+                }
             }
             try {
-                std::string sumoId = mobility_->getExternalId();
+                mySumoId_ = mobility_->getExternalId();
+                sumoIdMap_[myId_] = mySumoId_;
+                std::string sumoId = mySumoId_;
                 std::cout << simTime() << " [DBG] OMNeT++_V" << myId_
                           << " <=> SUMO_" << sumoId
                           << " laneIdx=" << myLaneIndex_
                           << " route=" << myRoute_ << std::endl;
-            } catch (...) {}
+            } catch (const std::exception& e) {
+                std::cout << "[V" << myId_ << "] WARNING: getExternalId failed: " << e.what() << std::endl;
+            }
         }
     }
-    // Update lane leader flag every position update (~100ms TraCI step)
-    if (traciVehicle_ && !hasPassedIntersection_)
-        updateLaneLeaderFlag();
 }
 
 // ============ SELF MESSAGE HANDLING ============
@@ -336,13 +339,6 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             break;
         case benchmark::COORD_STATUS_RESPONSE:
             handleDbResponse(payload, protocolSender);
-            break;
-        case benchmark::COORD_VEHICLE_LEFT:
-            if (payload.size() >= sizeof(VehicleLeftEntry)) {
-                VehicleLeftEntry e;
-                memcpy(&e, payload.data(), sizeof(e));
-                handleVehicleLeft(e.vehicleId, e.batchId);
-            }
             break;
         case benchmark::COORD_PASS_ORDER_BROADCAST:
             handlePassOrderBroadcast(payload);

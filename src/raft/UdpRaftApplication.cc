@@ -129,6 +129,8 @@ bool UdpRaftApplication::startApplication()
     traci_        = mobility_->getCommandInterface();
     traciVehicle_ = mobility_->getVehicleCommandInterface();
     if (!traci_ || !traciVehicle_) { EV_ERROR << "No TraCI" << endl; return false; }
+    mySumoId_ = mobility_->getExternalId();
+    sumoIdMap_[myId_] = mySumoId_;
 
     // Colour priority vehicle red so it's visually distinct in SUMO-GUI
     if (isPriorityVehicle_) {
@@ -296,13 +298,6 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
             break;
         case benchmark::COORD_STATUS_RESPONSE:
             handleDbResponse(data, sender);
-            break;
-        case benchmark::COORD_VEHICLE_LEFT:
-            if (data.size() >= sizeof(VehicleLeftEntry)) {
-                VehicleLeftEntry e;
-                memcpy(&e, data.data(), sizeof(e));
-                handleVehicleLeft(e.vehicleId, e.batchId);
-            }
             break;
         case benchmark::COORD_PASS_ORDER_BROADCAST:
             handlePassOrderBroadcast(data);

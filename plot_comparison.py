@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
 RAFT Intersection Benchmark Plotter
-Generates 9 comparison plots: laneLeaders vs allVehicles vs multirounds,
+Generates 13 comparison plots: laneLeaders vs allVehicles vs multirounds,
 priority vs nopriority, across UDP and WAVE transports.
 
 Usage:
-  python3 plot_comparison.py          # generate all 9 comparison plots
+  python3 plot_comparison.py          # generate all 13 comparison plots
 """
 
-import argparse
 import json
 import os
 import numpy as np
@@ -35,7 +34,11 @@ MODE_COLORS = {
 }
 
 PRIORITY_VARIANTS = ['priority', 'nopriority']
-PRIORITY_SUFFIXES = {'priority': '', 'nopriority': '_nopriority'}
+MODE_DIRS = {
+    'laneLeaders':             {'priority': 'laneLeaders',             'nopriority': 'laneLeaders_nopriority'},
+    'allVehicles':             {'priority': 'allVehicles',             'nopriority': 'allVehicles_nopriority'},
+    'allVehicles_multirounds': {'priority': 'allVehicles_multirounds', 'nopriority': 'allVehicles_nopriority_multirounds'},
+}
 PRIORITY_LINESTYLES = {'priority': '-', 'nopriority': '--'}
 PRIORITY_DISPLAY = {'priority': 'Priority', 'nopriority': 'No Priority'}
 
@@ -48,8 +51,8 @@ NORM_COLOR = '#95a5a6'
 # ============================================================
 
 def loadRunsForMode(protocolPrefix, vc, mode):
-    """Load raw JSON run data for a protocol, vehicle count, and cluster mode.
-    Handles truncated JSON files (missing closing bracket)."""
+    """Loads run JSONs. Tolerant of truncated files (missing closing bracket)
+    that the simulator can produce if it gets cut off mid-write."""
     resultName = f"{protocolPrefix}_{vc}veh_{mode}"
     resultDir = os.path.join(RESULTS_DIR, resultName)
     runs = []
@@ -83,9 +86,9 @@ def loadRunsForMode(protocolPrefix, vc, mode):
 
 
 def calculateMetrics(runsData):
-    """Calculate aggregate metrics (mean/std) from a list of per-run vehicle arrays."""
     metrics = {
-        'raftDecisionTime':    [],
+        'leaderElectionTime':  [],
+        'decisionLatency':     [],
         'throughput':          [],
         'waitTime':            [],
         'msgSentPerVehicle':   [],
@@ -99,11 +102,17 @@ def calculateMetrics(runsData):
         numVehicles = len(runData)
         raftVehicles = [v for v in runData if v.get('coordination_method') != 'fallback']
 
-        rdPerVeh = [v['durations_ms'].get('raft_decision_time', 0)
-                    for v in raftVehicles
-                    if v['durations_ms'].get('raft_decision_time', 0) > 0]
-        if rdPerVeh:
-            metrics['raftDecisionTime'].append(sum(rdPerVeh))
+        electionPerVeh = [v['durations_ms'].get('leader_election_time_ms', 0)
+                          for v in raftVehicles
+                          if v['durations_ms'].get('leader_election_time_ms', 0) > 0]
+        if electionPerVeh:
+            metrics['leaderElectionTime'].append(np.mean(electionPerVeh))
+
+        decisionPerVeh = [v['durations_ms'].get('decision_latency_ms', 0)
+                          for v in raftVehicles
+                          if v['durations_ms'].get('decision_latency_ms', 0) > 0]
+        if decisionPerVeh:
+            metrics['decisionLatency'].append(np.mean(decisionPerVeh))
 
         waitTimes = [
             v['timestamps_ms']['passed'] - v['timestamps_ms']['stopped']
@@ -136,14 +145,13 @@ def calculateMetrics(runsData):
 
 
 def loadAllData():
-    """Load metrics for all (protocol, mode, priority, vc) combinations.
-    Missing result directories are silently skipped."""
+    # Missing result directories are silently skipped — partial benchmarks should still plot.
     data = {}
     for protocol in PROTOCOLS:
         prefix = PROTOCOL_PREFIXES[protocol]
         for mode in MODES:
             for prio in PRIORITY_VARIANTS:
-                fullMode = mode + PRIORITY_SUFFIXES[prio]
+                fullMode = MODE_DIRS[mode][prio]
                 for vc in VEHICLE_COUNTS:
                     runs = loadRunsForMode(prefix, vc, fullMode)
                     if runs:
@@ -156,14 +164,12 @@ def loadAllData():
 # ============================================================
 
 def savePlot(fig, path):
-    """Save figure as PNG (150 dpi) and close it."""
     fig.savefig(path, dpi=150, bbox_inches='tight')
     plt.close(fig)
     print(f"  Saved: {os.path.basename(path)}")
 
 
 def getValues(data, protocol, mode, prio, metric, scale=1.0):
-    """Extract mean/std arrays for a metric across all vehicle counts."""
     means, stds = [], []
     for vc in VEHICLE_COUNTS:
         key = (protocol, mode, prio, vc)
@@ -177,7 +183,6 @@ def getValues(data, protocol, mode, prio, metric, scale=1.0):
 
 
 def buildLegend():
-    """Build a shared legend: one entry per mode (color) + one per priority (linestyle)."""
     handles = []
     for mode in MODES:
         handles.append(Line2D([0], [0], color=MODE_COLORS[mode], linewidth=2,
@@ -194,7 +199,6 @@ def buildLegend():
 # ============================================================
 
 def plotMetricLine(data, transport, metric, title, ylabel, outputPrefix, scale=1.0):
-    """Line chart per transport: 6 lines (3 modes × 2 priority), x = vehicle count."""
     fig, ax = plt.subplots(figsize=(8, 5))
     fig.suptitle(f'{title} — {PROTOCOL_LABELS[transport]}',
                  fontsize=13, fontweight='bold')
@@ -236,13 +240,24 @@ def plotThroughput(data, transport):
                    'System Throughput', 'Vehicles / second', 'throughput')
 
 
+def plotLeaderElectionTime(data, transport):
+    plotMetricLine(data, transport, 'leaderElectionTime',
+                   'RAFT Leader Election Time (cluster formed → leader elected)',
+                   'Leader Election Time (ms)', 'leader_election_time')
+
+
+def plotDecisionTime(data, transport):
+    plotMetricLine(data, transport, 'decisionLatency',
+                   'RAFT Decision Latency (status collection → schedule committed)',
+                   'Decision Latency (ms)', 'decision_time')
+
+
 def plotFallbacks(data, transport):
     plotMetricLine(data, transport, 'fallbackRate',
                    'Fallback Rate', 'Fallback Rate (%)', 'fallbacks', scale=100)
 
 
 def plotMessages(data, transport):
-    """2-panel line chart: avg messages sent and received per vehicle."""
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
     fig.suptitle(f'Messages per Vehicle — {PROTOCOL_LABELS[transport]}',
                  fontsize=13, fontweight='bold')
@@ -286,7 +301,6 @@ def plotMessages(data, transport):
 
 
 def plotCdf(transport):
-    """CDF of total wait time per transport: 3 subpanels (4/8/16 veh), 6 lines each."""
     fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(15, 5), sharey=True)
     fig.suptitle(f'CDF of Total Wait Time — {PROTOCOL_LABELS[transport]}\n'
                  f'Time from stopping to crossing (RAFT vehicles only)',
@@ -296,7 +310,7 @@ def plotCdf(transport):
         ax = axes[col]
         for mode in MODES:
             for prio in PRIORITY_VARIANTS:
-                fullMode = mode + PRIORITY_SUFFIXES[prio]
+                fullMode = MODE_DIRS[mode][prio]
                 runs = loadRunsForMode(PROTOCOL_PREFIXES[transport], vc, fullMode)
                 times = []
                 for runData in runs:
@@ -334,15 +348,15 @@ def plotCdf(transport):
 # ============================================================
 
 def plotAmbulance():
-    """Grouped bar chart: priority vehicle vs normal vs nopriority crossing time.
-    3 subpanels (4/8/16 veh), 6 combo groups per subpanel (3 modes × 2 transports)."""
+    # Multirounds is excluded: too many fallbacks make the priority-vs-normal comparison meaningless.
     fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(18, 6), sharey=False)
     fig.suptitle('Ambulance (Priority Vehicle) Benefit\n'
                  'Priority vehicle crossing time vs normal vs no-priority run',
                  fontsize=13, fontweight='bold')
 
+    ambulanceModes = [m for m in MODES if m != 'allVehicles_multirounds']
     barW = 0.2
-    combos = [(t, m) for t in PROTOCOLS for m in MODES]
+    combos = [(t, m) for t in PROTOCOLS for m in ambulanceModes]
     comboLabels = [f"{t.upper()}\n{MODE_LABELS[m][:4]}" for t, m in combos]
     x = np.arange(len(combos))
 
@@ -353,8 +367,8 @@ def plotAmbulance():
         for transport, mode in combos:
             prefix = PROTOCOL_PREFIXES[transport]
 
-            prioRuns = loadRunsForMode(prefix, vc, mode + PRIORITY_SUFFIXES['priority'])
-            noPrioRuns = loadRunsForMode(prefix, vc, mode + PRIORITY_SUFFIXES['nopriority'])
+            prioRuns = loadRunsForMode(prefix, vc, MODE_DIRS[mode]['priority'])
+            noPrioRuns = loadRunsForMode(prefix, vc, MODE_DIRS[mode]['nopriority'])
 
             prioTimes, normTimes = [], []
             for runData in prioRuns:
@@ -418,7 +432,6 @@ def plotAmbulance():
 # ============================================================
 
 def generateAllPlots():
-    """Generate all 9 comparison plots."""
     print("Loading data for all modes and priority variants...")
     data = loadAllData()
 
@@ -429,25 +442,15 @@ def generateAllPlots():
     print("Generating plots...")
     for transport in PROTOCOLS:
         plotThroughput(data, transport)
+        plotLeaderElectionTime(data, transport)
+        plotDecisionTime(data, transport)
         plotFallbacks(data, transport)
         plotMessages(data, transport)
         plotCdf(transport)
 
     plotAmbulance()
-    print(f"\nDone — 9 plots saved to {RESULTS_DIR}/")
-
-
-def main():
-    parser = argparse.ArgumentParser(description='RAFT Intersection Benchmark Plotter')
-    parser.add_argument('--simple', action='store_true', help='(deprecated, ignored)')
-    parser.add_argument('--mode', default=None, help='(deprecated, ignored)')
-    args = parser.parse_args()
-
-    if args.mode:
-        print(f"Note: --mode is deprecated. Generating full comparison plots instead.")
-
-    generateAllPlots()
+    print(f"\nDone — 13 plots saved to {RESULTS_DIR}/")
 
 
 if __name__ == '__main__':
-    main()
+    generateAllPlots()

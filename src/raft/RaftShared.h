@@ -16,6 +16,7 @@ extern "C" {
 struct VehicleProposal {
     int    vehicleId;
     char   laneEdgeId[64];
+    char   sumoId[16];
     double positionOnLane;
     double speed;
     int    laneIndex;           // Direction: 0=W, 1=S, 2=E, 3=N

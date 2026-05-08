@@ -47,27 +47,24 @@ void RaftMetrics::writeVehicleJSON(
     int vehicleId,
     const std::string& lane,
     const std::string& route,
-    bool wasLeader,
     bool isPriorityVehicle,
     const std::string& coordinationMethod,
     const std::string& transport,
     double stoppedMs,
     double passedMs,
-    double raftDecisionTimeMs,
+    double leaderElectionTimeMs,
+    double decisionLatencyMs,
     int messagesSent,
     int messagesReceived,
     int electionRounds,
     int logEntriesProposed,
     int logEntriesCommitted,
     int myBatch,
-    const std::vector<int>& clusterMembers,
     const std::string& clusterMode)
 {
     if (!resultsFileOpened_) return;
 
-    // Derived metrics
     double totalWaitTime = (passedMs > 0 && stoppedMs > 0) ? (passedMs - stoppedMs) : 0;
-    double throughput    = 0;
 
     if (vehiclesCompleted_ > 0) {
         resultsFile_ << ",\n";
@@ -77,7 +74,6 @@ void RaftMetrics::writeVehicleJSON(
     resultsFile_ << "    \"vehicle_id\": "          << vehicleId << ",\n";
     resultsFile_ << "    \"lane\": \""               << lane << "\",\n";
     resultsFile_ << "    \"route\": \""              << route << "\",\n";
-    resultsFile_ << "    \"was_leader\": "              << (wasLeader ? "true" : "false") << ",\n";
     resultsFile_ << "    \"is_priority_vehicle\": "    << (isPriorityVehicle ? "true" : "false") << ",\n";
     resultsFile_ << "    \"coordination_method\": \""  << coordinationMethod << "\",\n";
     resultsFile_ << "    \"transport\": \""          << transport << "\",\n";
@@ -87,21 +83,14 @@ void RaftMetrics::writeVehicleJSON(
     resultsFile_ << "      \"passed\": "             << passedMs << "\n";
     resultsFile_ << "    },\n";
     resultsFile_ << "    \"durations_ms\": {\n";
-    resultsFile_ << "      \"raft_decision_time\": " << raftDecisionTimeMs << ",\n";
-    resultsFile_ << "      \"total_wait_time\": "    << totalWaitTime << ",\n";
-    resultsFile_ << "      \"throughput\": "         << throughput << "\n";
+    resultsFile_ << "      \"leader_election_time_ms\": " << leaderElectionTimeMs << ",\n";
+    resultsFile_ << "      \"decision_latency_ms\": "     << decisionLatencyMs << ",\n";
+    resultsFile_ << "      \"total_wait_time\": "         << totalWaitTime << "\n";
     resultsFile_ << "    },\n";
     resultsFile_ << "    \"messages\": {\n";
     resultsFile_ << "      \"sent\": "               << messagesSent << ",\n";
     resultsFile_ << "      \"received\": "           << messagesReceived << "\n";
     resultsFile_ << "    },\n";
-    resultsFile_ << "    \"cluster_size\": "         << clusterMembers.size() << ",\n";
-    resultsFile_ << "    \"cluster_members\": [";
-    for (size_t i = 0; i < clusterMembers.size(); i++) {
-        if (i > 0) resultsFile_ << ", ";
-        resultsFile_ << clusterMembers[i];
-    }
-    resultsFile_ << "],\n";
     resultsFile_ << "    \"raft_stats\": {\n";
     resultsFile_ << "      \"election_rounds\": "    << electionRounds << ",\n";
     resultsFile_ << "      \"entries_proposed\": "   << logEntriesProposed << ",\n";

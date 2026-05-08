@@ -126,8 +126,10 @@ Result directories are suffixed: `allVehicles`, `allVehicles_nopriority`, `allVe
 
 ### Plot output (`plot_comparison.py`)
 
-Running `python3 plot_comparison.py` generates 9 PNG files — no arguments needed:
+Running `python3 plot_comparison.py` generates 13 PNG files — no arguments needed:
 - `throughput_wave.png`, `throughput_udp.png`
+- `leader_election_time_wave.png`, `leader_election_time_udp.png`
+- `decision_time_wave.png`, `decision_time_udp.png`
 - `fallbacks_wave.png`, `fallbacks_udp.png`
 - `messages_wave.png`, `messages_udp.png`
 - `cdf_wave.png`, `cdf_udp.png`
