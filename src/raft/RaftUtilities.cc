@@ -268,7 +268,7 @@ void RaftAppBase::handleFallback()
               << " committed=" << hasCommittedOrder_
               << " isLeader=" << isLeader_ << std::endl;
 
-    if (frontVeh == -1 || !activeVehicles_.count(frontVeh)) {
+    if (frontVeh == -1 || !clusterVehicles_.count(frontVeh)) {
         resumeMovement();
     } else {
         int vehiclesPerSide = std::max(totalVehicles_ / 4, 1);

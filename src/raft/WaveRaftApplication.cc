@@ -132,7 +132,7 @@ void WaveRaftApplication::initialize(int stage)
         wayOfSight_         = (posInLane == 0);
         isLaneLeader_       = (posInLane == 0);  // initial guess, updated dynamically
 
-        activeVehicles_.insert(myId_);  // only self until RAFT forms via leader DB exchange
+        clusterVehicles_.insert(myId_);  // only self until RAFT forms via leader DB exchange
 
         if (!isGlobalInitialized_) {
             isGlobalInitialized_ = true;

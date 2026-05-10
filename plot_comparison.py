@@ -22,6 +22,7 @@ PROTOCOL_PREFIXES = {'wave': 'simple_raftwave', 'udp': 'simple_udp'}
 PROTOCOL_LABELS = {'wave': 'WAVE (802.11p)', 'udp': 'UDP (802.11a)'}
 
 MODES = ['laneLeaders', 'allVehicles', 'allVehicles_multirounds']
+STANDARD_MODES = ['laneLeaders', 'allVehicles']
 MODE_LABELS = {
     'laneLeaders':             'Lane Leaders',
     'allVehicles':             'All Vehicles',
@@ -182,9 +183,11 @@ def getValues(data, protocol, mode, prio, metric, scale=1.0):
     return means, stds
 
 
-def buildLegend():
+def buildLegend(modes=None):
+    if modes is None:
+        modes = MODES
     handles = []
-    for mode in MODES:
+    for mode in modes:
         handles.append(Line2D([0], [0], color=MODE_COLORS[mode], linewidth=2,
                                label=MODE_LABELS[mode]))
     for prio in PRIORITY_VARIANTS:
@@ -194,11 +197,20 @@ def buildLegend():
     return handles
 
 
+def buildModeLegend(modes=None):
+    if modes is None:
+        modes = MODES
+    return [Line2D([0], [0], color=MODE_COLORS[mode], linewidth=2, label=MODE_LABELS[mode])
+            for mode in modes]
+
+
 # ============================================================
 # Non-Ambulance Line Plots (per transport)
 # ============================================================
 
-def plotMetricLine(data, transport, metric, title, ylabel, outputPrefix, scale=1.0):
+def plotMetricLine(data, transport, metric, title, ylabel, outputPrefix, scale=1.0, modes=None):
+    if modes is None:
+        modes = MODES
     fig, ax = plt.subplots(figsize=(8, 5))
     fig.suptitle(f'{title} — {PROTOCOL_LABELS[transport]}',
                  fontsize=13, fontweight='bold')
@@ -206,7 +218,7 @@ def plotMetricLine(data, transport, metric, title, ylabel, outputPrefix, scale=1
     x = np.array(VEHICLE_COUNTS)
     hasAny = False
 
-    for mode in MODES:
+    for mode in modes:
         for prio in PRIORITY_VARIANTS:
             means, _ = getValues(data, transport, mode, prio, metric, scale)
             if all(v is None for v in means):
@@ -227,7 +239,7 @@ def plotMetricLine(data, transport, metric, title, ylabel, outputPrefix, scale=1
     ax.set_ylabel(ylabel, fontsize=11, fontweight='bold')
     ax.set_xticks(VEHICLE_COUNTS)
     ax.set_xticklabels([f'{vc} veh' for vc in VEHICLE_COUNTS])
-    ax.legend(handles=buildLegend(),
+    ax.legend(handles=buildLegend(modes),
               bbox_to_anchor=(1.01, 1), loc='upper left', fontsize=8, borderaxespad=0)
     ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
@@ -243,13 +255,15 @@ def plotThroughput(data, transport):
 def plotLeaderElectionTime(data, transport):
     plotMetricLine(data, transport, 'leaderElectionTime',
                    'RAFT Leader Election Time (cluster formed → leader elected)',
-                   'Leader Election Time (ms)', 'leader_election_time')
+                   'Leader Election Time (ms)', 'leader_election_time',
+                   modes=STANDARD_MODES)
 
 
 def plotDecisionTime(data, transport):
     plotMetricLine(data, transport, 'decisionLatency',
                    'RAFT Decision Latency (status collection → schedule committed)',
-                   'Decision Latency (ms)', 'decision_time')
+                   'Decision Latency (ms)', 'decision_time',
+                   modes=STANDARD_MODES)
 
 
 def plotFallbacks(data, transport):
@@ -272,16 +286,21 @@ def plotMessages(data, transport):
     for col, (metric, panelTitle) in enumerate(configs):
         ax = axes[col]
         for mode in MODES:
+            allMeans = []
             for prio in PRIORITY_VARIANTS:
                 means, _ = getValues(data, transport, mode, prio, metric)
-                if all(v is None for v in means):
-                    continue
-                yVals = [v if v is not None else np.nan for v in means]
-                ax.plot(x, yVals,
-                        color=MODE_COLORS[mode],
-                        linestyle=PRIORITY_LINESTYLES[prio],
-                        linewidth=2, marker='o', markersize=6)
-                hasAny = True
+                if not all(v is None for v in means):
+                    allMeans.append(means)
+            if not allMeans:
+                continue
+            yVals = []
+            for i in range(len(VEHICLE_COUNTS)):
+                vals = [m[i] for m in allMeans if m[i] is not None]
+                yVals.append(float(np.mean(vals)) if vals else np.nan)
+            ax.plot(x, yVals,
+                    color=MODE_COLORS[mode],
+                    linewidth=2, marker='o', markersize=6)
+            hasAny = True
         ax.set_xlabel('Number of Vehicles', fontsize=10, fontweight='bold')
         ax.set_ylabel('Messages', fontsize=10, fontweight='bold')
         ax.set_title(panelTitle, fontsize=11, fontweight='bold')
@@ -294,7 +313,7 @@ def plotMessages(data, transport):
         plt.close(fig)
         return
 
-    fig.legend(handles=buildLegend(),
+    fig.legend(handles=buildModeLegend(),
                bbox_to_anchor=(1.01, 0.5), loc='center left', fontsize=8, borderaxespad=0)
     plt.tight_layout()
     savePlot(fig, os.path.join(RESULTS_DIR, f'messages_{transport}.png'))
@@ -347,17 +366,17 @@ def plotCdf(transport):
 # Ambulance Graph (priority vs nopriority across all combos)
 # ============================================================
 
-def plotAmbulance():
+def plotPriority():
     # Multirounds is excluded: too many fallbacks make the priority-vs-normal comparison meaningless.
     fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(18, 6), sharey=False)
-    fig.suptitle('Ambulance (Priority Vehicle) Benefit\n'
+    fig.suptitle('Priority Vehicle Benefit\n'
                  'Priority vehicle crossing time vs normal vs no-priority run',
                  fontsize=13, fontweight='bold')
 
-    ambulanceModes = [m for m in MODES if m != 'allVehicles_multirounds']
+    priorityModes = [m for m in MODES if m != 'allVehicles_multirounds']
     barW = 0.2
-    combos = [(t, m) for t in PROTOCOLS for m in ambulanceModes]
-    comboLabels = [f"{t.upper()}\n{MODE_LABELS[m][:4]}" for t, m in combos]
+    combos = [(t, m) for t in ['wave'] for m in priorityModes]
+    comboLabels = [f"WAVE\n{MODE_LABELS[m][:4]}" for t, m in combos]
     x = np.arange(len(combos))
 
     for col, vc in enumerate(VEHICLE_COUNTS):
@@ -424,7 +443,7 @@ def plotAmbulance():
     fig.legend(handles=legendHandles,
                bbox_to_anchor=(0.5, -0.02), loc='upper center', ncol=3, fontsize=9)
     plt.tight_layout()
-    savePlot(fig, os.path.join(RESULTS_DIR, 'ambulance.png'))
+    savePlot(fig, os.path.join(RESULTS_DIR, 'priority.png'))
 
 
 # ============================================================
@@ -448,7 +467,7 @@ def generateAllPlots():
         plotMessages(data, transport)
         plotCdf(transport)
 
-    plotAmbulance()
+    plotPriority()
     print(f"\nDone — 13 plots saved to {RESULTS_DIR}/")
 
 

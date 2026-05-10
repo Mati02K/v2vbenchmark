@@ -25,10 +25,9 @@ void RaftAppBase::sendPassOrderBroadcast()
 {
     if (!hasCommittedOrder_) return;
 
-    // Embed QC in payload so non-cluster vehicles get schedule + proof in one message.
-    std::vector<uint8_t> data(sizeof(PassScheduleEntry) + sizeof(QuorumCertificate));
-    memcpy(data.data(),                          &committedSchedule_, sizeof(PassScheduleEntry));
-    memcpy(data.data() + sizeof(PassScheduleEntry), &prevRoundQC_,    sizeof(QuorumCertificate));
+    // Send the full QC — it contains both the schedule and the signatures.
+    std::vector<uint8_t> data(sizeof(QuorumCertificate));
+    memcpy(data.data(), &prevRoundQC_, sizeof(QuorumCertificate));
     sendRaftBroadcast(benchmark::COORD_PASS_ORDER_BROADCAST, data);
 
     std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST sent (with QC): "
@@ -37,48 +36,43 @@ void RaftAppBase::sendPassOrderBroadcast()
 }
 
 // Non-cluster (queued) vehicles receive the committed schedule + QC here.
-// Payload: [PassScheduleEntry][QuorumCertificate]
+// Payload: [QuorumCertificate] (contains schedule + signatures)
 // RAFT cluster members apply the schedule via doApplyLog() — they skip this.
 void RaftAppBase::handlePassOrderBroadcast(const std::vector<uint8_t>& data)
 {
     if (hasPassedIntersection_) return;
-    if (hasCommittedOrder_) return;  // already have the schedule (duplicate broadcast)
-    if (data.size() < sizeof(PassScheduleEntry)) {
+    if (hasCommittedOrder_) return;
+    if (data.size() < sizeof(QuorumCertificate)) {
         std::cout << simTime() << " [WARN][V" << myId_
                   << "] PASS_ORDER_BROADCAST: payload too small (" << data.size()
-                  << " < " << sizeof(PassScheduleEntry) << ")" << std::endl;
+                  << " < " << sizeof(QuorumCertificate) << ")" << std::endl;
         return;
     }
 
     // Gossip relay: rebroadcast once so vehicles further back in the queue also learn.
     sendRaftBroadcast(benchmark::COORD_PASS_ORDER_BROADCAST, data);
 
-    PassScheduleEntry schedule;
-    memcpy(&schedule, data.data(), sizeof(PassScheduleEntry));
+    QuorumCertificate qc;
+    memcpy(&qc, data.data(), sizeof(QuorumCertificate));
 
     std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST received: "
-              << schedule.numBatches << " batches (raftServer_=" << (raftServer_ != nullptr) << ")" << std::endl;
+              << qc.schedule.numBatches << " batches (raftServer_=" << (raftServer_ != nullptr) << ")" << std::endl;
 
-    memcpy(&committedSchedule_, &schedule, sizeof(PassScheduleEntry));
+    memcpy(&committedSchedule_, &qc.schedule, sizeof(PassScheduleEntry));
     hasCommittedOrder_ = true;
     coordinationMethod_ = "raft";
 
-    // Extract embedded QC if present.
-    if (data.size() >= sizeof(PassScheduleEntry) + sizeof(QuorumCertificate)) {
-        QuorumCertificate qc;
-        memcpy(&qc, data.data() + sizeof(PassScheduleEntry), sizeof(QuorumCertificate));
-        if (qc.valid && qc.numSigs > 0 && (!hasPrevRoundQC_ || qc.round > prevRoundQC_.round)) {
-            prevRoundQC_    = qc;
-            hasPrevRoundQC_ = true;
-            qcAssembled_    = true;
-            for (int b = 0; b < qc.schedule.numBatches; b++) {
-                for (int v = 0; v < qc.schedule.batches[b].numVehicles; v++) {
-                    scheduledVehicles_.insert(qc.schedule.batches[b].vehicleIds[v]);
-                }
+    if (qc.valid && qc.numSigs > 0 && (!hasPrevRoundQC_ || qc.round > prevRoundQC_.round)) {
+        prevRoundQC_    = qc;
+        hasPrevRoundQC_ = true;
+        qcAssembled_    = true;
+        for (int b = 0; b < qc.schedule.numBatches; b++) {
+            for (int v = 0; v < qc.schedule.batches[b].numVehicles; v++) {
+                scheduledVehicles_.insert(qc.schedule.batches[b].vehicleIds[v]);
             }
-            std::cout << simTime() << " [QC][V" << myId_ << "] QC stored from PASS_ORDER_BROADCAST:"
-                      << " round=" << qc.round << " numSigs=" << qc.numSigs << std::endl;
         }
+        std::cout << simTime() << " [QC][V" << myId_ << "] QC stored from PASS_ORDER_BROADCAST:"
+                  << " round=" << qc.round << " numSigs=" << qc.numSigs << std::endl;
     }
 
     applyCommittedPassOrder();
@@ -179,7 +173,7 @@ void RaftAppBase::pollBatchExit()
                       << " cleared intersection (batch=" << currentBatch_ << ")" << std::endl;
             vehiclesLeftInBatch_.insert(vid);
             markRaftNodeInactive(vid);
-            activeVehicles_.erase(vid);
+            clusterVehicles_.erase(vid);
             scheduleOneshotMs(2000.0, [this, vid]() { vehicleDB_.erase(vid); });
         }
     }

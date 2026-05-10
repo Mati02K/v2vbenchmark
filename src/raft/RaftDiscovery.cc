@@ -170,8 +170,8 @@ void RaftAppBase::startNewRound()
     lastCheckedTerm_     = 0;
     lastRaftPeriodicRun_ = SIMTIME_ZERO;
     clusterPhase_        = PHASE_DISCOVERY;
-    activeVehicles_.clear();
-    activeVehicles_.insert(myId_);
+    clusterVehicles_.clear();
+    clusterVehicles_.insert(myId_);
     collectedLaneLeaders_.clear();
     collectedAllVehicles_.clear();
     collectedLeaderDBs_.clear();
@@ -386,7 +386,7 @@ void RaftAppBase::formCluster(const std::set<int>& members)
 
     clusterPhase_    = PHASE_FORMATION;
     timeRaftStarted_ = NOW;
-    activeVehicles_  = members;
+    clusterVehicles_  = members;
 
     std::cout << NOW << " [DBG][V" << myId_ << "] FORM_CLUSTER " << members.size()
               << " members: [";

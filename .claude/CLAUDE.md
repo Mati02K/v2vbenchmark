@@ -133,6 +133,6 @@ Running `python3 plot_comparison.py` generates 13 PNG files — no arguments nee
 - `fallbacks_wave.png`, `fallbacks_udp.png`
 - `messages_wave.png`, `messages_udp.png`
 - `cdf_wave.png`, `cdf_udp.png`
-- `ambulance.png`
+- `priority.png`
 
 Use `/results` to inspect existing data and `/plot` to regenerate graphs.

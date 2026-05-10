@@ -111,7 +111,7 @@ bool UdpRaftApplication::startApplication()
     wayOfSight_         = (posInLane == 0);
     isLaneLeader_       = (posInLane == 0);  // initial guess, updated dynamically
 
-    activeVehicles_.insert(myId_);  // only self until RAFT forms via leader DB exchange
+    clusterVehicles_.insert(myId_);  // only self until RAFT forms via leader DB exchange
 
     RaftMetrics::setTotalVehicles(totalVehicles_);
     if (myId_ == 0) {
@@ -353,11 +353,13 @@ void UdpRaftApplication::sendRaftToPeer(int targetVehicleId, int msgType,
     wire.push_back(static_cast<uint8_t>(msgType));
     wire.insert(wire.end(), data.begin(), data.end());
 
-    auto payload = makeShared<BytesChunk>(wire);
-    auto pkt     = createPacket(name.str());
-    pkt->insertAtBack(payload);
-    sendPacket(std::move(pkt));
-    messagesSent_++;
+    scheduleOneshotMs(uniform(1.0, 5.0), [this, n = name.str(), w = std::move(wire)]() mutable {
+        auto payload = makeShared<BytesChunk>(w);
+        auto pkt     = createPacket(n);
+        pkt->insertAtBack(payload);
+        sendPacket(std::move(pkt));
+        messagesSent_++;
+    });
 }
 
 void UdpRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_t>& data)
@@ -371,11 +373,13 @@ void UdpRaftApplication::sendRaftBroadcast(int msgType, const std::vector<uint8_
     wire.push_back(static_cast<uint8_t>(msgType));
     wire.insert(wire.end(), data.begin(), data.end());
 
-    auto payload = makeShared<BytesChunk>(wire);
-    auto pkt     = createPacket(name.str());
-    pkt->insertAtBack(payload);
-    sendPacket(std::move(pkt));
-    messagesSent_++;
+    scheduleOneshotMs(uniform(1.0, 5.0), [this, n = name.str(), w = std::move(wire)]() mutable {
+        auto payload = makeShared<BytesChunk>(w);
+        auto pkt     = createPacket(n);
+        pkt->insertAtBack(payload);
+        sendPacket(std::move(pkt));
+        messagesSent_++;
+    });
 }
 
 double UdpRaftApplication::getDistanceToJunction() const

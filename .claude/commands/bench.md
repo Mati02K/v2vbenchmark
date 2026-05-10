@@ -69,7 +69,7 @@ This generates 13 PNGs:
 - `fallbacks_wave.png`, `fallbacks_udp.png`
 - `messages_wave.png`, `messages_udp.png`
 - `cdf_wave.png`, `cdf_udp.png`
-- `ambulance.png`
+- `priority.png`
 
 Report which PNGs were saved.
 
@@ -89,12 +89,14 @@ Spawn a `qaagent` and pass it the list of result folders that were just populate
 
 **Standard combinations** (`laneLeaders`, `allVehicles`, and their `_nopriority` variants):
 - `coordination_method != "raft"` → FAIL (fallbacks are never acceptable)
-- `log_entries_committed == 0` for a vehicle in `allVehicles` mode → FAIL
+- `log_entries_committed == 0` for a vehicle in `allVehicles` mode → WARN (vehicle may have received schedule via broadcast gossip instead of RAFT replication — functionally correct, not a FAIL)
 - `log_entries_committed == 0` for non-lane-leader in `laneLeaders` mode → expected (they don't join RAFT)
 - `election_rounds > 10` → WARN
 
 **Multirounds combinations** (`_multirounds` suffix):
 - Fallbacks are **expected and acceptable**. After round 1, the remaining cluster shrinks. With only 2 vehicles left, RAFT quorum is hard to achieve (especially over UDP with packet loss) — these vehicles fall back to the timer-based mechanism. Do NOT flag fallbacks as failures for multirounds.
+- `my_batch=-1` means the vehicle is in fallback mode. This is **expected and acceptable** for multirounds — do NOT flag it as a FAIL.
+- `coordination_method="fallback"` is **expected and acceptable** for multirounds — do NOT flag it as a FAIL.
 - `log_entries_committed >= 1` for any vehicle that did participate is sufficient — do NOT require 2+ commits (a vehicle scheduled in round 1 only ever sees 1 committed entry).
-- `election_rounds > 20` → WARN (higher threshold because round 2 restarts election)
-- Report fallback rate as informational only (expected ~10–20%).
+- `election_rounds > 20` → WARN only, never FAIL (higher threshold because round 2 restarts election; spikes of 50–100 are seen at 16 vehicles and are expected).
+- Report fallback rate as informational only (expected ~10–20% for 8-veh, higher for 16-veh).

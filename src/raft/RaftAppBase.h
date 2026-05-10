@@ -107,7 +107,7 @@ protected:
     std::string intersectionEdge_;
     bool        wayOfSight_;
     int         vehicleInFrontOfMe_;
-    std::set<int>      activeVehicles_;
+    std::set<int>      clusterVehicles_;
     bool        waitingForStatus_;
     int         statusResponseCount_;
 
@@ -283,7 +283,6 @@ protected:
     void proposePassOrder();
     void sendQCSignRequest();
     void handleQCSignRequest(const std::vector<uint8_t>& data);
-    void sendQCSignResponse(int toLeader, const std::vector<uint8_t>& respData);
     void handleQCSignResponse(const std::vector<uint8_t>& data, int senderId);
     void tryAssembleQC();
     bool verifyQC(const QuorumCertificate& qc) const;
