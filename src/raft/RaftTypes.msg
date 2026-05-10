@@ -25,4 +25,7 @@ enum RaftMsgType {
     QC_SIGN_REQUEST                = 31;
     QC_SIGN_RESPONSE               = 32;
     QC_BROADCAST                   = 33;
+
+    // Background channel load — not counted in RAFT metrics (99)
+    CAM_TELEMETRY                  = 99;
 }

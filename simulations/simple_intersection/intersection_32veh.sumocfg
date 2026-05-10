@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <input>
+        <net-file value="simple.net.xml"/>
+        <route-files value="intersection_32veh.rou.xml"/>
+    </input>
+    <time>
+        <begin value="0"/>
+        <end value="300"/>
+        <step-length value="0.1"/>
+    </time>
+    <gui_only>
+        <start value="true"/>
+        <quit-on-end value="true"/>
+    </gui_only>
+</configuration>

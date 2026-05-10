@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """
 RAFT Intersection Benchmark Plotter
-Generates 13 comparison plots: laneLeaders vs allVehicles vs multirounds,
-priority vs nopriority, across UDP and WAVE transports.
+WAVE: laneLeaders vs allVehicles vs multirounds.
+UDP: allVehicles only.
 
 Usage:
-  python3 plot_comparison.py          # generate all 13 comparison plots
+  python3 plot_comparison.py
 """
 
 import json
@@ -16,12 +16,23 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
-VEHICLE_COUNTS = [4, 8, 16]
+def _detectVehicleCounts():
+    counts = set()
+    if os.path.isdir(RESULTS_DIR):
+        import re
+        for name in os.listdir(RESULTS_DIR):
+            m = re.search(r'_(\d+)veh_', name)
+            if m:
+                counts.add(int(m.group(1)))
+    return sorted(counts) or [4, 8, 16, 24, 32]
+
+VEHICLE_COUNTS = _detectVehicleCounts()
 PROTOCOLS = ['wave', 'udp']
 PROTOCOL_PREFIXES = {'wave': 'simple_raftwave', 'udp': 'simple_udp'}
 PROTOCOL_LABELS = {'wave': 'WAVE (802.11p)', 'udp': 'UDP (802.11a)'}
 
 MODES = ['laneLeaders', 'allVehicles', 'allVehicles_multirounds']
+PROTOCOL_MODES = {'wave': MODES, 'udp': ['allVehicles']}
 STANDARD_MODES = ['laneLeaders', 'allVehicles']
 MODE_LABELS = {
     'laneLeaders':             'Lane Leaders',
@@ -34,17 +45,16 @@ MODE_COLORS = {
     'allVehicles_multirounds': '#e67e22',
 }
 
-PRIORITY_VARIANTS = ['priority', 'nopriority']
+PRIORITY_VARIANTS = ['priority']
 MODE_DIRS = {
-    'laneLeaders':             {'priority': 'laneLeaders',             'nopriority': 'laneLeaders_nopriority'},
-    'allVehicles':             {'priority': 'allVehicles',             'nopriority': 'allVehicles_nopriority'},
-    'allVehicles_multirounds': {'priority': 'allVehicles_multirounds', 'nopriority': 'allVehicles_nopriority_multirounds'},
+    'laneLeaders':             {'priority': 'laneLeaders',  'nopriority': 'laneLeaders_nopriority'},
+    'allVehicles':             {'priority': 'allVehicles',  'nopriority': 'allVehicles_nopriority'},
+    'allVehicles_multirounds': {'priority': 'allVehicles_multirounds'},
 }
-PRIORITY_LINESTYLES = {'priority': '-', 'nopriority': '--'}
-PRIORITY_DISPLAY = {'priority': 'Priority', 'nopriority': 'No Priority'}
 
-PRIO_COLOR = '#e74c3c'
-NORM_COLOR = '#95a5a6'
+PRIO_COLOR    = '#e74c3c'
+NORM_COLOR    = '#95a5a6'
+NOPRIO_COLOR  = '#5dade2'
 
 
 # ============================================================
@@ -147,10 +157,11 @@ def calculateMetrics(runsData):
 
 def loadAllData():
     # Missing result directories are silently skipped — partial benchmarks should still plot.
+    # UDP only runs for allVehicles mode.
     data = {}
     for protocol in PROTOCOLS:
         prefix = PROTOCOL_PREFIXES[protocol]
-        for mode in MODES:
+        for mode in PROTOCOL_MODES[protocol]:
             for prio in PRIORITY_VARIANTS:
                 fullMode = MODE_DIRS[mode][prio]
                 for vc in VEHICLE_COUNTS:
@@ -186,15 +197,8 @@ def getValues(data, protocol, mode, prio, metric, scale=1.0):
 def buildLegend(modes=None):
     if modes is None:
         modes = MODES
-    handles = []
-    for mode in modes:
-        handles.append(Line2D([0], [0], color=MODE_COLORS[mode], linewidth=2,
-                               label=MODE_LABELS[mode]))
-    for prio in PRIORITY_VARIANTS:
-        handles.append(Line2D([0], [0], color='black',
-                               linestyle=PRIORITY_LINESTYLES[prio], linewidth=1.5,
-                               label=PRIORITY_DISPLAY[prio]))
-    return handles
+    return [Line2D([0], [0], color=MODE_COLORS[mode], linewidth=2, label=MODE_LABELS[mode])
+            for mode in modes]
 
 
 def buildModeLegend(modes=None):
@@ -226,9 +230,9 @@ def plotMetricLine(data, transport, metric, title, ylabel, outputPrefix, scale=1
             yVals = [v if v is not None else np.nan for v in means]
             ax.plot(x, yVals,
                     color=MODE_COLORS[mode],
-                    linestyle=PRIORITY_LINESTYLES[prio],
+                    linestyle='-',
                     linewidth=2, marker='o', markersize=6,
-                    label=f"{MODE_LABELS[mode]} / {PRIORITY_DISPLAY[prio]}")
+                    label=MODE_LABELS[mode])
             hasAny = True
 
     if not hasAny:
@@ -345,7 +349,7 @@ def plotCdf(transport):
                 cdf = np.arange(1, len(sortedT) + 1) / len(sortedT)
                 ax.plot(sortedT, cdf,
                         color=MODE_COLORS[mode],
-                        linestyle=PRIORITY_LINESTYLES[prio],
+                        linestyle='-',
                         linewidth=2)
 
         ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
@@ -367,30 +371,27 @@ def plotCdf(transport):
 # ============================================================
 
 def plotPriority():
-    # Multirounds is excluded: too many fallbacks make the priority-vs-normal comparison meaningless.
-    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(18, 6), sharey=False)
-    fig.suptitle('Priority Vehicle Benefit\n'
-                 'Priority vehicle crossing time vs normal vs no-priority run',
+    # Multirounds excluded: comparison is only meaningful for laneLeaders and allVehicles.
+    priorityModes = [m for m in MODES if m != 'allVehicles_multirounds']
+    combos = priorityModes
+    comboLabels = [MODE_LABELS[m] for m in combos]
+    x = np.arange(len(combos))
+
+    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(14, 6), sharey=False)
+    fig.suptitle('Priority Vehicle Benefit — WAVE (802.11p)\n'
+                 'Priority vehicle crossing time vs normal vehicles',
                  fontsize=13, fontweight='bold')
 
-    priorityModes = [m for m in MODES if m != 'allVehicles_multirounds']
-    barW = 0.2
-    combos = [(t, m) for t in ['wave'] for m in priorityModes]
-    comboLabels = [f"WAVE\n{MODE_LABELS[m][:4]}" for t, m in combos]
-    x = np.arange(len(combos))
+    barW = 0.25
 
     for col, vc in enumerate(VEHICLE_COUNTS):
         ax = axes[col]
-        prioVals, normVals, noPrioVals = [], [], []
+        prioVals, normVals, noprioVals = [], [], []
 
-        for transport, mode in combos:
-            prefix = PROTOCOL_PREFIXES[transport]
-
-            prioRuns = loadRunsForMode(prefix, vc, MODE_DIRS[mode]['priority'])
-            noPrioRuns = loadRunsForMode(prefix, vc, MODE_DIRS[mode]['nopriority'])
-
+        for mode in combos:
+            runs = loadRunsForMode(PROTOCOL_PREFIXES['wave'], vc, MODE_DIRS[mode]['priority'])
             prioTimes, normTimes = [], []
-            for runData in prioRuns:
+            for runData in runs:
                 for v in runData:
                     if v.get('coordination_method') == 'fallback':
                         continue
@@ -403,9 +404,12 @@ def plotPriority():
                         prioTimes.append(latency)
                     else:
                         normTimes.append(latency)
+            prioVals.append(np.mean(prioTimes) if prioTimes else 0)
+            normVals.append(np.mean(normTimes) if normTimes else 0)
 
-            noPrioTimes = []
-            for runData in noPrioRuns:
+            noprio_runs = loadRunsForMode(PROTOCOL_PREFIXES['wave'], vc, MODE_DIRS[mode].get('nopriority', ''))
+            noprioTimes = []
+            for runData in noprio_runs:
                 for v in runData:
                     if v.get('coordination_method') == 'fallback':
                         continue
@@ -413,32 +417,25 @@ def plotPriority():
                     stopped = v['timestamps_ms'].get('stopped', 0)
                     if passed <= 0 or stopped <= 0:
                         continue
-                    noPrioTimes.append((passed - stopped) / 1000.0)
+                    noprioTimes.append((passed - stopped) / 1000.0)
+            noprioVals.append(np.mean(noprioTimes) if noprioTimes else 0)
 
-            prioVals.append(np.mean(prioTimes) if prioTimes else 0)
-            normVals.append(np.mean(normTimes) if normTimes else 0)
-            noPrioVals.append(np.mean(noPrioTimes) if noPrioTimes else 0)
-
-        ax.bar(x - barW, prioVals,  barW, label='Priority veh (prio run)',
-               color=PRIO_COLOR, alpha=0.85, edgecolor='black', linewidth=0.5)
-        ax.bar(x,         normVals,  barW, label='Normal veh (prio run)',
-               color=NORM_COLOR, alpha=0.85, edgecolor='black', linewidth=0.5)
-        ax.bar(x + barW,  noPrioVals, barW, label='All veh (noprio run)',
-               color='#7f8c8d', alpha=0.85, edgecolor='black', linewidth=0.5,
-               hatch='//')
+        ax.bar(x - barW, prioVals,   barW, color=PRIO_COLOR,   alpha=0.85, edgecolor='black', linewidth=0.5)
+        ax.bar(x,        normVals,   barW, color=NORM_COLOR,   alpha=0.85, edgecolor='black', linewidth=0.5)
+        ax.bar(x + barW, noprioVals, barW, color=NOPRIO_COLOR, alpha=0.85, edgecolor='black', linewidth=0.5)
 
         ax.set_title(f'{vc} Vehicles', fontsize=11, fontweight='bold')
         ax.set_xticks(x)
-        ax.set_xticklabels(comboLabels, fontsize=7)
+        ax.set_xticklabels(comboLabels, fontsize=9)
         if col == 0:
             ax.set_ylabel('Mean Crossing Time (s)', fontsize=10)
         ax.grid(True, alpha=0.3, axis='y')
         ax.set_ylim(bottom=0)
 
     legendHandles = [
-        Patch(facecolor=PRIO_COLOR, edgecolor='black', label='Priority vehicle (priority run)'),
-        Patch(facecolor=NORM_COLOR, edgecolor='black', label='Normal vehicles (priority run)'),
-        Patch(facecolor='#7f8c8d', edgecolor='black', hatch='//', label='All vehicles (nopriority run)'),
+        Patch(facecolor=PRIO_COLOR,   edgecolor='black', label='Priority vehicle'),
+        Patch(facecolor=NORM_COLOR,   edgecolor='black', label='Normal vehicles (priority run)'),
+        Patch(facecolor=NOPRIO_COLOR, edgecolor='black', label='No priority (baseline)'),
     ]
     fig.legend(handles=legendHandles,
                bbox_to_anchor=(0.5, -0.02), loc='upper center', ncol=3, fontsize=9)
@@ -468,7 +465,7 @@ def generateAllPlots():
         plotCdf(transport)
 
     plotPriority()
-    print(f"\nDone — 13 plots saved to {RESULTS_DIR}/")
+    print(f"\nDone — plots saved to {RESULTS_DIR}/")
 
 
 if __name__ == '__main__':

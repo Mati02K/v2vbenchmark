@@ -55,7 +55,7 @@ struct VehicleLeftEntry {
 //   4. All vehicles (including queued ones) store the QC and populate scheduledVehicles_
 //   5. Next-round lane leaders skip scheduledVehicles_ in proposePassOrder()
 
-static constexpr int QC_MAX_MEMBERS = 8;
+static constexpr int QC_MAX_MEMBERS = 32;
 
 struct QCSig {
     int     vehicleId;

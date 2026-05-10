@@ -1,16 +1,12 @@
-benchmark/out/simulations/**/results/*.vec
-docs/
-./out/
-./simulations/intersection_8/results/General-#0.vec
-simulations/simple_intersection_4/.qtenvrc
 # OMNeT++ result files
 *.vec
 *.sca
 # Stale simulation artifacts
 simulations/**/*.json
-# Results — ignore run data, track only plots
+# Results — ignore run data, track only plots (.png, .gif)
 results/**/*.json
 results/**/console.log
+results/**/*.csv
 # Build artifacts
 out/
 src/benchmark

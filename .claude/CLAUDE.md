@@ -86,7 +86,9 @@ If not listening, tell the user to start it and stop.
 When editing protocol logic:
 - [ ] `doApplyLog` handles both leader and follower uniformly
 - [ ] QC signing path completes before `sendPassOrderBroadcast` is called
+- [ ] `verifyQC()` is called in `handlePassOrderBroadcast` before trusting the schedule
 - [ ] `passOrderProposed_` guard prevents double proposals
+- [ ] `scheduleClusterFormBroadcastRetry` fires after `tryFormClusterFromCollected` to handle packet loss
 - [ ] Queued (non-cluster) vehicles still handled via `PASS_ORDER_BROADCAST`
 - [ ] Build passes with no new warnings
 - [ ] Run QA check on 16-veh WAVE (most sensitive to regressions)
@@ -103,7 +105,7 @@ cd src && make MODE=release all
 | Goal | Skill |
 |---|---|
 | Validate a protocol change | `/test wave 16 allVehicles` |
-| Run one specific combination | `/test udp 8 laneLeaders 3` |
+| Run one specific combination | `/test wave 8 laneLeaders 3` |
 | Full benchmark, all scenarios | `/bench` |
 | Full benchmark, specific mode | `/bench laneLeaders 5` |
 | Full benchmark, multirounds | `/bench multirounds 5` |
@@ -113,26 +115,47 @@ cd src && make MODE=release all
 
 ### Benchmark combinations (`benchmark.sh`)
 
+Each mode runs two variants: priority rotation AND nopriority baseline (except multirounds — no nopriority).
+WAVE runs for all modes; UDP runs only for `allVehicles`.
+
 ```bash
-bash benchmark.sh <iters> laneLeaders                   # laneLeaders + priority
-bash benchmark.sh <iters> laneLeaders nopriority        # laneLeaders + no priority
-bash benchmark.sh <iters> allVehicles                   # allVehicles + priority
-bash benchmark.sh <iters> allVehicles nopriority        # allVehicles + no priority
-bash benchmark.sh <iters> "" "" multirounds             # multirounds + priority (forces allVehicles)
-bash benchmark.sh <iters> "" nopriority multirounds     # multirounds + no priority
+bash benchmark.sh <iters> laneLeaders    # WAVE only: priority + nopriority
+bash benchmark.sh <iters> allVehicles    # WAVE + UDP: priority + nopriority
+bash benchmark.sh <iters> "" multirounds # WAVE only: priority only
 ```
 
-Result directories are suffixed: `allVehicles`, `allVehicles_nopriority`, `allVehicles_multirounds`, etc.
+Result directories per combination (× 5 vehicle counts: 4, 8, 16, 24, 32):
+- `simple_raftwave_<N>veh_laneLeaders`
+- `simple_raftwave_<N>veh_laneLeaders_nopriority`
+- `simple_raftwave_<N>veh_allVehicles`
+- `simple_raftwave_<N>veh_allVehicles_nopriority`
+- `simple_udp_<N>veh_allVehicles`
+- `simple_raftwave_<N>veh_allVehicles_multirounds`
 
-### Plot output (`plot_comparison.py`)
+### Simulation directory
 
-Running `python3 plot_comparison.py` generates 13 PNG files — no arguments needed:
+All vehicle counts share one directory: `simulations/simple_intersection`
+The vehicle count is selected via `-c Veh4 / -c Veh8 / -c Veh16 / -c Veh24 / -c Veh32` config sections in the INI.
+
+### Plot output
+
+```bash
+python3 plot_comparison.py   # per-transport PNGs (WAVE: all modes; UDP: allVehicles only)
+python3 plot_heatmap.py      # channel_utilization_heatmap_wave.png + timeseries_wave.png
+python3 plot_animation.py    # two GIFs: laneleaders + allvehicles (4→8→16→24→32)
+```
+
+`plot_comparison.py` generates PNG files — no arguments needed:
 - `throughput_wave.png`, `throughput_udp.png`
 - `leader_election_time_wave.png`, `leader_election_time_udp.png`
 - `decision_time_wave.png`, `decision_time_udp.png`
 - `fallbacks_wave.png`, `fallbacks_udp.png`
 - `messages_wave.png`, `messages_udp.png`
 - `cdf_wave.png`, `cdf_udp.png`
-- `priority.png`
+- `priority.png` — 3 bars: priority vehicle / normal vehicles / no-priority baseline
+
+`plot_animation.py` generates two GIFs (priority dirs only):
+- `results/channel_utilization_animation_laneleaders.gif`
+- `results/channel_utilization_animation_allvehicles.gif`
 
 Use `/results` to inspect existing data and `/plot` to regenerate graphs.

@@ -295,6 +295,21 @@ void RaftAppBase::tryFormClusterFromCollected()
 
     raftStarted_ = true;
     formCluster(members);
+
+    scheduleClusterFormBroadcastRetry(bcastData);
+}
+
+// Retry CLUSTER_FORM_BROADCAST every 200ms until a leader is elected.
+// Stops as soon as any node in the cluster sees a known leader, meaning
+// all members have formed and quorum was reached.
+void RaftAppBase::scheduleClusterFormBroadcastRetry(const std::vector<uint8_t> bcastData)
+{
+    scheduleOneshotMs(200.0, [this, bcastData]() {
+        if (hasPassedIntersection_) return;
+        if (raftServer_ && raft_get_current_leader(raftServer_) != -1) return;
+        sendRaftBroadcast(benchmark::CLUSTER_FORM_BROADCAST, bcastData);
+        scheduleClusterFormBroadcastRetry(bcastData);
+    });
 }
 
 // Receive CLUSTER_FORM_BROADCAST: extract member list and call formCluster() if not yet started.

@@ -238,6 +238,7 @@ protected:
     void sendClusterBeacon();
     void tryFormClusterFromCollected();
     void scheduleClusterFormationLoop();
+    void scheduleClusterFormBroadcastRetry(const std::vector<uint8_t> bcastData);
     void handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId);
     void handleClusterFormBroadcast(const std::vector<uint8_t>& data);
     void formCluster(const std::set<int>& members);

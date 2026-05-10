@@ -15,13 +15,43 @@
         <parameter name="carrierFrequency" type="double" value="5.89e9"/>
     </AnalogueModel>
 
-    <!-- Lognormal Shadowing
-         sigma = 4.0 dB: Winner+ B1 NLOS urban recommended value
-         coherence distance = 5 m (typical vehicle spacing at intersection) -->
-    <AnalogueModel type="LogNormalShadowing">
-        <parameter name="sigma"             type="double" value="4.0"/>
-        <parameter name="correlationDist"   type="double" value="5.0"/>
+    <!-- Nakagami-m fast fading (multipath)
+         constM=false: distance-dependent m (Veins built-in)
+           m = 1.5 within 80 m (mild fading, near-LOS at intersection)
+           m = 0.75 beyond  80 m (severe NLOS, urban multipath)
+         Reference: Sommer & Eckhoff 2011, IEEE 802.11p radio shadowing measurements -->
+    <AnalogueModel type="NakagamiFading">
+        <parameter name="constM" type="bool" value="false"/>
     </AnalogueModel>
+
+    <!-- Building obstacle shadowing (4 corner buildings, 60m x 60m, 5m sidewalk setback)
+         db-per-cut   = 9 dB:    signal loss per building wall traversed
+         db-per-meter = 0.4 dB/m: loss per metre of building material on the path
+         Reference: Sommer & Eckhoff 2011 (Veins-calibrated to real measurements)
+
+         Coordinate frame: OMNeT++ playground (= SUMO + manager.margin = +25m).
+         Junction centre at OMNeT++ (225,225); road corridor in [217.8, 232.2].
+         Buildings sit just outside that corridor with a 5m sidewalk gap.
+         (Defined inline because Veins TraCI polygon transport is incompatible
+          with SUMO 1.8: byte-buffer overflow on getShape response.) -->
+    <AnalogueModel type="SimpleObstacleShadowing" thresholding="true">
+        <obstacles>
+            <type id="building" db-per-cut="9" db-per-meter="0.4"/>
+            <poly id="building_NE" type="building" color="#888888"
+                  shape="237.2,237.2 297.2,237.2 297.2,297.2 237.2,297.2"/>
+            <poly id="building_NW" type="building" color="#888888"
+                  shape="152.8,237.2 212.8,237.2 212.8,297.2 152.8,297.2"/>
+            <poly id="building_SE" type="building" color="#888888"
+                  shape="237.2,152.8 297.2,152.8 297.2,212.8 237.2,212.8"/>
+            <poly id="building_SW" type="building" color="#888888"
+                  shape="152.8,152.8 212.8,152.8 212.8,212.8 152.8,212.8"/>
+        </obstacles>
+    </AnalogueModel>
+
+    <!-- Moving-vehicle obstacle shadowing (knife-edge diffraction over truck/bus silhouettes)
+         No parameters: reads vehicle positions live from VehicleObstacleControl module.
+         Reference: Sommer et al. 2011, "A vehicular network simulator" -->
+    <AnalogueModel type="VehicleObstacleShadowing"/>
 
     <!-- Decider: SNIR-based packet delivery for 802.11p 10 MHz @ 6 Mbps
          Sensitivity = -88 dBm (standards-aligned for 10 MHz @ 6 Mbps)

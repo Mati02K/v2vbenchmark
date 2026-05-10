@@ -31,6 +31,7 @@ O = $(PROJECT_OUTPUT_DIR)/$(CONFIGNAME)/$(PROJECTRELATIVE_PATH)
 
 # Object files for local .cc, .msg and .sm files
 OBJS = \
+    $O/raft/ChannelMetrics.o \
     $O/raft/RaftAppBase.o \
     $O/raft/RaftCoordination.o \
     $O/raft/RaftCore.o \

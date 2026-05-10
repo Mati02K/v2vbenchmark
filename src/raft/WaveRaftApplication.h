@@ -6,6 +6,7 @@
 #include "veins/modules/mobility/traci/TraCIMobility.h"
 #include "veins/modules/mobility/traci/TraCICommandInterface.h"
 #include "raft/RaftAppBase.h"
+#include "raft/ChannelMetrics.h"
 #include <map>
 
 using namespace veins;
@@ -43,6 +44,14 @@ private:
     cMessage* passOrderTimer_     = nullptr;
     cMessage* fallbackTimer_      = nullptr;
     cMessage* arrivalWaitTimer_   = nullptr;
+
+    // Channel utilization per-vehicle metrics
+    ChannelMetrics* utilizationMetrics_ = nullptr;
+    cMessage* utilizationTimer_ = nullptr;
+
+    // Periodic CAM telemetry — raises channel load without affecting RAFT message counters
+    cMessage* camTimer_ = nullptr;
+    void sendCamBeacon();
 
     // One-shot timer registry (used by scheduleOneshotMs)
     std::vector<cMessage*> oneshotTimers_;

@@ -58,6 +58,12 @@ void RaftAppBase::handlePassOrderBroadcast(const std::vector<uint8_t>& data)
     std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST received: "
               << qc.schedule.numBatches << " batches (raftServer_=" << (raftServer_ != nullptr) << ")" << std::endl;
 
+    if (!verifyQC(qc)) {
+        std::cout << simTime() << " [WARN][V" << myId_
+                  << "] PASS_ORDER_BROADCAST: QC verification failed — ignoring." << std::endl;
+        return;
+    }
+
     memcpy(&committedSchedule_, &qc.schedule, sizeof(PassScheduleEntry));
     hasCommittedOrder_ = true;
     coordinationMethod_ = "raft";

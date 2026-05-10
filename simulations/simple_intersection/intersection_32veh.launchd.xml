@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<launch>
+    <copy file="intersection_32veh.sumocfg" type="config"/>
+    <copy file="simple.net.xml"/>
+    <copy file="intersection_32veh.rou.xml"/>
+</launch>

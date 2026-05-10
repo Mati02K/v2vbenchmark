@@ -9,17 +9,17 @@ Parse `$ARGUMENTS` to determine:
 | Arg | Values | Default |
 |---|---|---|
 | transport | `udp` or `wave` | `wave` |
-| vehicles | `4`, `8`, or `16` | `4` |
-| iterations | any integer not in {4,8,16} | `1` |
+| vehicles | `4`, `8`, `16`, `24`, or `32` | `4` |
+| iterations | any integer not in {4,8,16,24,32} | `1` |
 | mode | `laneLeaders` or `allVehicles` | `laneLeaders` |
 | priority | `nopriority` to disable | priority enabled (rotates V0..VN-1) |
 
 Examples:
 - (empty) → wave, 4 veh, 1 iter, laneLeaders, priority
 - `wave 16 allVehicles` → wave, 16 veh, 1 iter, allVehicles, priority
-- `wave 16 allVehicles 10` → wave, 16 veh, 10 iters, allVehicles, priority
+- `wave 32 allVehicles 3` → wave, 32 veh, 3 iters, allVehicles, priority
 - `udp 8 3 nopriority` → udp, 8 veh, 3 iters, laneLeaders, nopriority
-- `udp 16 allVehicles 5` → udp, 16 veh, 5 iters, allVehicles, priority
+- `udp 24 allVehicles 5` → udp, 24 veh, 5 iters, allVehicles, priority
 
 ## Isolation
 
@@ -50,11 +50,7 @@ NED_PATH="..:..:../../src:../../../inet/src:../../../inet/examples:../../../inet
 
 ## Simulation directory
 
-| Vehicles | Directory |
-|---|---|
-| 4  | `$SCRIPT_DIR/simulations/simple_intersection_4` |
-| 8  | `$SCRIPT_DIR/simulations/simple_intersection_8` |
-| 16 | `$SCRIPT_DIR/simulations/simple_intersection` |
+All vehicle counts use the same directory: `$SCRIPT_DIR/simulations/simple_intersection`
 
 ## INI file and app key
 
@@ -84,7 +80,7 @@ else:
         "$vid" > "$PRIO_INI"
 
 cd <sim_dir>
-"$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" <ini_file> -f "$PRIO_INI" \
+"$SRC_DIR/benchmark" -u Cmdenv -n "$NED_PATH" <ini_file> -c "Veh<vehicles>" -f "$PRIO_INI" \
     --seed-set=$i \
     "--**.<app_key>.resultsFile=\"$RESULTS_JSON\"" \
     "--**.<app_key>.clusterMode=\"<mode>\"" \

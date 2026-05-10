@@ -7,15 +7,17 @@ Arguments: $ARGUMENTS
 | Arg | Values | Default |
 |---|---|---|
 | iterations | any integer | `10` |
-| mode | `laneLeaders`, `allVehicles`, `multirounds`, or `both` | `both` |
-| priority | `nopriority` to run nopriority only | both priority AND nopriority run by default |
+| mode | `laneLeaders`, `allVehicles`, `multirounds`, or `all` | `all` |
+
+Each mode runs priority rotation AND nopriority baseline (except multirounds — priority only).
+WAVE runs for all modes. UDP runs only for `allVehicles`.
 
 Examples:
-- (empty) → 10 iters, all 4 standard combinations (laneLeaders, allVehicles, laneLeaders_nopriority, allVehicles_nopriority)
-- `5` → 5 iters, all 4 standard combinations
-- `laneLeaders 3` → 3 iters, laneLeaders + laneLeaders_nopriority
-- `allVehicles nopriority` → 10 iters, allVehicles nopriority only
-- `multirounds 5` → 5 iters, multirounds + priority AND multirounds + nopriority
+- (empty) → 10 iters, all 3 combinations
+- `5` → 5 iters, all 3 combinations
+- `laneLeaders 3` → 3 iters, laneLeaders only (WAVE, priority + nopriority)
+- `allVehicles 5` → 5 iters, allVehicles (WAVE + UDP, priority + nopriority)
+- `multirounds 5` → 5 iters, multirounds (WAVE only, priority only)
 
 ## Step 1 — Verify prerequisites
 
@@ -35,68 +37,90 @@ cd /home/mathesh/omnetpp-workspace/benchmark
 export PATH="/home/mathesh/omnetpp-5.6.2/bin:$PATH"
 export LD_LIBRARY_PATH="/home/mathesh/omnetpp-5.6.2/lib:$LD_LIBRARY_PATH"
 
-# Standard combinations
-bash benchmark.sh <iterations> laneLeaders                    # priority + laneLeaders
-bash benchmark.sh <iterations> allVehicles                    # priority + allVehicles
-bash benchmark.sh <iterations> laneLeaders nopriority         # nopriority + laneLeaders
-bash benchmark.sh <iterations> allVehicles nopriority         # nopriority + allVehicles
-
-# Multirounds combinations (forces allVehicles internally)
-bash benchmark.sh <iterations> "" "" multirounds              # multirounds + priority
-bash benchmark.sh <iterations> "" nopriority multirounds      # multirounds + nopriority
+bash benchmark.sh <iterations> laneLeaders    # WAVE only
+bash benchmark.sh <iterations> allVehicles    # WAVE + UDP
+bash benchmark.sh <iterations> "" multirounds # WAVE only
 ```
 
 Only run the combinations matching the parsed arguments. Report each script's exit status.
 
-Result directory suffix per combination:
-- `laneLeaders`, `laneLeaders_nopriority`
-- `allVehicles`, `allVehicles_nopriority`
-- `allVehicles_multirounds`, `allVehicles_nopriority_multirounds`
+Result directories per combination (× 5 vehicle counts: 4, 8, 16, 24, 32):
+- `laneLeaders` → `simple_raftwave_<N>veh_laneLeaders`, `simple_raftwave_<N>veh_laneLeaders_nopriority`
+- `allVehicles` → `simple_raftwave_<N>veh_allVehicles`, `simple_raftwave_<N>veh_allVehicles_nopriority`, `simple_udp_<N>veh_allVehicles`
+- `multirounds` → `simple_raftwave_<N>veh_allVehicles_multirounds`
 
 ## Step 3 — Replot graphs
 
-After all scripts complete, run once (no arguments needed — scans all result dirs):
+After all scripts complete, run all plot scripts:
 
 ```bash
 cd /home/mathesh/omnetpp-workspace/benchmark
 python3 plot_comparison.py
+python3 plot_heatmap.py
+python3 plot_animation.py
 ```
 
-This generates 13 PNGs:
+`plot_comparison.py` generates PNG files:
 - `throughput_wave.png`, `throughput_udp.png`
 - `leader_election_time_wave.png`, `leader_election_time_udp.png`
 - `decision_time_wave.png`, `decision_time_udp.png`
 - `fallbacks_wave.png`, `fallbacks_udp.png`
 - `messages_wave.png`, `messages_udp.png`
 - `cdf_wave.png`, `cdf_udp.png`
-- `priority.png`
+- `priority.png` — 3 bars: priority vehicle / normal vehicles / no-priority baseline
 
-Report which PNGs were saved.
+`plot_heatmap.py` generates:
+- `channel_utilization_heatmap_wave.png`
+- `channel_utilization_timeseries_wave.png`
+
+`plot_animation.py` generates (priority dirs only):
+- `channel_utilization_animation_laneleaders.gif`
+- `channel_utilization_animation_allvehicles.gif`
+
+Report which files were saved.
 
 ## Step 4 — QA
 
-Spawn a `qaagent` and pass it the list of result folders that were just populated:
-- `results/simple_udp_4veh_<result_mode>/`
-- `results/simple_udp_8veh_<result_mode>/`
-- `results/simple_udp_16veh_<result_mode>/`
-- `results/simple_raftwave_4veh_<result_mode>/`
-- `results/simple_raftwave_8veh_<result_mode>/`
-- `results/simple_raftwave_16veh_<result_mode>/`
+Spawn a `qaagent` and pass it the list of result folders that were just populated.
 
-(one set per combination that was run; `<result_mode>` matches the directory suffix above)
+For `laneLeaders`:
+- `results/simple_raftwave_4veh_laneLeaders/`
+- `results/simple_raftwave_8veh_laneLeaders/`
+- `results/simple_raftwave_16veh_laneLeaders/`
+- `results/simple_raftwave_24veh_laneLeaders/`
+- `results/simple_raftwave_32veh_laneLeaders/`
+
+For `allVehicles`:
+- `results/simple_raftwave_4veh_allVehicles/`
+- `results/simple_raftwave_8veh_allVehicles/`
+- `results/simple_raftwave_16veh_allVehicles/`
+- `results/simple_raftwave_24veh_allVehicles/`
+- `results/simple_raftwave_32veh_allVehicles/`
+- `results/simple_udp_4veh_allVehicles/`
+- `results/simple_udp_8veh_allVehicles/`
+- `results/simple_udp_16veh_allVehicles/`
+- `results/simple_udp_24veh_allVehicles/`
+- `results/simple_udp_32veh_allVehicles/`
+
+For `multirounds`:
+- `results/simple_raftwave_4veh_allVehicles_multirounds/`
+- `results/simple_raftwave_8veh_allVehicles_multirounds/`
+- `results/simple_raftwave_16veh_allVehicles_multirounds/`
+- `results/simple_raftwave_24veh_allVehicles_multirounds/`
+- `results/simple_raftwave_32veh_allVehicles_multirounds/`
 
 ### QA thresholds per combination type
 
-**Standard combinations** (`laneLeaders`, `allVehicles`, and their `_nopriority` variants):
+**Standard combinations** (`laneLeaders`, `allVehicles`):
 - `coordination_method != "raft"` → FAIL (fallbacks are never acceptable)
-- `log_entries_committed == 0` for a vehicle in `allVehicles` mode → WARN (vehicle may have received schedule via broadcast gossip instead of RAFT replication — functionally correct, not a FAIL)
-- `log_entries_committed == 0` for non-lane-leader in `laneLeaders` mode → expected (they don't join RAFT)
+- `log_entries_committed == 0` for a vehicle in `allVehicles` mode → WARN (may have received schedule via broadcast gossip — functionally correct, not a FAIL)
+- `log_entries_committed == 0` for non-lane-leader in `laneLeaders` mode → expected
 - `election_rounds > 10` → WARN
 
 **Multirounds combinations** (`_multirounds` suffix):
-- Fallbacks are **expected and acceptable**. After round 1, the remaining cluster shrinks. With only 2 vehicles left, RAFT quorum is hard to achieve (especially over UDP with packet loss) — these vehicles fall back to the timer-based mechanism. Do NOT flag fallbacks as failures for multirounds.
-- `my_batch=-1` means the vehicle is in fallback mode. This is **expected and acceptable** for multirounds — do NOT flag it as a FAIL.
-- `coordination_method="fallback"` is **expected and acceptable** for multirounds — do NOT flag it as a FAIL.
-- `log_entries_committed >= 1` for any vehicle that did participate is sufficient — do NOT require 2+ commits (a vehicle scheduled in round 1 only ever sees 1 committed entry).
-- `election_rounds > 20` → WARN only, never FAIL (higher threshold because round 2 restarts election; spikes of 50–100 are seen at 16 vehicles and are expected).
-- Report fallback rate as informational only (expected ~10–20% for 8-veh, higher for 16-veh).
+- Fallbacks are **expected and acceptable**. After round 1 the remaining cluster shrinks — do NOT flag fallbacks as failures.
+- `my_batch=-1` → expected and acceptable for multirounds.
+- `coordination_method="fallback"` → expected and acceptable for multirounds.
+- `log_entries_committed >= 1` for any vehicle that participated is sufficient.
+- `election_rounds > 20` → WARN only (spikes of 50–100 are normal at 16+ vehicles).
+- Report fallback rate as informational only.

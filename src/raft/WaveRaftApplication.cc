@@ -71,7 +71,30 @@ void WaveRaftApplication::initialize(int stage)
 {
     DemoBaseApplLayer::initialize(stage);
 
-    if (stage == 0) {
+    if (stage == 1) {
+        if (myId_ < totalVehicles_) {
+            // Derive channel utilization CSV path from resultsFile: same dir, channel_V{id}.csv
+            std::string dir;
+            size_t slash = resultsFileName_.rfind('/');
+            if (slash != std::string::npos) {
+                dir = resultsFileName_.substr(0, slash + 1);
+            }
+            std::string csvPath = dir + "channel_V" + std::to_string(myId_) + ".csv";
+
+            utilizationMetrics_ = new ChannelMetrics(myId_, csvPath);
+
+            cModule* nic = getParentModule()->getSubmodule("nic");
+            cModule* mac = nic ? nic->getSubmodule("mac1609_4") : nullptr;
+            if (mac) {
+                simsignal_t sig = cComponent::registerSignal("org_car2x_veins_modules_mac_sigChannelBusy");
+                mac->subscribe(sig, utilizationMetrics_);
+            }
+
+            utilizationTimer_ = new cMessage("cbrTimer");
+            scheduleAt(simTime() + 0.1, utilizationTimer_);
+        }
+    }
+    else if (stage == 0) {
         myId_         = getParentModule()->getIndex();
         myRaftNodeId_ = myId_ + 1;
 
@@ -155,7 +178,8 @@ void WaveRaftApplication::initialize(int stage)
         scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
         scheduleAt(simTime() + uniform(0, discoveryBeaconInterval_), discoveryTimer_);
 
-        // RAFT starts later via leader DB exchange at intersection (no initRaftSingleNode)
+        camTimer_ = new cMessage("camTimer");
+        scheduleAt(simTime() + 0.1, camTimer_);
     }
 }
 
@@ -165,6 +189,21 @@ void WaveRaftApplication::finish()
         if (timeStartedMoving_ == SIMTIME_ZERO) timeStartedMoving_ = simTime();
         if (timePassed_ == SIMTIME_ZERO)        timePassed_        = simTime();
         outputMetricsJSON();
+    }
+
+    if (utilizationTimer_) { cancelAndDelete(utilizationTimer_); utilizationTimer_ = nullptr; }
+    if (camTimer_) { cancelAndDelete(camTimer_); camTimer_ = nullptr; }
+    if (utilizationMetrics_) {
+        cModule* nic = getParentModule()->getSubmodule("nic");
+        cModule* mac = nic ? nic->getSubmodule("mac1609_4") : nullptr;
+        if (mac) {
+            simsignal_t sig = cComponent::registerSignal("org_car2x_veins_modules_mac_sigChannelBusy");
+            if (mac->isSubscribed(sig, utilizationMetrics_)) {
+                mac->unsubscribe(sig, utilizationMetrics_);
+            }
+        }
+        delete utilizationMetrics_;
+        utilizationMetrics_ = nullptr;
     }
 
     cancelAndDelete(checkTimer_);
@@ -226,6 +265,20 @@ void WaveRaftApplication::handlePositionUpdate(cObject* obj)
 
 void WaveRaftApplication::handleSelfMsg(cMessage* msg)
 {
+    if (msg == utilizationTimer_) {
+        if (utilizationMetrics_) {
+            utilizationMetrics_->tick(simTime());
+        }
+        scheduleAt(simTime() + 0.1, utilizationTimer_);
+        return;
+    }
+    if (msg == camTimer_) {
+        if (!hasPassedIntersection_) {
+            sendCamBeacon();
+            scheduleAt(simTime() + 0.1, camTimer_);
+        }
+        return;
+    }
     if (msg == checkTimer_) {
         if (!hasPassedIntersection_) {
             updateLaneLeaderFlag();
@@ -308,6 +361,9 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
     // Not our unicast — drop (no relay)
     if (targetId != -1 && targetId != myId_) return;
 
+    // CAM telemetry — consumed airtime already at PHY; not counted in RAFT metrics
+    if (msgType == benchmark::CAM_TELEMETRY) return;
+
     messagesReceived_++;
 
     int protocolSender = senderId;
@@ -375,6 +431,20 @@ void WaveRaftApplication::sendRaftMessage(int msgType, int targetId,
 void WaveRaftApplication::broadcastRaftMessage(int msgType, const std::vector<uint8_t>& data)
 {
     sendRaftMessage(msgType, -1, data);
+}
+
+void WaveRaftApplication::sendCamBeacon()
+{
+    benchmark::RaftWaveMessage* wsm = new benchmark::RaftWaveMessage();
+    populateWSM(wsm);
+    wsm->setMsgType(benchmark::CAM_TELEMETRY);
+    wsm->setSenderId(myId_);
+    wsm->setTargetId(-1);
+    wsm->setPayloadLen(0);
+    wsm->setPayloadArraySize(0);
+    wsm->setRecipientAddress(-1);
+    sendDelayedDown(wsm, uniform(0.001, 0.005));
+    // intentionally no messagesSent_++ — CAM traffic is not counted in RAFT metrics
 }
 
 // ============ TRANSPORT IMPLEMENTATION (RaftAppBase pure virtuals) ============
