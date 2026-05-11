@@ -5,13 +5,13 @@
 # Usage: ./benchmark.sh [iterations] [cluster_mode] [multirounds]
 #
 #   iterations   : number of runs per scenario (default: 3)
-#   cluster_mode : laneLeaders (default) | allVehicles
+#   cluster_mode : cluster (default) | allVehicles
 #                  NOTE: ignored when multirounds is set — forced to allVehicles
 #   multirounds  : pass "multirounds" to allow extra RAFT rounds even when all
 #                  vehicles are already scheduled; forces cluster_mode=allVehicles
 #
 # Valid combinations:
-#   ./benchmark.sh 3 laneLeaders    # WAVE only
+#   ./benchmark.sh 3 cluster        # WAVE only
 #   ./benchmark.sh 3 allVehicles    # WAVE + UDP
 #   ./benchmark.sh 3 "" multirounds # WAVE only
 
@@ -25,7 +25,7 @@ RESULTS_BASE="$SCRIPT_DIR/results"
 NED_PATH="..:..:../../src:../../../inet/src:../../../inet/examples:../../../inet/tutorials:../../../inet/showcases:../../../../veins/examples/veins:../../../../veins/src/veins"
 
 NUM_ITERATIONS=${1:-3}
-CLUSTER_MODE=${2:-laneLeaders}
+CLUSTER_MODE=${2:-cluster}
 MULTI_ROUNDS=${3:-}  # set to "multirounds" to enable allowMultipleRounds
 
 # multirounds requires allVehicles so all present vehicles can participate in round 2+
@@ -106,11 +106,11 @@ run_scenario() {
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Simple Intersection Benchmark${NC}"
-echo -e "${GREEN}  WAVE (all modes) + UDP (allVehicles only) for 4, 8, 16 vehicles${NC}"
+echo -e "${GREEN}  WAVE (all modes) + UDP (allVehicles only) for 4, 8, 16, 20, 24, 32 vehicles${NC}"
 echo -e "${GREEN}  $NUM_ITERATIONS iterations | mode: ${RESULT_MODE} | priority: enabled | multirounds: ${MULTI_ROUNDS:-off}${NC}"
 echo -e "${GREEN}========================================${NC}"
 
-for vc in ${BENCH_VCS:-4 8 16 24 32}; do
+for vc in ${BENCH_VCS:-4 8 16 20 24 32}; do
     run_scenario wave $vc
     [ "$CLUSTER_MODE" = "allVehicles" ] && [ "$MULTI_ROUNDS" != "multirounds" ] && run_scenario udp $vc
     [ "$MULTI_ROUNDS" != "multirounds" ] && run_scenario wave $vc nopriority

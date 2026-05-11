@@ -3,7 +3,7 @@
 Channel utilization progression animations: 4 → 8 → 16 vehicles.
 
 Generates two GIFs, one per mode, using only priority-rotation result dirs:
-  results/channel_utilization_animation_laneleaders.gif
+  results/channel_utilization_animation_cluster.gif
   results/channel_utilization_animation_allvehicles.gif
 
 Usage:
@@ -19,8 +19,8 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
 RESULTS_DIR     = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
-VEHICLE_COUNTS  = [4, 8, 16, 24, 32]
-MAX_VEHICLES    = 32
+VEHICLE_COUNTS  = [4, 8, 16, 20]
+MAX_VEHICLES    = 20
 PROTOCOL_PREFIX = 'simple_raftwave'
 
 TIME_GRID_STEP = 0.1
@@ -29,7 +29,7 @@ HOLD_FRAMES    = 8
 FPS            = 4
 
 MODES = [
-    ('laneLeaders', 'laneLeaders',  'channel_utilization_animation_laneleaders.gif'),
+    ('cluster', 'cluster',  'channel_utilization_animation_cluster.gif'),
     ('allVehicles', 'allVehicles',  'channel_utilization_animation_allvehicles.gif'),
 ]
 
@@ -87,7 +87,7 @@ def load_scenario(dir_suffix, vc, time_grid_ref):
     return np.array(time_grid), np.nanmean(np.stack(matrices, axis=0), axis=0)
 
 
-def generate_gif(mode_label, dir_suffix, out_filename):
+def generate_gif(mode_label, dir_suffix, out_filename, shared_vmax):
     all_times = set()
     raw = {}
     for vc in VEHICLE_COUNTS:
@@ -112,8 +112,7 @@ def generate_gif(mode_label, dir_suffix, out_filename):
         if result:
             scenarios[vc] = result[1]
 
-    vmax = max(float(np.nanmax(m)) for m in scenarios.values())
-    vmax = max(vmax, 0.05)
+    vmax = shared_vmax  # shared across all modes so colours are directly comparable
 
     time_edges = np.append(time_grid, time_grid[-1] + TIME_GRID_STEP)
     y_edges = np.arange(MAX_VEHICLES + 1)
@@ -146,19 +145,12 @@ def generate_gif(mode_label, dir_suffix, out_filename):
         spine.set_edgecolor('white')
 
     title = ax.set_title('', fontsize=13, fontweight='bold', color='white')
-    stats_text = ax.text(0.99, 0.97, '', transform=ax.transAxes,
-                         ha='right', va='top', fontsize=9, color='white',
-                         bbox=dict(boxstyle='round,pad=0.3', fc='#1a1a2e', alpha=0.8))
 
     def update(frame_idx):
         vc, matrix = frames[frame_idx]
         mesh.set_array(matrix.ravel())
         title.set_text(f'Channel Utilization — WAVE / {mode_label} — {vc} vehicles')
-        active = matrix[~np.isnan(matrix)]
-        mean_u = float(np.nanmean(active)) if active.size else 0.0
-        peak_u = float(np.nanmax(active)) if active.size else 0.0
-        stats_text.set_text(f'mean={mean_u:.4f}  peak={peak_u:.4f}')
-        return mesh, title, stats_text
+        return mesh, title
 
     anim = animation.FuncAnimation(fig, update, frames=len(frames),
                                    interval=1000 // FPS, blit=False)
@@ -171,9 +163,21 @@ def generate_gif(mode_label, dir_suffix, out_filename):
 
 def main():
     os.makedirs(RESULTS_DIR, exist_ok=True)
+
+    # Compute shared vmax across ALL modes so both GIFs use the same colour scale.
+    global_vmax = 0.05
+    for _, dir_suffix, _ in MODES:
+        for vc in VEHICLE_COUNTS:
+            result = load_scenario(dir_suffix, vc, None)
+            if result:
+                val = float(np.nanmax(result[1]))
+                if val > global_vmax:
+                    global_vmax = val
+    print(f"  Shared vmax for all channel-utilization GIFs: {global_vmax:.4f}")
+
     for mode_label, dir_suffix, out_filename in MODES:
         print(f"Generating {out_filename}...")
-        generate_gif(mode_label, dir_suffix, out_filename)
+        generate_gif(mode_label, dir_suffix, out_filename, global_vmax)
 
 
 if __name__ == '__main__':

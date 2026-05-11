@@ -101,7 +101,7 @@ double RaftAppBase::calculateDistanceToJunction()
 }
 
 // Ask TraCI if any vehicle is immediately ahead in the same lane.
-// Returns true  → no vehicle ahead → I am the lane leader.
+// Returns true  → no vehicle ahead → I am the front-of-lane vehicle (cluster member candidate).
 // Returns false → someone is ahead → I am queued behind them.
 // Look-ahead distance = 200m (large enough to cover a full approach lane queue).
 bool RaftAppBase::isLaneLeaderByTraci() const

@@ -366,7 +366,7 @@ void RaftAppBase::sendStatusRequest()
 void RaftAppBase::handleStatusRequest(int fromLeader)
 {
     if (hasPassedIntersection_) return;
-    // Only RAFT cluster members (lane leaders) respond to STATUS_REQUEST.
+    // Only RAFT cluster members respond to STATUS_REQUEST.
     // Queued vehicles are passive and wait for COORD_PASS_ORDER_BROADCAST instead.
     if (!raftServer_) {
         std::cout << simTime() << " [DBG][V" << myId_ << "] STATUS_REQUEST from V" << fromLeader
@@ -401,8 +401,8 @@ void RaftAppBase::sendDbResponse(int toLeader)
               << " numEntries=" << numEntries << std::endl;
 }
 
-// Leader receives a lane leader's full vehicleDB_.
-// When all lane leaders have responded, merge all DBs and call proposePassOrder().
+// Leader receives a cluster member's full vehicleDB_.
+// When all cluster members have responded, merge all DBs and call proposePassOrder().
 void RaftAppBase::handleDbResponse(const std::vector<uint8_t>& data, int senderId)
 {
     if (!isLeader_ || !waitingForStatus_) return;
@@ -461,7 +461,7 @@ void RaftAppBase::proposePassOrder()
     if (!raftServer_ || !isLeader_ || hasCommittedOrder_ || passOrderProposed_) return;
     passOrderProposed_ = true;
 
-    // Merge all lane leaders' DBs into allProposals.
+    // Merge all cluster members' DBs into allProposals.
     // collectedLeaderDBs_ contains: leader's own DB (set in sendStatusRequest) +
     // each follower's DB received via COORD_DB_RESPONSE.
     std::map<int, VehicleProposal> allProposals;

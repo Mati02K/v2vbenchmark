@@ -5,7 +5,7 @@ Autonomous vehicle intersection coordination benchmark implementing **RAFT conse
 - **UDP** — IEEE 802.11a via INET framework
 - **WAVE** — IEEE 802.11p via Veins framework
 
-Compares throughput, latency, fallback rate, and message overhead across 4, 8, and 16 vehicle scenarios with optional priority-vehicle scheduling.
+Compares throughput, latency, fallback rate, and message overhead across 4, 8, 16, 20, 24, and 32 vehicle scenarios with optional priority-vehicle scheduling.
 
 **Stack:** OMNeT++ 5.6.2 · INET 4.4.x · Veins · SUMO 1.8.0 · Python 3.12
 
@@ -195,30 +195,24 @@ cd ~/veins && python3 ./bin/veins_launchd -vv -c /usr/local/bin/sumo-gui
 ```bash
 cd ~/omnetpp-workspace/benchmark
 
-# 10 iterations, laneLeaders mode (default), priority vehicle rotates each run
+# 10 iterations, cluster mode (default), priority vehicle rotates each run
 ./benchmark.sh 10
 
 # 10 iterations, allVehicles mode (all vehicles participate in RAFT)
 ./benchmark.sh 10 allVehicles
 
 # 10 iterations, nopriority (no priority vehicle — all vehicles treated equally)
-./benchmark.sh 10 laneLeaders nopriority
+./benchmark.sh 10 cluster nopriority
 ./benchmark.sh 10 allVehicles nopriority
 ```
 
-Each run covers **4, 8, and 16 vehicles × UDP + WAVE** automatically (6 scenario combinations per benchmark call).
+Each run covers **4, 8, 16, 20, 24, and 32 vehicles**. WAVE runs for every mode; UDP runs for `allVehicles`.
 
 Priority and nopriority results are saved to separate directories and never overwrite each other.
 
-### Simulation directories
+### Simulation directory
 
-| Vehicles | Directory |
-|---|---|
-| 4  | `simulations/simple_intersection_4/` |
-| 8  | `simulations/simple_intersection_8/` |
-| 16 | `simulations/simple_intersection/`   |
-
-Each contains `omnetpp_udp.ini`, `omnetpp_wave.ini`, and the SUMO route/network files.
+All vehicle counts share `simulations/simple_intersection/`. The selected INI config (`Veh4`, `Veh8`, `Veh16`, `Veh20`, `Veh24`, or `Veh32`) chooses the matching SUMO launch and route files.
 
 ---
 
@@ -228,15 +222,15 @@ Results land under `results/` with the following naming convention:
 
 ```
 results/
-  simple_udp_4veh_laneLeaders/
+  simple_udp_4veh_cluster/
     run_1/
       raft_results.json     ← per-vehicle metrics
       console.log           ← simulation stdout
     run_2/ ...
 
-  simple_raftwave_4veh_laneLeaders/   (WAVE equivalent)
+  simple_raftwave_4veh_cluster/   (WAVE equivalent)
   simple_udp_4veh_allVehicles/        (allVehicles cluster mode)
-  simple_udp_4veh_laneLeaders_nopriority/   (nopriority run)
+  simple_udp_4veh_cluster_nopriority/   (nopriority run)
   ...
 ```
 
@@ -248,12 +242,12 @@ results/
 cd ~/omnetpp-workspace/benchmark
 
 # Plots for a single cluster mode
-python3 plot_comparison.py --simple --mode laneLeaders
+python3 plot_comparison.py --simple --mode cluster
 python3 plot_comparison.py --simple --mode allVehicles
-python3 plot_comparison.py --simple --mode laneLeaders_nopriority
+python3 plot_comparison.py --simple --mode cluster_nopriority
 python3 plot_comparison.py --simple --mode allVehicles_nopriority
 
-# Side-by-side comparison: laneLeaders vs allVehicles
+# Side-by-side comparison: cluster vs allVehicles
 python3 plot_comparison.py --simple --compare-modes
 ```
 
@@ -266,10 +260,10 @@ Output PNGs are saved directly to `results/`:
 | `messages_<mode>.png` | Messages sent per vehicle |
 | `cdf_<mode>.png` | CDF of total wait time (stopped → passed) |
 | `ambulance_<mode>.png` | Priority vs normal vs all vehicle wait time |
-| `throughput_compare.png` | laneLeaders vs allVehicles comparison |
-| `fallbacks_compare.png` | laneLeaders vs allVehicles comparison |
-| `messages_compare.png` | laneLeaders vs allVehicles comparison |
-| `cdf_compare.png` | laneLeaders vs allVehicles comparison |
+| `throughput_compare.png` | cluster vs allVehicles comparison |
+| `fallbacks_compare.png` | cluster vs allVehicles comparison |
+| `messages_compare.png` | cluster vs allVehicles comparison |
+| `cdf_compare.png` | cluster vs allVehicles comparison |
 
 ---
 
@@ -277,7 +271,7 @@ Output PNGs are saved directly to `results/`:
 
 | Mode | Description |
 |---|---|
-| `laneLeaders` | Only the front vehicle of each lane joins RAFT (4-node cluster). Followers receive the crossing schedule via broadcast. |
+| `cluster` | Only the front vehicle of each lane joins RAFT (4-node cluster). Followers receive the crossing schedule via broadcast. |
 | `allVehicles` | Every vehicle at the intersection joins the RAFT cluster. Larger cluster, more overhead, more resilience. |
 
 ---

@@ -69,12 +69,12 @@ protected:
     // Recomputed dynamically every check interval from vehicleDB_.
     bool isLaneLeader_;
 
-    // collectedLaneLeaders_: lane leaders heard during cluster formation.
+    // collectedLaneLeaders_: cluster members (front-of-lane vehicles) heard during cluster formation.
     // Key = laneIndex, Value = vehicleId of that lane's leader.
     // Populated by handleClusterJoinInvite(); once size == numLanes → formCluster().
     std::map<int, int> collectedLaneLeaders_;
 
-    // collectedLeaderDBs_: full vehicleDB_ received from each lane leader after election.
+    // collectedLeaderDBs_: full vehicleDB_ received from each cluster member after election.
     // Key = senderVehicleId, Value = that leader's full vehicleDB_.
     // Built during STATUS_REQUEST phase; used by proposePassOrder() instead of stale local vehicleDB_.
     std::map<int, std::map<int, VehicleProposal>> collectedLeaderDBs_;
@@ -86,12 +86,12 @@ protected:
     double        clusterTriggerDistance_;  // kept for NED param compat, not used for formation
 
     // ============ CLUSTER MODE ============
-    // "laneLeaders" = only lane leaders join RAFT (default, current behavior)
+    // "cluster" = only the front vehicle of each active lane joins RAFT (default)
     // "allVehicles" = every vehicle joins RAFT cluster
     std::string   clusterMode_;
 
     // collectedAllVehicles_: all vehicles that announced readiness (for allVehicles mode).
-    // In laneLeaders mode, collectedLaneLeaders_ (keyed by lane) is used instead.
+    // In cluster mode, collectedLaneLeaders_ (keyed by lane) is used instead.
     std::set<int> collectedAllVehicles_;
 
     // ============ INTERSECTION EDGES ============
@@ -128,7 +128,7 @@ protected:
     std::set<int> vehiclesLeftBeforeFormed_;
 
     // ============ MULTI-ROUND STATE ============
-    // roundNumber_: starts at 1, incremented each time a new lane leader triggers a
+    // roundNumber_: starts at 1, incremented each time a new cluster member triggers a
     //   fresh RAFT cluster formation after the previous cluster's PASS_ORDER committed.
     // scheduledVehicles_: union of all vehicles scheduled in earlier rounds.
     //   proposePassOrder() skips these so they are never double-scheduled.

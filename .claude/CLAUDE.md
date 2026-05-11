@@ -105,9 +105,9 @@ cd src && make MODE=release all
 | Goal | Skill |
 |---|---|
 | Validate a protocol change | `/test wave 16 allVehicles` |
-| Run one specific combination | `/test wave 8 laneLeaders 3` |
+| Run one specific combination | `/test wave 8 cluster 3` |
 | Full benchmark, all scenarios | `/bench` |
-| Full benchmark, specific mode | `/bench laneLeaders 5` |
+| Full benchmark, specific mode | `/bench cluster 5` |
 | Full benchmark, multirounds | `/bench multirounds 5` |
 
 - **`/test`** — runs simulation in `/tmp/qatest_*/`, then automatically spawns `qaagent` for deep per-vehicle checks.
@@ -119,14 +119,14 @@ Each mode runs two variants: priority rotation AND nopriority baseline (except m
 WAVE runs for all modes; UDP runs only for `allVehicles`.
 
 ```bash
-bash benchmark.sh <iters> laneLeaders    # WAVE only: priority + nopriority
+bash benchmark.sh <iters> cluster    # WAVE only: priority + nopriority
 bash benchmark.sh <iters> allVehicles    # WAVE + UDP: priority + nopriority
 bash benchmark.sh <iters> "" multirounds # WAVE only: priority only
 ```
 
-Result directories per combination (× 5 vehicle counts: 4, 8, 16, 24, 32):
-- `simple_raftwave_<N>veh_laneLeaders`
-- `simple_raftwave_<N>veh_laneLeaders_nopriority`
+Result directories per combination (× 6 vehicle counts: 4, 8, 16, 20, 24, 32):
+- `simple_raftwave_<N>veh_cluster`
+- `simple_raftwave_<N>veh_cluster_nopriority`
 - `simple_raftwave_<N>veh_allVehicles`
 - `simple_raftwave_<N>veh_allVehicles_nopriority`
 - `simple_udp_<N>veh_allVehicles`
@@ -135,14 +135,14 @@ Result directories per combination (× 5 vehicle counts: 4, 8, 16, 24, 32):
 ### Simulation directory
 
 All vehicle counts share one directory: `simulations/simple_intersection`
-The vehicle count is selected via `-c Veh4 / -c Veh8 / -c Veh16 / -c Veh24 / -c Veh32` config sections in the INI.
+The vehicle count is selected via `-c Veh4 / -c Veh8 / -c Veh16 / -c Veh20 / -c Veh24 / -c Veh32` config sections in the INI.
 
 ### Plot output
 
 ```bash
 python3 plot_comparison.py   # per-transport PNGs (WAVE: all modes; UDP: allVehicles only)
 python3 plot_heatmap.py      # channel_utilization_heatmap_wave.png + timeseries_wave.png
-python3 plot_animation.py    # two GIFs: laneleaders + allvehicles (4→8→16→24→32)
+python3 plot_animation.py    # two GIFs: cluster + allvehicles (4→8→16→20→24→32)
 ```
 
 `plot_comparison.py` generates PNG files — no arguments needed:
@@ -155,7 +155,7 @@ python3 plot_animation.py    # two GIFs: laneleaders + allvehicles (4→8→16�
 - `priority.png` — 3 bars: priority vehicle / normal vehicles / no-priority baseline
 
 `plot_animation.py` generates two GIFs (priority dirs only):
-- `results/channel_utilization_animation_laneleaders.gif`
+- `results/channel_utilization_animation_cluster.gif`
 - `results/channel_utilization_animation_allvehicles.gif`
 
 Use `/results` to inspect existing data and `/plot` to regenerate graphs.

@@ -53,7 +53,7 @@ struct VehicleLeftEntry {
 //   2. Each member signs and returns QC_SIGN_RESPONSE
 //   3. When leader has majority: assembles QuorumCertificate, broadcasts QC_BROADCAST
 //   4. All vehicles (including queued ones) store the QC and populate scheduledVehicles_
-//   5. Next-round lane leaders skip scheduledVehicles_ in proposePassOrder()
+//   5. Next-round cluster members skip scheduledVehicles_ in proposePassOrder()
 
 static constexpr int QC_MAX_MEMBERS = 32;
 

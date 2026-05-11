@@ -92,13 +92,13 @@ void RaftAppBase::updateLaneLeaderFlag()
 {
     bool wasLaneLeader = isLaneLeader_;  // save before recompute
 
-    // Use TraCI to determine lane leadership: ask SUMO directly whether any vehicle
+    // Use TraCI to determine front-of-lane status: ask SUMO directly whether any vehicle
     // is ahead of us in the same lane.  Real-time and accurate — no stale beacon data.
     isLaneLeader_ = isLaneLeaderByTraci();
 
-    // ---- Multi-round: detect lane-leader promotion ----
+    // ---- Multi-round: detect cluster-member promotion ----
     // Conditions:
-    //   1. We were not lane leader last tick, but we are now (previous leader left).
+    //   1. We were not front-of-lane last tick, but we are now (previous front vehicle left).
     //   2. We are still physically at the intersection (not yet passed).
     //   3. A PASS_ORDER was already committed in a previous round.
     //   4. We are not already in the process of forming a new cluster.
@@ -108,11 +108,11 @@ void RaftAppBase::updateLaneLeaderFlag()
         !hasPassedIntersection_ && !seekingNewCluster_ && !isFallbackMode_) {
 
         if (hasUnscheduledVehicles()) {
-            std::cout << NOW << " [ROUND][V" << myId_ << "] Lane leader promotion detected"
+            std::cout << NOW << " [ROUND][V" << myId_ << "] Cluster member promotion detected"
                       << " — starting new RAFT round." << std::endl;
             startNewRound();
         } else {
-            std::cout << NOW << " [ROUND][V" << myId_ << "] Lane leader promotion: all vehicles"
+            std::cout << NOW << " [ROUND][V" << myId_ << "] Cluster member promotion: all vehicles"
                       << " already scheduled — no new round needed." << std::endl;
         }
     }
@@ -120,7 +120,7 @@ void RaftAppBase::updateLaneLeaderFlag()
 
 // ============ MULTI-ROUND: start a fresh RAFT cluster ============
 //
-// Called when this vehicle becomes the new lane leader after the previous leader passed.
+// Called when this vehicle becomes the new front-of-lane vehicle after the previous one passed.
 // Resets all RAFT and coordination state so a new election can start fresh.
 // scheduledVehicles_ is populated from the committed schedule of the previous round
 // (and from any QC_BROADCAST already received) so proposePassOrder() won't re-schedule
@@ -218,19 +218,19 @@ void RaftAppBase::startNewRound()
 
 // ============ CLUSTER FORMATION — BROADCAST APPROACH ============
 //
-// Each lane leader broadcasts CLUSTER_JOIN_INVITE carrying [myId, myLaneIndex].
-// Every receiving lane leader stores it in collectedLaneLeaders_[laneIndex] = vehicleId.
+// Each cluster member broadcasts CLUSTER_JOIN_INVITE carrying [myId, myLaneIndex].
+// Every receiving cluster member stores it in collectedLaneLeaders_[laneIndex] = vehicleId.
 // Self is added immediately on send.
 // Once all approach lanes are represented → formCluster() with the collected IDs.
 // A 500ms retry loop keeps broadcasting until raftStarted_.
 
 // Broadcast cluster-readiness announcement and check if cluster is complete.
-// In laneLeaders mode: only lane leaders call this.
+// In cluster mode: only cluster members (front-of-lane vehicles) call this.
 // In allVehicles mode: every stopped vehicle calls this.
 void RaftAppBase::sendClusterBeacon()
 {
     if (raftStarted_ || hasPassedIntersection_) return;
-    if (clusterMode_ == "laneLeaders" && !isLaneLeader_) return;
+    if (clusterMode_ == "cluster" && !isLaneLeader_) return;
 
     // Register self
     collectedLaneLeaders_[myLaneIndex_] = myId_;
@@ -257,7 +257,7 @@ void RaftAppBase::sendClusterBeacon()
 }
 
 // Check if enough vehicles have announced — if so, form the cluster.
-// In laneLeaders mode: triggers when all lanes have a leader.
+// In cluster mode: triggers when all active lanes have a representative.
 // In allVehicles mode: triggers when all totalVehicles_ have announced.
 // Also broadcasts CLUSTER_FORM_BROADCAST so every member can independently call formCluster().
 void RaftAppBase::tryFormClusterFromCollected()
@@ -355,7 +355,7 @@ void RaftAppBase::scheduleClusterFormationLoop()
 }
 
 // Receive a cluster-readiness announcement.
-// In laneLeaders mode: only lane leaders store and trigger formation.
+// In cluster mode: only cluster members (front-of-lane vehicles) store and trigger formation.
 // In allVehicles mode: every vehicle stores and triggers formation.
 void RaftAppBase::handleClusterJoinInvite(const std::vector<uint8_t>& data, int senderId)
 {
@@ -385,7 +385,7 @@ void RaftAppBase::handleClusterJoinInvite(const std::vector<uint8_t>& data, int 
     }
 
     if (clusterMode_ == "allVehicles" || isLaneLeader_) {
-        if (clusterMode_ == "laneLeaders")
+        if (clusterMode_ == "cluster")
             collectedLaneLeaders_[myLaneIndex_] = myId_;  // ensure self is registered
         tryFormClusterFromCollected();
     }
@@ -394,7 +394,7 @@ void RaftAppBase::handleClusterJoinInvite(const std::vector<uint8_t>& data, int 
 // ============ RAFT CLUSTER FORMATION ============
 
 // Initialise the raft_server_t with the agreed member set.
-// Called by tryFormClusterFromCollected (lane leader) or handleClusterFormBroadcast (member).
+// Called by tryFormClusterFromCollected (cluster member) or handleClusterFormBroadcast (member).
 void RaftAppBase::formCluster(const std::set<int>& members)
 {
     if (clusterPhase_ != PHASE_DISCOVERY) return;  // already formed
@@ -459,7 +459,7 @@ void RaftAppBase::formCluster(const std::set<int>& members)
 // ============ INTERSECTION STOP DETECTION ============
 
 // Called once the first time a vehicle stops at the intersection.
-// Triggers leader DB exchange (if lane leader) and the fallback timeout.
+// Triggers leader DB exchange (if cluster member) and the fallback timeout.
 void RaftAppBase::onFirstStoppedAtIntersection()
 {
     std::cout << NOW << " [DBG][V" << myId_ << "] FIRST_STOP:"

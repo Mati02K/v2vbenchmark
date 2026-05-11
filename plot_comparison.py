@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 RAFT Intersection Benchmark Plotter
-WAVE: laneLeaders vs allVehicles vs multirounds.
+WAVE: cluster vs allVehicles vs multirounds.
 UDP: allVehicles only.
 
 Usage:
@@ -24,30 +24,30 @@ def _detectVehicleCounts():
             m = re.search(r'_(\d+)veh_', name)
             if m:
                 counts.add(int(m.group(1)))
-    return sorted(counts) or [4, 8, 16, 24, 32]
+    return sorted(counts) or [4, 8, 16, 20, 24, 32]
 
 VEHICLE_COUNTS = _detectVehicleCounts()
 PROTOCOLS = ['wave', 'udp']
 PROTOCOL_PREFIXES = {'wave': 'simple_raftwave', 'udp': 'simple_udp'}
 PROTOCOL_LABELS = {'wave': 'WAVE (802.11p)', 'udp': 'UDP (802.11a)'}
 
-MODES = ['laneLeaders', 'allVehicles', 'allVehicles_multirounds']
+MODES = ['cluster', 'allVehicles', 'allVehicles_multirounds']
 PROTOCOL_MODES = {'wave': MODES, 'udp': ['allVehicles']}
-STANDARD_MODES = ['laneLeaders', 'allVehicles']
+STANDARD_MODES = ['cluster', 'allVehicles']
 MODE_LABELS = {
-    'laneLeaders':             'Lane Leaders',
+    'cluster':                 'Cluster',
     'allVehicles':             'All Vehicles',
     'allVehicles_multirounds': 'Multi-Rounds',
 }
 MODE_COLORS = {
-    'laneLeaders':             '#3498db',
+    'cluster':                 '#3498db',
     'allVehicles':             '#2ecc71',
     'allVehicles_multirounds': '#e67e22',
 }
 
 PRIORITY_VARIANTS = ['priority']
 MODE_DIRS = {
-    'laneLeaders':             {'priority': 'laneLeaders',  'nopriority': 'laneLeaders_nopriority'},
+    'cluster':                 {'priority': 'cluster',  'nopriority': 'cluster_nopriority'},
     'allVehicles':             {'priority': 'allVehicles',  'nopriority': 'allVehicles_nopriority'},
     'allVehicles_multirounds': {'priority': 'allVehicles_multirounds'},
 }
@@ -253,7 +253,12 @@ def plotMetricLine(data, transport, metric, title, ylabel, outputPrefix, scale=1
 
 def plotThroughput(data, transport):
     plotMetricLine(data, transport, 'throughput',
-                   'System Throughput', 'Vehicles / second', 'throughput')
+                   'System Throughput', 'Vehicles / second', 'throughput',
+                   modes=STANDARD_MODES)
+    plotMetricLine(data, transport, 'throughput',
+                   'System Throughput — Multi-Rounds', 'Vehicles / second',
+                   'throughput_multirounds',
+                   modes=['allVehicles', 'allVehicles_multirounds'])
 
 
 def plotLeaderElectionTime(data, transport):
@@ -275,9 +280,12 @@ def plotFallbacks(data, transport):
                    'Fallback Rate', 'Fallback Rate (%)', 'fallbacks', scale=100)
 
 
-def plotMessages(data, transport):
+def plotMessages(data, transport, modes=None, outputSuffix=''):
+    if modes is None:
+        modes = STANDARD_MODES
+    titleSuffix = ' — Multi-Rounds' if outputSuffix else ''
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    fig.suptitle(f'Messages per Vehicle — {PROTOCOL_LABELS[transport]}',
+    fig.suptitle(f'Messages per Vehicle{titleSuffix} — {PROTOCOL_LABELS[transport]}',
                  fontsize=13, fontweight='bold')
 
     configs = [
@@ -289,7 +297,7 @@ def plotMessages(data, transport):
 
     for col, (metric, panelTitle) in enumerate(configs):
         ax = axes[col]
-        for mode in MODES:
+        for mode in modes:
             allMeans = []
             for prio in PRIORITY_VARIANTS:
                 means, _ = getValues(data, transport, mode, prio, metric)
@@ -317,21 +325,25 @@ def plotMessages(data, transport):
         plt.close(fig)
         return
 
-    fig.legend(handles=buildModeLegend(),
+    fig.legend(handles=buildModeLegend(modes),
                bbox_to_anchor=(1.01, 0.5), loc='center left', fontsize=8, borderaxespad=0)
     plt.tight_layout()
-    savePlot(fig, os.path.join(RESULTS_DIR, f'messages_{transport}.png'))
+    fname = f'messages{outputSuffix}_{transport}.png'
+    savePlot(fig, os.path.join(RESULTS_DIR, fname))
 
 
-def plotCdf(transport):
+def plotCdf(transport, modes=None, outputSuffix=''):
+    if modes is None:
+        modes = STANDARD_MODES
+    titleSuffix = ' — Multi-Rounds' if outputSuffix else ''
     fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(15, 5), sharey=True)
-    fig.suptitle(f'CDF of Total Wait Time — {PROTOCOL_LABELS[transport]}\n'
+    fig.suptitle(f'CDF of Total Wait Time{titleSuffix} — {PROTOCOL_LABELS[transport]}\n'
                  f'Time from stopping to crossing (RAFT vehicles only)',
                  fontsize=13, fontweight='bold')
 
     for col, vc in enumerate(VEHICLE_COUNTS):
         ax = axes[col]
-        for mode in MODES:
+        for mode in modes:
             for prio in PRIORITY_VARIANTS:
                 fullMode = MODE_DIRS[mode][prio]
                 runs = loadRunsForMode(PROTOCOL_PREFIXES[transport], vc, fullMode)
@@ -360,10 +372,11 @@ def plotCdf(transport):
         ax.set_xlim(left=0)
         ax.grid(True, alpha=0.3)
 
-    fig.legend(handles=buildLegend(),
+    fig.legend(handles=buildLegend(modes),
                bbox_to_anchor=(1.01, 0.5), loc='center left', fontsize=8, borderaxespad=0)
     plt.tight_layout()
-    savePlot(fig, os.path.join(RESULTS_DIR, f'cdf_{transport}.png'))
+    fname = f'cdf{outputSuffix}_{transport}.png'
+    savePlot(fig, os.path.join(RESULTS_DIR, fname))
 
 
 # ============================================================
@@ -371,7 +384,7 @@ def plotCdf(transport):
 # ============================================================
 
 def plotPriority():
-    # Multirounds excluded: comparison is only meaningful for laneLeaders and allVehicles.
+    # Multirounds excluded: comparison is only meaningful for cluster and allVehicles.
     priorityModes = [m for m in MODES if m != 'allVehicles_multirounds']
     combos = priorityModes
     comboLabels = [MODE_LABELS[m] for m in combos]
@@ -462,7 +475,13 @@ def generateAllPlots():
         plotDecisionTime(data, transport)
         plotFallbacks(data, transport)
         plotMessages(data, transport)
+        plotMessages(data, transport,
+                     modes=['allVehicles', 'allVehicles_multirounds'],
+                     outputSuffix='_multirounds')
         plotCdf(transport)
+        plotCdf(transport,
+                modes=['allVehicles', 'allVehicles_multirounds'],
+                outputSuffix='_multirounds')
 
     plotPriority()
     print(f"\nDone — plots saved to {RESULTS_DIR}/")

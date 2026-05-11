@@ -9,16 +9,17 @@ Parse `$ARGUMENTS` to determine:
 | Arg | Values | Default |
 |---|---|---|
 | transport | `udp` or `wave` | `wave` |
-| vehicles | `4`, `8`, `16`, `24`, or `32` | `4` |
-| iterations | any integer not in {4,8,16,24,32} | `1` |
-| mode | `laneLeaders` or `allVehicles` | `laneLeaders` |
+| vehicles | `4`, `8`, `16`, `20`, `24`, or `32` | `4` |
+| iterations | any integer not in {4,8,16,20,24,32} | `1` |
+| mode | `cluster` or `allVehicles` | `cluster` |
 | priority | `nopriority` to disable | priority enabled (rotates V0..VN-1) |
 
 Examples:
-- (empty) → wave, 4 veh, 1 iter, laneLeaders, priority
+- (empty) → wave, 4 veh, 1 iter, cluster, priority
 - `wave 16 allVehicles` → wave, 16 veh, 1 iter, allVehicles, priority
+- `wave 20 allVehicles` → wave, 20 veh, 1 iter, allVehicles, priority
 - `wave 32 allVehicles 3` → wave, 32 veh, 3 iters, allVehicles, priority
-- `udp 8 3 nopriority` → udp, 8 veh, 3 iters, laneLeaders, nopriority
+- `udp 8 3 nopriority` → udp, 8 veh, 3 iters, cluster, nopriority
 - `udp 24 allVehicles 5` → udp, 24 veh, 5 iters, allVehicles, priority
 
 ## Isolation

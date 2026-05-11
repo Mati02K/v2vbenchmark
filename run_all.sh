@@ -10,7 +10,7 @@ GREEN='\033[0;32m'; RED='\033[0;31m'; NC='\033[0m'
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ITERS=${1:-10}
-export BENCH_VCS="4 8 16"
+export BENCH_VCS="4 8 16 20"
 
 export PATH="/home/mathesh/omnetpp-5.6.2/bin:$PATH"
 export LD_LIBRARY_PATH="/home/mathesh/omnetpp-5.6.2/lib:$LD_LIBRARY_PATH"
@@ -21,13 +21,13 @@ ss -tlnp | grep -q 9999 || { echo -e "${RED}Error: SUMO not running on port 9999
 
 echo -e "${GREEN}========================================${NC}"
 echo -e "${GREEN}  Full Benchmark — $ITERS iterations${NC}"
-echo -e "${GREEN}  laneLeaders → allVehicles → multirounds${NC}"
+echo -e "${GREEN}  cluster → allVehicles → multirounds${NC}"
 echo -e "${GREEN}========================================${NC}"
 
 cd "$SCRIPT_DIR"
 
-echo -e "\n${GREEN}[1/3] laneLeaders (WAVE)${NC}"
-bash benchmark.sh "$ITERS" laneLeaders
+echo -e "\n${GREEN}[1/3] cluster (WAVE)${NC}"
+bash benchmark.sh "$ITERS" cluster
 
 echo -e "\n${GREEN}[2/3] allVehicles (WAVE + UDP)${NC}"
 bash benchmark.sh "$ITERS" allVehicles
@@ -42,5 +42,6 @@ echo -e "${GREEN}========================================${NC}"
 python3 plot_comparison.py
 python3 plot_heatmap.py
 python3 plot_animation.py
+python3 plot_sinr.py
 
 echo -e "\n${GREEN}Done. Results in results/${NC}"

@@ -3,8 +3,8 @@
 RAFT Channel Utilization Plots
 
 Outputs two files to results/ (top-level, same as throughput_wave.png etc.):
-  channel_utilization_heatmap_wave.png    — 3×3 grid: modes × vehicle counts
-  channel_utilization_timeseries_wave.png — 1×3 panels: mean utilization per mode per vc
+  channel_utilization_heatmap_wave.png    — modes × vehicle counts grid
+  channel_utilization_timeseries_wave.png — mean utilization per mode per vehicle count
 
 Usage:
   python3 plot_heatmap.py
@@ -19,16 +19,16 @@ from matplotlib.lines import Line2D
 
 RESULTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'results')
 PROTOCOL_PREFIX = 'simple_raftwave'
-VEHICLE_COUNTS = [4, 8, 16, 24, 32]
+VEHICLE_COUNTS = [4, 8, 16, 20]
 
-MODES = ['laneLeaders', 'allVehicles', 'allVehicles_multirounds']
+MODES = ['cluster', 'allVehicles']
 MODE_LABELS = {
-    'laneLeaders':             'Lane Leaders',
+    'cluster':                 'Cluster',
     'allVehicles':             'All Vehicles',
     'allVehicles_multirounds': 'Multi-Rounds',
 }
 MODE_COLORS = {
-    'laneLeaders':             '#3498db',
+    'cluster':                 '#3498db',
     'allVehicles':             '#2ecc71',
     'allVehicles_multirounds': '#e67e22',
 }
@@ -100,7 +100,7 @@ def load_scenario(mode, vc):
 # ─────────────────────────────────────────────────────────────────────────────
 
 def plot_heatmap_grid(scenario_data):
-    """3-row × 3-col grid of heatmaps. Fixed vmax across all panels."""
+    """Modes by vehicle-count grid of heatmaps. Fixed vmax across all panels."""
     vmax = 0.0
     for mode in MODES:
         for vc in VEHICLE_COUNTS:
@@ -162,8 +162,8 @@ def plot_heatmap_grid(scenario_data):
 
 
 def plot_timeseries_grid(scenario_data):
-    """1×3 panels (one per vehicle count). Each panel: mean utilization over time per mode."""
-    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(16, 5), sharey=True)
+    """One panel per vehicle count. Each panel: mean utilization over time per mode."""
+    fig, axes = plt.subplots(1, len(VEHICLE_COUNTS), figsize=(18, 5), sharey=True)
     fig.suptitle('Channel Utilization over Time — WAVE (802.11p)\n'
                  'Mean across all vehicles, 10-run average',
                  fontsize=13, fontweight='bold')

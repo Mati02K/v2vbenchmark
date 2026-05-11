@@ -7,7 +7,7 @@ Arguments: $ARGUMENTS
 | Arg | Values | Default |
 |---|---|---|
 | iterations | any integer | `10` |
-| mode | `laneLeaders`, `allVehicles`, `multirounds`, or `all` | `all` |
+| mode | `cluster`, `allVehicles`, `multirounds`, or `all` | `all` |
 
 Each mode runs priority rotation AND nopriority baseline (except multirounds — priority only).
 WAVE runs for all modes. UDP runs only for `allVehicles`.
@@ -15,7 +15,7 @@ WAVE runs for all modes. UDP runs only for `allVehicles`.
 Examples:
 - (empty) → 10 iters, all 3 combinations
 - `5` → 5 iters, all 3 combinations
-- `laneLeaders 3` → 3 iters, laneLeaders only (WAVE, priority + nopriority)
+- `cluster 3` → 3 iters, cluster only (WAVE, priority + nopriority)
 - `allVehicles 5` → 5 iters, allVehicles (WAVE + UDP, priority + nopriority)
 - `multirounds 5` → 5 iters, multirounds (WAVE only, priority only)
 
@@ -37,15 +37,15 @@ cd /home/mathesh/omnetpp-workspace/benchmark
 export PATH="/home/mathesh/omnetpp-5.6.2/bin:$PATH"
 export LD_LIBRARY_PATH="/home/mathesh/omnetpp-5.6.2/lib:$LD_LIBRARY_PATH"
 
-bash benchmark.sh <iterations> laneLeaders    # WAVE only
+bash benchmark.sh <iterations> cluster    # WAVE only
 bash benchmark.sh <iterations> allVehicles    # WAVE + UDP
 bash benchmark.sh <iterations> "" multirounds # WAVE only
 ```
 
 Only run the combinations matching the parsed arguments. Report each script's exit status.
 
-Result directories per combination (× 5 vehicle counts: 4, 8, 16, 24, 32):
-- `laneLeaders` → `simple_raftwave_<N>veh_laneLeaders`, `simple_raftwave_<N>veh_laneLeaders_nopriority`
+Result directories per combination (× 6 vehicle counts: 4, 8, 16, 20, 24, 32):
+- `cluster` → `simple_raftwave_<N>veh_cluster`, `simple_raftwave_<N>veh_cluster_nopriority`
 - `allVehicles` → `simple_raftwave_<N>veh_allVehicles`, `simple_raftwave_<N>veh_allVehicles_nopriority`, `simple_udp_<N>veh_allVehicles`
 - `multirounds` → `simple_raftwave_<N>veh_allVehicles_multirounds`
 
@@ -74,7 +74,7 @@ python3 plot_animation.py
 - `channel_utilization_timeseries_wave.png`
 
 `plot_animation.py` generates (priority dirs only):
-- `channel_utilization_animation_laneleaders.gif`
+- `channel_utilization_animation_cluster.gif`
 - `channel_utilization_animation_allvehicles.gif`
 
 Report which files were saved.
@@ -83,22 +83,25 @@ Report which files were saved.
 
 Spawn a `qaagent` and pass it the list of result folders that were just populated.
 
-For `laneLeaders`:
-- `results/simple_raftwave_4veh_laneLeaders/`
-- `results/simple_raftwave_8veh_laneLeaders/`
-- `results/simple_raftwave_16veh_laneLeaders/`
-- `results/simple_raftwave_24veh_laneLeaders/`
-- `results/simple_raftwave_32veh_laneLeaders/`
+For `cluster`:
+- `results/simple_raftwave_4veh_cluster/`
+- `results/simple_raftwave_8veh_cluster/`
+- `results/simple_raftwave_16veh_cluster/`
+- `results/simple_raftwave_20veh_cluster/`
+- `results/simple_raftwave_24veh_cluster/`
+- `results/simple_raftwave_32veh_cluster/`
 
 For `allVehicles`:
 - `results/simple_raftwave_4veh_allVehicles/`
 - `results/simple_raftwave_8veh_allVehicles/`
 - `results/simple_raftwave_16veh_allVehicles/`
+- `results/simple_raftwave_20veh_allVehicles/`
 - `results/simple_raftwave_24veh_allVehicles/`
 - `results/simple_raftwave_32veh_allVehicles/`
 - `results/simple_udp_4veh_allVehicles/`
 - `results/simple_udp_8veh_allVehicles/`
 - `results/simple_udp_16veh_allVehicles/`
+- `results/simple_udp_20veh_allVehicles/`
 - `results/simple_udp_24veh_allVehicles/`
 - `results/simple_udp_32veh_allVehicles/`
 
@@ -106,15 +109,16 @@ For `multirounds`:
 - `results/simple_raftwave_4veh_allVehicles_multirounds/`
 - `results/simple_raftwave_8veh_allVehicles_multirounds/`
 - `results/simple_raftwave_16veh_allVehicles_multirounds/`
+- `results/simple_raftwave_20veh_allVehicles_multirounds/`
 - `results/simple_raftwave_24veh_allVehicles_multirounds/`
 - `results/simple_raftwave_32veh_allVehicles_multirounds/`
 
 ### QA thresholds per combination type
 
-**Standard combinations** (`laneLeaders`, `allVehicles`):
+**Standard combinations** (`cluster`, `allVehicles`):
 - `coordination_method != "raft"` → FAIL (fallbacks are never acceptable)
 - `log_entries_committed == 0` for a vehicle in `allVehicles` mode → WARN (may have received schedule via broadcast gossip — functionally correct, not a FAIL)
-- `log_entries_committed == 0` for non-lane-leader in `laneLeaders` mode → expected
+- `log_entries_committed == 0` for non-lane-leader in `cluster` mode → expected
 - `election_rounds > 10` → WARN
 
 **Multirounds combinations** (`_multirounds` suffix):

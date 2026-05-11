@@ -20,7 +20,7 @@ For each folder provided, find all run subdirectories:
 Infer the expected vehicle count from the folder name pattern `_<N>veh_`.
 All standard runs use priority rotation. Folders with `_nopriority` suffix have no priority vehicle.
 UDP results only exist for `allVehicles` mode; WAVE results exist for all modes.
-Supported vehicle counts: 4, 8, 16, 24, 32.
+Supported vehicle counts: 4, 8, 16, 20, 24, 32.
 
 ## Step 2 — Anomaly checklist
 
@@ -29,7 +29,7 @@ Run ALL checks across every run in every folder. For each check record PASS, FAI
 ### A. JSON checks (raft_results.json)
 
 **A1 — Vehicle count**
-`len(data)` must equal the expected vehicle count (4, 8, 16, 24, or 32).
+`len(data)` must equal the expected vehicle count (4, 8, 16, 20, 24, or 32).
 
 **A2 — All timestamps non-zero for raft vehicles**
 For every vehicle where `coordination_method != "fallback"`:
@@ -41,10 +41,11 @@ For every non-fallback vehicle:
 
 **A4 — Fallback rate**
 Expected fallback counts:
-- laneLeaders any veh: 0 (FAIL if any)
+- cluster any veh: 0 (FAIL if any)
 - allVehicles 4 veh: 0 (FAIL if any)
 - allVehicles 8 veh: 0–1 acceptable
 - allVehicles 16 veh: 0–4 acceptable (WARN if > 4)
+- allVehicles 20 veh: 0–5 acceptable (WARN if > 5)
 - allVehicles 24 veh: 0–6 acceptable (WARN if > 6)
 - allVehicles 32 veh: 0–8 acceptable (WARN if > 8)
 
@@ -85,7 +86,7 @@ Search for `QC verification failed`. FAIL if found — means a forged or corrupt
 
 For each folder:
 ```
-QA: simple_raftwave_4veh_laneLeaders  runs=10  raft=40/40  (0% fb)
+QA: simple_raftwave_4veh_cluster  runs=10  raft=40/40  (0% fb)
   A1 Vehicle count:        PASS
   A2 Timestamps non-zero:  PASS
   A3 Monotonicity:         PASS

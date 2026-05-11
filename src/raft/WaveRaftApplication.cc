@@ -9,6 +9,8 @@
 #include "raft/WaveRaftApplication.h"
 #include "raft/RaftWaveMessage_m.h"
 #include "veins/modules/mobility/traci/TraCIScenarioManager.h"
+#include "veins/modules/phy/DeciderResult80211.h"
+#include "veins/base/phyLayer/PhyToMacControlInfo.h"
 #include <iostream>
 #include <iomanip>
 #include <sstream>
@@ -79,9 +81,10 @@ void WaveRaftApplication::initialize(int stage)
             if (slash != std::string::npos) {
                 dir = resultsFileName_.substr(0, slash + 1);
             }
-            std::string csvPath = dir + "channel_V" + std::to_string(myId_) + ".csv";
+            std::string csvPath  = dir + "channel_V" + std::to_string(myId_) + ".csv";
+            std::string sinrPath = dir + "sinr_V"    + std::to_string(myId_) + ".csv";
 
-            utilizationMetrics_ = new ChannelMetrics(myId_, csvPath);
+            utilizationMetrics_ = new ChannelMetrics(myId_, csvPath, sinrPath);
 
             cModule* nic = getParentModule()->getSubmodule("nic");
             cModule* mac = nic ? nic->getSubmodule("mac1609_4") : nullptr;
@@ -357,6 +360,15 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
     unsigned int pLen = wsm->getPayloadLen();
     payload.resize(pLen);
     for (unsigned int i = 0; i < pLen; i++) payload[i] = wsm->getPayload(i);
+
+    // Extract SINR from every received frame (including CAM beacons) for continuous coverage.
+    if (utilizationMetrics_) {
+        if (auto* ci = dynamic_cast<PhyToMacControlInfo*>(frame->getControlInfo())) {
+            if (auto* res = dynamic_cast<DeciderResult80211*>(ci->getDeciderResult())) {
+                utilizationMetrics_->addSinrSample(res->getSnr());
+            }
+        }
+    }
 
     // Not our unicast — drop (no relay)
     if (targetId != -1 && targetId != myId_) return;
