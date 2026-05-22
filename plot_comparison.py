@@ -10,6 +10,7 @@ Usage:
 
 import json
 import os
+import re
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -457,6 +458,108 @@ def plotPriority():
 
 
 # ============================================================
+# ============================================================
+# Reply Delivery Proof (WAVE only)
+# ============================================================
+
+def plotReplyDeliveryProof():
+    """Two-panel plot: STATUS_REPLY delivery rate + RAFT participants vs fleet size.
+    Extracted directly from console.log files for cluster and allVehicles (WAVE)."""
+    prefix   = PROTOCOL_PREFIXES['wave']
+    COL_AV   = MODE_COLORS['allVehicles']
+    COL_CL   = MODE_COLORS['cluster']
+    vc_list  = [vc for vc in VEHICLE_COUNTS if vc <= 20]
+
+    def _extract(mode_dir):
+        means, stds, sizes = [], [], []
+        for vc in vc_list:
+            rates, sz = [], []
+            scenario_dir = os.path.join(RESULTS_DIR, f'{prefix}_{vc}veh_{mode_dir}')
+            run_num = 1
+            while True:
+                log = os.path.join(scenario_dir, f'run_{run_num}', 'console.log')
+                if not os.path.exists(log):
+                    break
+                with open(log) as f:
+                    text = f.read()
+                m_exp = re.search(r'SEND_STATUS_REQUEST to (\d+) active vehicles', text)
+                m_rcv = re.search(r'status collection timeout — DBs from (\d+) leaders', text)
+                if m_exp:
+                    expected = int(m_exp.group(1))
+                    received = int(m_rcv.group(1)) if m_rcv else expected
+                    rates.append(received / expected * 100)
+                    sz.append(expected)
+                run_num += 1
+            means.append(float(np.mean(rates)) if rates else 100.0)
+            stds.append(float(np.std(rates))   if rates else 0.0)
+            sizes.append(float(np.mean(sz))    if sz    else 0.0)
+        return means, stds, sizes
+
+    av_means, av_stds, av_sz = _extract('allVehicles')
+    cl_means, cl_stds, cl_sz = _extract('cluster')
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 5))
+
+    # ── Left: delivery rate ───────────────────────────────────────────────────
+    for means, stds, color, label in [
+        (av_means, av_stds, COL_AV, MODE_LABELS['allVehicles']),
+        (cl_means, cl_stds, COL_CL, MODE_LABELS['cluster']),
+    ]:
+        ax1.plot(vc_list, means, marker='o', color=color,
+                 linewidth=2.5, markersize=8, label=label)
+        ax1.fill_between(vc_list,
+                         [m - s for m, s in zip(means, stds)],
+                         [m + s for m, s in zip(means, stds)],
+                         color=color, alpha=0.12)
+        for vc, m in zip(vc_list, means):
+            ax1.annotate(f'{m:.0f}%', xy=(vc, m), xytext=(0, 10),
+                         textcoords='offset points', ha='center',
+                         fontsize=9, fontweight='bold', color=color)
+
+    ax1.axhline(100, color='#27ae60', linestyle='--', linewidth=1.2,
+                label='100% — perfect delivery')
+    ax1.axhspan(0, 75, alpha=0.05, color='red')
+    ax1.text(vc_list[0] + 0.2, 36, 'Coordination at risk (<75%)',
+             fontsize=8, color='red', alpha=0.75)
+    ax1.set_xlabel('Total Fleet Size', fontsize=12)
+    ax1.set_ylabel('STATUS_REPLY Delivery Rate (%)', fontsize=12)
+    ax1.set_title('Reply Delivery Rate vs Fleet Size\n(extracted from simulation logs — 10 runs each)',
+                  fontsize=10, fontweight='bold')
+    ax1.set_xticks(vc_list)
+    ax1.set_ylim(0, 118)
+    ax1.legend(fontsize=10)
+    ax1.grid(True, linestyle='--', alpha=0.4)
+
+    # ── Right: RAFT participants ──────────────────────────────────────────────
+    ax2.plot(vc_list, vc_list, marker='s', color=COL_AV, linewidth=2.5,
+             markersize=8, label=f'{MODE_LABELS["allVehicles"]} (all join RAFT)')
+    ax2.plot(vc_list, cl_sz,  marker='o', color=COL_CL, linewidth=2.5,
+             markersize=8, label=f'{MODE_LABELS["cluster"]} (front-of-lane only)')
+    for vc in vc_list:
+        ax2.annotate(f'{vc}', xy=(vc, vc), xytext=(0, 8),
+                     textcoords='offset points', ha='center',
+                     fontsize=9, fontweight='bold', color=COL_AV)
+    for vc, sz in zip(vc_list, cl_sz):
+        ax2.annotate(f'{sz:.0f}', xy=(vc, sz), xytext=(0, -16),
+                     textcoords='offset points', ha='center',
+                     fontsize=9, fontweight='bold', color=COL_CL)
+    ax2.set_xlabel('Total Fleet Size', fontsize=12)
+    ax2.set_ylabel('RAFT Participants', fontsize=12)
+    ax2.set_title('RAFT Participants vs Fleet Size\n(Cluster always uses ≤4 regardless of fleet)',
+                  fontsize=10, fontweight='bold')
+    ax2.set_xticks(vc_list)
+    ax2.legend(fontsize=10)
+    ax2.grid(True, linestyle='--', alpha=0.4)
+
+    fig.suptitle('Why Cluster Mode Scales: Wireless Range Is the Bottleneck',
+                 fontsize=13, fontweight='bold')
+    plt.tight_layout()
+    out = os.path.join(RESULTS_DIR, 'reply_delivery_proof_wave.png')
+    fig.savefig(out, dpi=150, bbox_inches='tight')
+    plt.close(fig)
+    print(f"  Saved: reply_delivery_proof_wave.png")
+
+
 # Entry Point
 # ============================================================
 
@@ -484,6 +587,7 @@ def generateAllPlots():
                 outputSuffix='_multirounds')
 
     plotPriority()
+    plotReplyDeliveryProof()
     print(f"\nDone — plots saved to {RESULTS_DIR}/")
 
 
