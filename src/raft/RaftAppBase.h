@@ -16,6 +16,7 @@
 #include <map>
 #include <set>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 extern "C" {
@@ -89,6 +90,7 @@ protected:
     // "cluster" = only the front vehicle of each active lane joins RAFT (default)
     // "allVehicles" = every vehicle joins RAFT cluster
     std::string   clusterMode_;
+    std::unordered_set<uint32_t> seenMsgHashes_;
 
     // collectedAllVehicles_: all vehicles that announced readiness (for allVehicles mode).
     // In cluster mode, collectedLaneLeaders_ (keyed by lane) is used instead.
@@ -114,7 +116,6 @@ protected:
     // ============ RAFT LOG STATE ============
     raft_index_t            lastAppliedIndex_;
     PassScheduleEntry       committedSchedule_;
-    PassScheduleEntry       pendingSchedule_;    // schedule held between QC signing and RAFT submission
     bool         hasCommittedOrder_;
 
     // Batch execution
@@ -138,25 +139,6 @@ protected:
     std::set<int>    scheduledVehicles_;
     bool             seekingNewCluster_;
 
-    // ---- QC assembly (leader-side) ----
-    // After PASS_ORDER commits, the leader collects one ECDSA signature from each
-    // cluster member over [uint32_t round || PassScheduleEntry].
-    // When majority reached, a QuorumCertificate is broadcast to ALL vehicles.
-    struct QCSigEntry {
-        uint8_t pubKey[CRYPTO_PUBKEY_BYTES];
-        uint8_t sig[CRYPTO_SIG_MAX_BYTES];
-        uint8_t sigLen;
-    };
-    std::map<int, QCSigEntry> collectedQCSigs_;  // vehicleId → signature
-    bool             qcAssembled_;               // guards against double-assembly
-    int              qcRetryCount_;              // how many times we've retried QC signing
-
-    // ---- QC storage (all vehicles) ----
-    // Stored when QC_BROADCAST is received (or when leader assembles the QC).
-    // The NEXT round reads hasPrevRoundQC_ + prevRoundQC_ to verify trust.
-    bool             hasPrevRoundQC_;
-    QuorumCertificate prevRoundQC_;
-
     // ============ FALLBACK STATE ============
     bool         isFallbackMode_;
     raft_term_t  lastCheckedTerm_;
@@ -174,8 +156,6 @@ protected:
     int    fallbackClusterTimeoutMs_;
     int    intersectionStopTimeMs_;
     int    batchExitPollMs_;
-    int    qcSignTimeoutMs_;
-    int    maxQcRetries_;
     std::string resultsFileName_;
     double      resultsFileCloseAtSec_ = 0;
     std::string transportName_;
@@ -197,13 +177,13 @@ protected:
     simtime_t timeStopped_;
     simtime_t timeRaftStarted_;            // T0: cluster formed
     simtime_t timeLeaderElected_;          // T1: this node observed itself becoming leader
-    simtime_t timeStatusCollectionStarted_;// T2: leader broadcast StatusRequest
-    simtime_t timeStartedMoving_;
+    simtime_t timeProposeSubmitted_;       // T2: leader called raft_recv_entry (consensus start)
+    simtime_t timeLeftIntersection_;
     simtime_t timePassed_;
 
     double totalRaftTimeSec_;
     double leaderElectionTimeMs_;  // T0 -> T1, cluster formed to leader elected. Leader-only.
-    double decisionLatencyMs_;     // T2 -> T5, post-election decision-making. Leader-only.
+    double decisionLatencyMs_;     // T2 -> T5, raft_recv_entry -> doApplyLog. Leader-only.
     int       messagesSent_;
     int       messagesReceived_;
     int       electionRounds_;
@@ -250,7 +230,7 @@ protected:
     void handleFrontStop(const std::string& roadId, double dist);
     void handleQueuedStop(const std::string& roadId, double dist, double speed);
 
-    // ---- RaftCore.cc: election → status collection → propose → QC assembly ----
+    // ---- RaftCore.cc: election → status collection → propose → RAFT log replication ----
     void processRaftPeriodic();
     void checkElectionFailures(raft_term_t currentTerm);
     void checkLeadershipChange();
@@ -277,16 +257,13 @@ protected:
     void onBecameLeader();
     void onLostLeadership();
     void sendStatusRequest();
-    void handleStatusRequest(int fromLeader);
+    void handleStatusRequest(const std::vector<uint8_t>& data);
+    bool gossipIfNew(int msgType, int to, const std::vector<uint8_t>& data);
+    int  raftSenderFromPayload(const std::vector<uint8_t>& data);
     void sendDbResponse(int toLeader);
     void handleDbResponse(const std::vector<uint8_t>& data, int senderId);
     void collectStatusAndDecide();
     void proposePassOrder();
-    void sendQCSignRequest();
-    void handleQCSignRequest(const std::vector<uint8_t>& data);
-    void handleQCSignResponse(const std::vector<uint8_t>& data, int senderId);
-    void tryAssembleQC();
-    bool verifyQC(const QuorumCertificate& qc) const;
 
     // ---- RaftDecision.cc: pure crossing-order algorithm ----
     PassScheduleEntry computePassOrder(const std::map<int, VehicleProposal>& proposals,

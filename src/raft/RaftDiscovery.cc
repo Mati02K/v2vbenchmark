@@ -47,32 +47,37 @@ void RaftAppBase::sendPeerBeacon()
 }
 
 // Receive a PEER_BEACON: verify cert, set isPriority in vehicleDB_.
-void RaftAppBase::handlePeerBeacon(const std::vector<uint8_t>& data, int senderId)
+//
+// senderId from the WSM is the immediate transmitter, which may be a gossip relayer
+// — NOT necessarily the beacon's originator. The authoritative identity is
+// proposal.vehicleId from the signed payload (the signature covers proposalBytes,
+// so it can't be forged without the originator's private key).
+void RaftAppBase::handlePeerBeacon(const std::vector<uint8_t>& data, int /*senderId*/)
 {
-    if (senderId == myId_) return;
-    if (senderId < 0 || senderId >= totalVehicles_) return;
-
-    VehicleProposal proposal;
-    bool isPrio = false;
-
     if (data.size() < sizeof(SignedProposal)) return;
 
     SignedProposal sp;
     memcpy(&sp, data.data(), sizeof(SignedProposal));
 
-    isPrio = verifySignedProposal(sp, senderId);
+    VehicleProposal proposal;
     memcpy(&proposal, sp.proposalBytes, sizeof(VehicleProposal));
 
+    int originId = proposal.vehicleId;
+    if (originId < 0 || originId >= totalVehicles_) return;
+    if (originId == myId_) return;  // own beacon relayed back via gossip
+
+    bool isPrio = verifySignedProposal(sp, originId);
+
     if (proposal.sumoId[0] != '\0') {
-        sumoIdMap_[senderId] = std::string(proposal.sumoId);
+        sumoIdMap_[originId] = std::string(proposal.sumoId);
     }
 
-    bool wasNew = (vehicleDB_.find(senderId) == vehicleDB_.end());
+    bool wasNew = (vehicleDB_.find(originId) == vehicleDB_.end());
     proposal.isPriority = isPrio;  // set from cert, never from payload
-    vehicleDB_[senderId] = proposal;
+    vehicleDB_[originId] = proposal;
 
     if (wasNew) {
-        std::cout << NOW << " [DBG][V" << myId_ << "] PEER_BEACON: new vehicle V" << senderId
+        std::cout << NOW << " [DBG][V" << myId_ << "] PEER_BEACON: new vehicle V" << originId
                   << " laneIdx=" << proposal.laneIndex
                   << " dist=" << proposal.distanceToJunction << "m"
                   << " isPriority=" << isPrio
@@ -96,6 +101,7 @@ void RaftAppBase::updateLaneLeaderFlag()
     // is ahead of us in the same lane.  Real-time and accurate — no stale beacon data.
     isLaneLeader_ = isLaneLeaderByTraci();
 
+    // Start New round when we have undecided vehicles in our view, this is not for first time though
     // ---- Multi-round: detect cluster-member promotion ----
     // Conditions:
     //   1. We were not front-of-lane last tick, but we are now (previous front vehicle left).
@@ -123,7 +129,7 @@ void RaftAppBase::updateLaneLeaderFlag()
 // Called when this vehicle becomes the new front-of-lane vehicle after the previous one passed.
 // Resets all RAFT and coordination state so a new election can start fresh.
 // scheduledVehicles_ is populated from the committed schedule of the previous round
-// (and from any QC_BROADCAST already received) so proposePassOrder() won't re-schedule
+// so proposePassOrder() won't re-schedule
 // vehicles that already have a committed crossing order.
 void RaftAppBase::startNewRound()
 {
@@ -136,7 +142,7 @@ void RaftAppBase::startNewRound()
         scheduledVehicles_.clear();
     } else {
         // Build scheduledVehicles_ from our local committed schedule.
-        // (QC_BROADCAST may have already populated this; we add our own copy as a safety net.)
+        // We add our own copy as a safety net.
         for (int b = 0; b < committedSchedule_.numBatches; b++) {
             for (int v = 0; v < committedSchedule_.batches[b].numVehicles; v++) {
                 scheduledVehicles_.insert(committedSchedule_.batches[b].vehicleIds[v]);
@@ -176,16 +182,12 @@ void RaftAppBase::startNewRound()
     collectedAllVehicles_.clear();
     collectedLeaderDBs_.clear();
 
-    // Reset QC assembly for the new round.
-    qcAssembled_ = false;
-    collectedQCSigs_.clear();
-
     // Reset timing metrics for the new round. The latency values (consensus/decision/total)
     // are NOT reset — they hold the previous round's reading until the next doApplyLog
     // overwrites them. Last commit's value wins, matching prior behaviour.
     timeRaftStarted_             = SIMTIME_ZERO;
     timeLeaderElected_           = SIMTIME_ZERO;
-    timeStatusCollectionStarted_ = SIMTIME_ZERO;
+    timeProposeSubmitted_        = SIMTIME_ZERO;
     logEntriesProposed_ = 0;
     logEntriesCommitted_= 0;
     electionRounds_     = 0;
@@ -267,19 +269,16 @@ void RaftAppBase::tryFormClusterFromCollected()
     std::set<int> members;
     if (forceFormCluster_) {
         members = collectedAllVehicles_;
-    } else if (clusterMode_ == "allVehicles") {
+    } 
+    else if (clusterMode_ == "allVehicles") {
         if ((int)collectedAllVehicles_.size() < totalVehicles_) return;
         members = collectedAllVehicles_;
-    } else {
+    } 
+    else {
         int numLanes = (int)approachEdgeList_.size();
         if ((int)collectedLaneLeaders_.size() < numLanes) return;
         for (auto& kv : collectedLaneLeaders_) members.insert(kv.second);
     }
-
-    std::cout << NOW << " [DBG][V" << myId_ << "] ALL LANES PRESENT — forming cluster ["
-              << members.size() << "]: [";
-    for (int v : members) std::cout << v << " ";
-    std::cout << "]" << std::endl;
 
     // Broadcast member list so every member calls formCluster() with the same set.
     // Payload: [numMembers:4B][vehicleId:4B * N]
@@ -407,6 +406,14 @@ void RaftAppBase::formCluster(const std::set<int>& members)
               << " members: [";
     for (int v : members) std::cout << v << " ";
     std::cout << "] electionBase=" << electionTimeoutBaseMs_ << "ms" << std::endl;
+
+    // Pre-RAFT view dump — every vehicle prints its vehicleDB_ at the moment the cluster
+    // forms. Grep [VIEW] across the log to compare per-vehicle views: identical sets
+    // (modulo self) confirm beacon gossip reached everyone.
+    std::cout << NOW << " [VIEW][V" << myId_ << "] vehicleDB_ size=" << vehicleDB_.size()
+              << " known=[";
+    for (auto& kv : vehicleDB_) std::cout << kv.first << " ";
+    std::cout << "]" << std::endl;
 
     // Initialise RAFT server
     raft_server_t* s = raft_new();
@@ -545,7 +552,7 @@ void RaftAppBase::handleFrontStop(const std::string& roadId, double dist)
         calculateWayOfSight();
         onFirstStoppedAtIntersection();
 
-        bool alreadyMoving = (timeStartedMoving_ != SIMTIME_ZERO);
+        bool alreadyMoving = (timeLeftIntersection_ != SIMTIME_ZERO);
         bool canGoNow = !alreadyMoving && hasCommittedOrder_
                      && myBatch_ != -1 && myBatch_ <= currentBatch_
                      && !hasPassedIntersection_;
@@ -566,7 +573,7 @@ void RaftAppBase::handleFrontStop(const std::string& roadId, double dist)
         }
     } else {
         // Re-apply hard stop if still waiting (prevents SUMO creep).
-        if (!hasCommittedOrder_ || (myBatch_ > currentBatch_ && timeStartedMoving_ == SIMTIME_ZERO))
+        if (!hasCommittedOrder_ || (myBatch_ > currentBatch_ && timeLeftIntersection_ == SIMTIME_ZERO))
             stopVehicle();
     }
 }
@@ -602,7 +609,7 @@ void RaftAppBase::checkAndStopAtIntersection()
         } catch (...) {}
     }
 
-    if (timeStartedMoving_ > SIMTIME_ZERO) return;
+    if (timeLeftIntersection_ > SIMTIME_ZERO) return;
 
     try {
         std::string roadId  = traciVehicle_->getRoadId();
@@ -680,5 +687,7 @@ void RaftAppBase::checkAndAdvanceInQueue()
             traciVehicle_->setSpeedMode(31);  // all SUMO safety checks on
             traciVehicle_->setSpeed(-1);       // SUMO car-following takes over
         }
-    } catch (...) {}
+    } catch (...) {
+        std::cout << simTime() << " [WARN][V" << myId_ << "] checkAndAdvanceInQueue: TraCI query failed" << std::endl;
+    }
 }

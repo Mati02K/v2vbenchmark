@@ -7,8 +7,9 @@
 //   3. Followers respond via handleStatusRequest() → sendDbResponse()
 //   4. Leader collects DBs in handleDbResponse() → calls proposePassOrder()
 //   5. proposePassOrder() calls computePassOrder() (RaftDecision.cc) → submits RAFT entry
-//   6. doApplyLog() commits PASS_ORDER — each member signs it → tryAssembleQC()
-//   7. tryAssembleQC() assembles QC → calls sendPassOrderBroadcast() (RaftCoordination.cc)
+//   6. proposePassOrder() submits the schedule directly to libraft (raft_recv_entry)
+//   7. doApplyLog() applies the committed schedule and calls sendPassOrderBroadcast()
+//      (RaftCoordination.cc) for non-cluster vehicles to learn it
 
 #include "raft/RaftAppBase.h"
 #include "raft/RaftTypes_m.h"
@@ -151,24 +152,27 @@ int RaftAppBase::doLogGetNodeId(raft_entry_t* entry, raft_index_t entry_idx)
 }
 
 // Once quorum is reached, apply the committed pass schedule.
+// Entry payload: [uint32_t round || PassScheduleEntry schedule]
 int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
 {
     std::cout << simTime() << " [DBG][V" << myId_ << "] doApplyLog entry #" << entry_idx
               << " lastApplied=" << lastAppliedIndex_ << " len=" << entry->data.len << std::endl;
 
     if (entry_idx <= lastAppliedIndex_) return 0;
-    if (entry->data.len < sizeof(QuorumCertificate)) return 0;
+    if (entry->data.len < sizeof(uint32_t) + sizeof(PassScheduleEntry)) return 0;
 
-    QuorumCertificate* qc = reinterpret_cast<QuorumCertificate*>(entry->data.buf);
+    PassScheduleEntry schedule;
+    memcpy(&schedule,
+           static_cast<uint8_t*>(entry->data.buf) + sizeof(uint32_t),
+           sizeof(PassScheduleEntry));
+
     std::cout << simTime() << " [DBG][V" << myId_ << "] APPLYING pass schedule entry #" << entry_idx
-              << " (" << qc->schedule.numBatches << " batches, QC numSigs=" << qc->numSigs << ")" << std::endl;
+              << " (" << schedule.numBatches << " batches)" << std::endl;
 
-    memcpy(&committedSchedule_, &qc->schedule, sizeof(PassScheduleEntry));
-    prevRoundQC_    = *qc;
-    hasPrevRoundQC_ = true;
-    for (int b = 0; b < qc->schedule.numBatches; b++) {
-        for (int v = 0; v < qc->schedule.batches[b].numVehicles; v++) {
-            scheduledVehicles_.insert(qc->schedule.batches[b].vehicleIds[v]);
+    memcpy(&committedSchedule_, &schedule, sizeof(PassScheduleEntry));
+    for (int b = 0; b < schedule.numBatches; b++) {
+        for (int v = 0; v < schedule.batches[b].numVehicles; v++) {
+            scheduledVehicles_.insert(schedule.batches[b].vehicleIds[v]);
         }
     }
     hasCommittedOrder_ = true;
@@ -178,10 +182,9 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
     if (timeRaftStarted_ > SIMTIME_ZERO) {
         totalRaftTimeSec_ = (NOW - timeRaftStarted_).dbl();
     }
-    // T5 — commit observed. Decision latency = T2 -> T5 (status collection start -> commit).
-    // Only the leader has a non-zero T2 in practice; followers leave decisionLatencyMs_ at 0.
-    if (timeStatusCollectionStarted_ > SIMTIME_ZERO) {
-        decisionLatencyMs_ = (NOW - timeStatusCollectionStarted_).dbl() * 1000.0;
+    // Calculate Decision Time alone
+    if (timeProposeSubmitted_ > SIMTIME_ZERO) {
+        decisionLatencyMs_ = (NOW - timeProposeSubmitted_).dbl() * 1000.0;
     }
 
     sendPassOrderBroadcast();
@@ -191,25 +194,32 @@ int RaftAppBase::doApplyLog(raft_entry_t* entry, raft_index_t entry_idx)
 
 // ============ SERIALIZATION ============
 
+// All RAFT message payloads are prefixed with the sender's vehicle ID (4 bytes) so that
+// gossip-relayed copies carry the original sender regardless of the relay chain.
+static std::vector<uint8_t> prefixSender(int senderId, const void* body, size_t bodySize)
+{
+    std::vector<uint8_t> data(sizeof(int) + bodySize);
+    memcpy(data.data(), &senderId, sizeof(int));
+    memcpy(data.data() + sizeof(int), body, bodySize);
+    return data;
+}
+
 std::vector<uint8_t> RaftAppBase::serializeRequestVote(msg_requestvote_t* msg)
 {
-    std::vector<uint8_t> data(sizeof(*msg));
-    memcpy(data.data(), msg, sizeof(*msg));
-    return data;
+    return prefixSender(myId_, msg, sizeof(*msg));
 }
 
 std::vector<uint8_t> RaftAppBase::serializeRequestVoteResponse(msg_requestvote_response_t* msg)
 {
-    std::vector<uint8_t> data(sizeof(*msg));
-    memcpy(data.data(), msg, sizeof(*msg));
-    return data;
+    return prefixSender(myId_, msg, sizeof(*msg));
 }
 
 std::vector<uint8_t> RaftAppBase::serializeAppendEntries(msg_appendentries_t* msg)
 {
     size_t baseSize = offsetof(msg_appendentries_t, entries);
-    std::vector<uint8_t> data(baseSize);
-    memcpy(data.data(), msg, baseSize);
+    std::vector<uint8_t> data(sizeof(int) + baseSize);
+    memcpy(data.data(), &myId_, sizeof(int));
+    memcpy(data.data() + sizeof(int), msg, baseSize);
 
     if (msg->n_entries > 0 && msg->entries) {
         for (int i = 0; i < msg->n_entries; i++) {
@@ -238,30 +248,39 @@ std::vector<uint8_t> RaftAppBase::serializeAppendEntries(msg_appendentries_t* ms
 
 std::vector<uint8_t> RaftAppBase::serializeAppendEntriesResponse(msg_appendentries_response_t* msg)
 {
-    std::vector<uint8_t> data(sizeof(*msg));
-    memcpy(data.data(), msg, sizeof(*msg));
-    return data;
+    return prefixSender(myId_, msg, sizeof(*msg));
 }
 
 void RaftAppBase::deserializeRequestVote(const std::vector<uint8_t>& data, msg_requestvote_t* msg)
 {
-    if (data.size() >= sizeof(*msg)) memcpy(msg, data.data(), sizeof(*msg));
+    size_t off = sizeof(int);
+    if (data.size() >= off + sizeof(*msg)) memcpy(msg, data.data() + off, sizeof(*msg));
+}
+
+int RaftAppBase::raftSenderFromPayload(const std::vector<uint8_t>& data)
+{
+    if (data.size() < sizeof(int)) return -1;
+    int id;
+    memcpy(&id, data.data(), sizeof(int));
+    return id;
 }
 
 void RaftAppBase::deserializeRequestVoteResponse(const std::vector<uint8_t>& data, msg_requestvote_response_t* msg)
 {
-    if (data.size() >= sizeof(*msg)) memcpy(msg, data.data(), sizeof(*msg));
+    size_t off = sizeof(int);
+    if (data.size() >= off + sizeof(*msg)) memcpy(msg, data.data() + off, sizeof(*msg));
 }
 
 void RaftAppBase::deserializeAppendEntries(const std::vector<uint8_t>& data, msg_appendentries_t* msg)
 {
     size_t baseSize = offsetof(msg_appendentries_t, entries);
-    if (data.size() < baseSize) { msg->entries = nullptr; msg->n_entries = 0; return; }
+    size_t off = sizeof(int);
+    if (data.size() < off + baseSize) { msg->entries = nullptr; msg->n_entries = 0; return; }
 
-    memcpy(msg, data.data(), baseSize);
+    memcpy(msg, data.data() + off, baseSize);
 
-    if (msg->n_entries > 0 && data.size() > baseSize) {
-        size_t offset = baseSize;
+    if (msg->n_entries > 0 && data.size() > off + baseSize) {
+        size_t offset = off + baseSize;
         msg->entries = new raft_entry_t[msg->n_entries];
 
         for (int i = 0; i < msg->n_entries && offset < data.size(); i++) {
@@ -296,7 +315,8 @@ void RaftAppBase::deserializeAppendEntries(const std::vector<uint8_t>& data, msg
 
 void RaftAppBase::deserializeAppendEntriesResponse(const std::vector<uint8_t>& data, msg_appendentries_response_t* msg)
 {
-    if (data.size() >= sizeof(*msg)) memcpy(msg, data.data(), sizeof(*msg));
+    size_t off = sizeof(int);
+    if (data.size() >= off + sizeof(*msg)) memcpy(msg, data.data() + off, sizeof(*msg));
 }
 
 // ============ LEADERSHIP TRANSITIONS ============
@@ -323,11 +343,31 @@ void RaftAppBase::onBecameLeader()
 
     if (hasCommittedOrder_) return;
 
-    sendStatusRequest();
-    scheduleOneshotMs(statusCollectionTimeoutMs_, [this]() {
-        if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_)
-            collectStatusAndDecide();
-    });
+    if (clusterMode_ == "allVehicles") {
+        // Fast path: PEER_BEACON gossip has already populated vehicleDB_ with
+        // every peer's proposal, so skip the 800 ms status-collection round and
+        // propose immediately from local view. (See RaftDiscovery.cc handlePeerBeacon
+        // + RaftUtilities.cc gossipIfNew for how vehicleDB_ converges before this point.)
+        if ((int)vehicleDB_.size() < totalVehicles_) {
+            std::cerr << NOW << " [WARN][V" << myId_ << "] FAST_PROPOSE with incomplete "
+                      << "vehicleDB_ size=" << vehicleDB_.size() << "/" << totalVehicles_
+                      << " — gossip did not converge before leader election; proceeding "
+                      << "with partial view (missing vehicles will get default proposals)"
+                      << std::endl;
+        }
+        vehicleDB_[myId_] = updateMyProposal();
+        collectedLeaderDBs_.clear();
+        collectedLeaderDBs_[myId_] = vehicleDB_;
+        proposePassOrder();
+    } else {
+        // Cluster (lane-leader) mode: gossip is disabled, so the leader must
+        // collect each follower's vehicleDB via COORD_STATUS_REQUEST.
+        sendStatusRequest();
+        scheduleOneshotMs(statusCollectionTimeoutMs_, [this]() {
+            if (isLeader_ && !hasCommittedOrder_ && !hasPassedIntersection_)
+                collectStatusAndDecide();
+        });
+    }
 }
 
 void RaftAppBase::onLostLeadership()
@@ -340,9 +380,6 @@ void RaftAppBase::onLostLeadership()
 
 void RaftAppBase::sendStatusRequest()
 {
-    // T2 — start of decision-making window (used for decision latency).
-    timeStatusCollectionStarted_ = NOW;
-
     std::cout << simTime() << " [DBG][V" << myId_ << "] SEND_STATUS_REQUEST to "
               << clusterVehicles_.size() << " active vehicles, timeout="
               << statusCollectionTimeoutMs_ << "ms" << std::endl;
@@ -363,11 +400,12 @@ void RaftAppBase::sendStatusRequest()
 
 // ============ STATUS REQUEST / RESPONSE (follower-side) ============
 
-void RaftAppBase::handleStatusRequest(int fromLeader)
+void RaftAppBase::handleStatusRequest(const std::vector<uint8_t>& data)
 {
     if (hasPassedIntersection_) return;
-    // Only RAFT cluster members respond to STATUS_REQUEST.
-    // Queued vehicles are passive and wait for COORD_PASS_ORDER_BROADCAST instead.
+    if (data.size() < sizeof(int)) return;
+    int fromLeader;
+    memcpy(&fromLeader, data.data(), sizeof(int));
     if (!raftServer_) {
         std::cout << simTime() << " [DBG][V" << myId_ << "] STATUS_REQUEST from V" << fromLeader
                   << " ignored — not a RAFT cluster member (queued vehicle)" << std::endl;
@@ -414,11 +452,7 @@ void RaftAppBase::handleDbResponse(const std::vector<uint8_t>& data, int senderI
     uint16_t numEntries;
     memcpy(&numEntries, data.data() + off, sizeof(uint16_t));   off += sizeof(uint16_t);
 
-    if (claimedId != senderId) {
-        std::cout << simTime() << " [WARN][V" << myId_ << "] DB_RESPONSE: id mismatch"
-                  << " claimed=" << claimedId << " sender=" << senderId << " — ignored" << std::endl;
-        return;
-    }
+    // Use claimedId from payload — frame senderId may differ when gossip-relayed.
     if (data.size() < off + numEntries * sizeof(VehicleProposal)) return;
 
     std::map<int, VehicleProposal> senderDb;
@@ -528,152 +562,15 @@ void RaftAppBase::proposePassOrder()
         std::cout << "]" << std::endl;
     }
 
-    // Store schedule — RAFT submission happens only after quorum of signatures collected.
-    memcpy(&pendingSchedule_, &schedule, sizeof(PassScheduleEntry));
-
-    // Broadcast QC_SIGN_REQUEST to all cluster members so they sign [round || schedule].
-    // Once quorum is reached in tryAssembleQC(), raft_recv_entry() is called.
-    qcRetryCount_ = 0;
-    collectedQCSigs_.clear();
-    sendQCSignRequest();
-}
-
-// ============ QUORUM CERTIFICATE ============
-
-// Leader broadcasts [round || pendingSchedule_] to all cluster members asking them to sign.
-// Leader also signs its own copy immediately.
-void RaftAppBase::sendQCSignRequest()
-{
-    if (!isLeader_ || qcAssembled_) return;
-
-    // Payload: [uint32_t round][PassScheduleEntry schedule]
-    size_t payloadSize = sizeof(uint32_t) + sizeof(PassScheduleEntry);
-    std::vector<uint8_t> data(payloadSize);
-    uint32_t rn = static_cast<uint32_t>(roundNumber_);
-    memcpy(data.data(),                    &rn,               sizeof(uint32_t));
-    memcpy(data.data() + sizeof(uint32_t), &pendingSchedule_, sizeof(PassScheduleEntry));
-
-    sendRaftBroadcast(benchmark::QC_SIGN_REQUEST, data);
-    std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_REQUEST broadcast (round=" << roundNumber_
-              << " clusterSize=" << clusterVehicles_.size() << ")" << std::endl;
-
-    // Leader signs its own copy immediately.
-    uint8_t sig[CRYPTO_SIG_MAX_BYTES];
-    uint8_t sigLen = 0;
-    CryptoAuth::instance().signBytes(myPrivKey_, data.data(), data.size(), sig, sigLen);
-    QCSigEntry mySig;
-    memcpy(mySig.pubKey, myPubKey_, CRYPTO_PUBKEY_BYTES);
-    memcpy(mySig.sig,    sig,       CRYPTO_SIG_MAX_BYTES);
-    mySig.sigLen = sigLen;
-    collectedQCSigs_[myId_] = mySig;
-    std::cout << NOW << " [QC][V" << myId_ << "] Leader signed own copy" << std::endl;
-    tryAssembleQC();  // in case single-node cluster
-
-    // Schedule retry in case QC_SIGN_RESPONSE packets are lost
-    if (!qcAssembled_ && qcRetryCount_ < maxQcRetries_) {
-        scheduleOneshotMs((double)qcSignTimeoutMs_, [this]() {
-            if (!qcAssembled_ && isLeader_ && qcRetryCount_ < maxQcRetries_) {
-                qcRetryCount_++;
-                std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_REQUEST retry "
-                          << qcRetryCount_ << "/" << maxQcRetries_
-                          << " (have " << collectedQCSigs_.size() << " sigs)" << std::endl;
-                sendQCSignRequest();
-            }
-        });
-    }
-}
-
-// Follower receives QC_SIGN_REQUEST: sign [round || schedule] and return signature to leader.
-void RaftAppBase::handleQCSignRequest(const std::vector<uint8_t>& data)
-{
-    if (isLeader_ || qcAssembled_) return;  // leader handles its own sign in sendQCSignRequest
-    if (data.size() < sizeof(uint32_t) + sizeof(PassScheduleEntry)) return;
-    if (!raftServer_) return;
-
-    raft_node_id_t leaderNodeId = raft_get_current_leader(raftServer_);
-    if (leaderNodeId <= 0) return;
-    int leaderVehicleId = static_cast<int>(leaderNodeId) - 1;
-
-    uint8_t sig[CRYPTO_SIG_MAX_BYTES];
-    uint8_t sigLen = 0;
-    CryptoAuth::instance().signBytes(myPrivKey_, data.data(), data.size(), sig, sigLen);
-
-    std::vector<uint8_t> resp(sizeof(int) + CRYPTO_PUBKEY_BYTES + CRYPTO_SIG_MAX_BYTES + 1);
-    size_t off = 0;
-    memcpy(resp.data() + off, &myId_,    sizeof(int));          off += sizeof(int);
-    memcpy(resp.data() + off, myPubKey_, CRYPTO_PUBKEY_BYTES);  off += CRYPTO_PUBKEY_BYTES;
-    memcpy(resp.data() + off, sig,       CRYPTO_SIG_MAX_BYTES); off += CRYPTO_SIG_MAX_BYTES;
-    resp[off] = sigLen;
-
-    sendRaftToPeer(leaderVehicleId, benchmark::QC_SIGN_RESPONSE, resp);
-    std::cout << NOW << " [QC][V" << myId_ << "] Signed QC_SIGN_REQUEST and sent response to V"
-              << leaderVehicleId << " (round=" << roundNumber_ << ")" << std::endl;
-}
-
-void RaftAppBase::handleQCSignResponse(const std::vector<uint8_t>& data, int senderId)
-{
-    if (!isLeader_ || qcAssembled_) return;
-    if (data.size() < sizeof(int) + CRYPTO_PUBKEY_BYTES + CRYPTO_SIG_MAX_BYTES + 1) return;
-
-    size_t off = 0;
-    int vid;
-    memcpy(&vid, data.data() + off, sizeof(int)); off += sizeof(int);
-
-    if (vid != senderId) {
-        std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_RESPONSE: vehicleId mismatch"
-                  << " (claimed " << vid << " from packet sender " << senderId << ") — ignored" << std::endl;
-        return;
-    }
-    if (!clusterVehicles_.count(vid)) return;  // not a cluster member
-
-    QCSigEntry entry;
-    memcpy(entry.pubKey, data.data() + off, CRYPTO_PUBKEY_BYTES); off += CRYPTO_PUBKEY_BYTES;
-    memcpy(entry.sig,    data.data() + off, CRYPTO_SIG_MAX_BYTES); off += CRYPTO_SIG_MAX_BYTES;
-    entry.sigLen = data[off];
-
-    collectedQCSigs_[vid] = entry;
-
-    int required = static_cast<int>(clusterVehicles_.size()) / 2 + 1;
-    std::cout << NOW << " [QC][V" << myId_ << "] QC_SIGN_RESPONSE from V" << vid
-              << " (" << collectedQCSigs_.size() << "/" << required << " sigs)" << std::endl;
-
-    tryAssembleQC();
-}
-
-void RaftAppBase::tryAssembleQC()
-{
-    if (!isLeader_ || qcAssembled_) return;
-    int required = static_cast<int>(clusterVehicles_.size()) / 2 + 1;
-    if (static_cast<int>(collectedQCSigs_.size()) < required) return;
-
-    // Quorum reached — assemble the QC.
-    qcAssembled_ = true;
-
-    QuorumCertificate qc;
-    memset(&qc, 0, sizeof(qc));
-    qc.valid  = true;
-    qc.round  = static_cast<uint32_t>(roundNumber_);
-    memcpy(&qc.schedule, &pendingSchedule_, sizeof(PassScheduleEntry));
-    qc.numSigs = 0;
-    for (auto& kv : collectedQCSigs_) {
-        if (qc.numSigs >= QC_MAX_MEMBERS) break;
-        QCSig& s    = qc.sigs[qc.numSigs];
-        s.vehicleId = kv.first;
-        memcpy(s.pubKey, kv.second.pubKey, CRYPTO_PUBKEY_BYTES);
-        memcpy(s.sig,    kv.second.sig,    CRYPTO_SIG_MAX_BYTES);
-        s.sigLen    = kv.second.sigLen;
-        qc.numSigs++;
-    }
-
-    std::cout << NOW << " [QC][V" << myId_ << "] QC assembled: round=" << qc.round
-              << " numSigs=" << qc.numSigs
-              << " — submitting QC+schedule to RAFT log" << std::endl;
-
-    // Write the full QC (schedule + signatures) to the RAFT log so every node
-    // that applies the entry gets the cryptographic proof, not just the schedule.
-    size_t entrySize = sizeof(QuorumCertificate);
+    // Submit the schedule directly to the RAFT log. The AppendEntries quorum (N/2+1
+     // ACKs) is the consensus guarantee — message-level cert verification on every
+    // receive provides authenticity. No separate signing round needed.
+    // Entry payload: [uint32_t round || PassScheduleEntry schedule]
+    size_t entrySize = sizeof(uint32_t) + sizeof(PassScheduleEntry);
     uint8_t* entryData = new uint8_t[entrySize];
-    memcpy(entryData, &qc, sizeof(QuorumCertificate));
+    uint32_t rn = static_cast<uint32_t>(roundNumber_);
+    memcpy(entryData,                    &rn,       sizeof(uint32_t));
+    memcpy(entryData + sizeof(uint32_t), &schedule, sizeof(PassScheduleEntry));
 
     raft_entry_t entry;
     memset(&entry, 0, sizeof(entry));
@@ -682,40 +579,17 @@ void RaftAppBase::tryAssembleQC()
     entry.data.buf = entryData;
     entry.data.len = entrySize;
 
+    // T2 — leader submits proposal to consensus engine (start of decision latency window).
+    timeProposeSubmitted_ = NOW;
+
     msg_entry_response_t response;
     if (raft_recv_entry(raftServer_, &entry, &response) == 0) {
         logEntriesProposed_++;
-        std::cout << simTime() << " [DBG][V" << myId_ << "] submitted PASS_SCHEDULE entry #" << response.idx << std::endl;
+        std::cout << simTime() << " [DBG][V" << myId_ << "] submitted PASS_SCHEDULE entry #"
+                  << response.idx << std::endl;
     } else {
         std::cerr << "Vehicle " << myId_ << " FAILED to submit PASS_SCHEDULE to RAFT" << std::endl;
         delete[] entryData;
     }
 }
 
-bool RaftAppBase::verifyQC(const QuorumCertificate& qc) const
-{
-    if (!qc.valid || qc.numSigs == 0) return false;
-
-    // Build the TBS buffer [uint32_t round || PassScheduleEntry] that signers signed.
-    size_t tbsSize = sizeof(uint32_t) + sizeof(PassScheduleEntry);
-    std::vector<uint8_t> tbs(tbsSize);
-    memcpy(tbs.data(),                    &qc.round,    sizeof(uint32_t));
-    memcpy(tbs.data() + sizeof(uint32_t), &qc.schedule, sizeof(PassScheduleEntry));
-
-    int validSigs = 0;
-    for (int i = 0; i < qc.numSigs; i++) {
-        bool validSign = CryptoAuth::instance().verifyBytes(
-            qc.sigs[i].pubKey, tbs.data(), tbs.size(),
-            qc.sigs[i].sig, qc.sigs[i].sigLen);
-        if (validSign)
-        {
-            validSigs++;
-        }
-        else
-        {
-            std::cout << "[QC][V" << myId_ << "] verifyQC: sig " << i
-                      << " from V" << qc.sigs[i].vehicleId << " INVALID" << std::endl;
-        }
-    }
-    return validSigs >= qc.numSigs;  // all claimed sigs must verify
-}

@@ -1,12 +1,13 @@
-// RaftCoordination.cc — Send committed schedule + QC to all vehicles, then
+// RaftCoordination.cc — Send committed schedule to all vehicles, then
 //                       execute the crossing pass (batch management, vehicle exit).
 //
 // Flow:
-//   tryAssembleQC() (RaftCore) calls sendPassOrderBroadcast() here once QC is ready.
-//   Non-cluster vehicles receive the schedule via handlePassOrderBroadcast().
-//   applyCommittedPassOrder() assigns each vehicle to its batch and starts movement.
-//   Batch advancement is driven by pollBatchExit() querying TraCI every 100ms.
-//   checkIfLeftIntersection() detects own physical exit and writes metrics.
+//   doApplyLog() (RaftCore) calls sendPassOrderBroadcast() here once the schedule
+//   is committed by RAFT consensus. Non-cluster vehicles receive the schedule via
+//   handlePassOrderBroadcast(). applyCommittedPassOrder() assigns each vehicle to
+//   its batch and starts movement. Batch advancement is driven by pollBatchExit()
+//   querying TraCI every 100ms. checkIfLeftIntersection() detects own physical
+//   exit and writes metrics.
 
 #include "raft/RaftAppBase.h"
 #include "raft/RaftTypes_m.h"
@@ -18,67 +19,63 @@
 
 // ============ PASS ORDER BROADCAST (leader → all vehicles) ============
 
-// Called by the RAFT leader once the QC is assembled.
-// Payload: [PassScheduleEntry][QuorumCertificate] — schedule + crypto proof in one message.
-// Non-cluster (queued) vehicles receive this and apply both the schedule and store the QC.
+// Called by doApplyLog() on the leader after RAFT commits the schedule entry.
+// Used by non-cluster (queued) vehicles in cluster mode to learn the schedule.
+// RAFT cluster members already have it via doApplyLog. Authenticity comes from
+// the message-level cert verification on every receive (no separate QC layer).
+// Payload: [uint32_t round || PassScheduleEntry schedule]
 void RaftAppBase::sendPassOrderBroadcast()
 {
     if (!hasCommittedOrder_) return;
 
-    // Send the full QC — it contains both the schedule and the signatures.
-    std::vector<uint8_t> data(sizeof(QuorumCertificate));
-    memcpy(data.data(), &prevRoundQC_, sizeof(QuorumCertificate));
+    size_t payloadSize = sizeof(uint32_t) + sizeof(PassScheduleEntry);
+    std::vector<uint8_t> data(payloadSize);
+    uint32_t rn = static_cast<uint32_t>(roundNumber_);
+    memcpy(data.data(),                    &rn,                 sizeof(uint32_t));
+    memcpy(data.data() + sizeof(uint32_t), &committedSchedule_, sizeof(PassScheduleEntry));
+
     sendRaftBroadcast(benchmark::COORD_PASS_ORDER_BROADCAST, data);
 
-    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST sent (with QC): "
-              << committedSchedule_.numBatches << " batches, QC round=" << prevRoundQC_.round
-              << " numSigs=" << prevRoundQC_.numSigs << std::endl;
+    std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST sent: "
+              << committedSchedule_.numBatches << " batches, round=" << rn << std::endl;
 }
 
-// Non-cluster (queued) vehicles receive the committed schedule + QC here.
-// Payload: [QuorumCertificate] (contains schedule + signatures)
+// Non-cluster (queued) vehicles receive the committed schedule here.
+// Payload: [uint32_t round || PassScheduleEntry schedule]
 // RAFT cluster members apply the schedule via doApplyLog() — they skip this.
 void RaftAppBase::handlePassOrderBroadcast(const std::vector<uint8_t>& data)
 {
     if (hasPassedIntersection_) return;
     if (hasCommittedOrder_) return;
-    if (data.size() < sizeof(QuorumCertificate)) {
+    if (data.size() < sizeof(uint32_t) + sizeof(PassScheduleEntry)) {
         std::cout << simTime() << " [WARN][V" << myId_
                   << "] PASS_ORDER_BROADCAST: payload too small (" << data.size()
-                  << " < " << sizeof(QuorumCertificate) << ")" << std::endl;
+                  << " < " << sizeof(uint32_t) + sizeof(PassScheduleEntry) << ")" << std::endl;
         return;
     }
 
-    // Gossip relay: rebroadcast once so vehicles further back in the queue also learn.
-    sendRaftBroadcast(benchmark::COORD_PASS_ORDER_BROADCAST, data);
+    // In cluster mode, lane leaders relay to queued followers.
+    // In allVehicles mode, gossipIfNew in the dispatch handles this with dedup.
+    if (clusterMode_ == "cluster") {
+        sendRaftBroadcast(benchmark::COORD_PASS_ORDER_BROADCAST, data);
+    }
 
-    QuorumCertificate qc;
-    memcpy(&qc, data.data(), sizeof(QuorumCertificate));
+    PassScheduleEntry schedule;
+    memcpy(&schedule,
+           data.data() + sizeof(uint32_t),
+           sizeof(PassScheduleEntry));
 
     std::cout << simTime() << " [DBG][V" << myId_ << "] PASS_ORDER_BROADCAST received: "
-              << qc.schedule.numBatches << " batches (raftServer_=" << (raftServer_ != nullptr) << ")" << std::endl;
+              << schedule.numBatches << " batches" << std::endl;
 
-    if (!verifyQC(qc)) {
-        std::cout << simTime() << " [WARN][V" << myId_
-                  << "] PASS_ORDER_BROADCAST: QC verification failed — ignoring." << std::endl;
-        return;
-    }
-
-    memcpy(&committedSchedule_, &qc.schedule, sizeof(PassScheduleEntry));
+    memcpy(&committedSchedule_, &schedule, sizeof(PassScheduleEntry));
     hasCommittedOrder_ = true;
     coordinationMethod_ = "raft";
 
-    if (qc.valid && qc.numSigs > 0 && (!hasPrevRoundQC_ || qc.round > prevRoundQC_.round)) {
-        prevRoundQC_    = qc;
-        hasPrevRoundQC_ = true;
-        qcAssembled_    = true;
-        for (int b = 0; b < qc.schedule.numBatches; b++) {
-            for (int v = 0; v < qc.schedule.batches[b].numVehicles; v++) {
-                scheduledVehicles_.insert(qc.schedule.batches[b].vehicleIds[v]);
-            }
+    for (int b = 0; b < schedule.numBatches; b++) {
+        for (int v = 0; v < schedule.batches[b].numVehicles; v++) {
+            scheduledVehicles_.insert(schedule.batches[b].vehicleIds[v]);
         }
-        std::cout << simTime() << " [QC][V" << myId_ << "] QC stored from PASS_ORDER_BROADCAST:"
-                  << " round=" << qc.round << " numSigs=" << qc.numSigs << std::endl;
     }
 
     applyCommittedPassOrder();

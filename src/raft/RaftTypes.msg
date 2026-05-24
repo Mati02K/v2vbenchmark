@@ -21,11 +21,6 @@ enum RaftMsgType {
     COORD_VEHICLE_LEFT             = 23;
     COORD_PASS_ORDER_BROADCAST     = 24;
 
-    // Quorum Certificate (31-40)
-    QC_SIGN_REQUEST                = 31;
-    QC_SIGN_RESPONSE               = 32;
-    QC_BROADCAST                   = 33;
-
     // Background channel load — not counted in RAFT metrics (99)
     CAM_TELEMETRY                  = 99;
 }

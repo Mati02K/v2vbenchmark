@@ -271,7 +271,7 @@ def plotLeaderElectionTime(data, transport):
 
 def plotDecisionTime(data, transport):
     plotMetricLine(data, transport, 'decisionLatency',
-                   'RAFT Decision Latency (status collection → schedule committed)',
+                   'RAFT Decision Latency (propose → committed)',
                    'Decision Latency (ms)', 'decision_time',
                    modes=STANDARD_MODES)
 

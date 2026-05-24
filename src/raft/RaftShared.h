@@ -43,32 +43,3 @@ struct VehicleLeftEntry {
     int batchId;  // unified field name (WAVE used .batch, UDP used .batchId — now unified)
 };
 
-// ============ QUORUM CERTIFICATE ============
-// Assembled by the RAFT leader after a PASS_ORDER commit.
-// Contains a majority of cluster-member signatures over (round || schedule),
-// so the next RAFT round can verify the previous schedule without re-running RAFT.
-//
-// Flow:
-//   1. PASS_ORDER commits → leader broadcasts QC_SIGN_REQUEST (round + schedule)
-//   2. Each member signs and returns QC_SIGN_RESPONSE
-//   3. When leader has majority: assembles QuorumCertificate, broadcasts QC_BROADCAST
-//   4. All vehicles (including queued ones) store the QC and populate scheduledVehicles_
-//   5. Next-round cluster members skip scheduledVehicles_ in proposePassOrder()
-
-static constexpr int QC_MAX_MEMBERS = 32;
-
-struct QCSig {
-    int     vehicleId;
-    uint8_t pubKey[CRYPTO_PUBKEY_BYTES];        // signer's public key (for verification)
-    uint8_t sig[CRYPTO_SIG_MAX_BYTES];           // ECDSA sig over [uint32_t round || PassScheduleEntry]
-    uint8_t sigLen;
-};
-
-struct QuorumCertificate {
-    bool              valid;                     // true once assembled with enough sigs
-    uint32_t          round;                     // RAFT round number this certifies
-    PassScheduleEntry schedule;                  // the committed pass schedule
-    int               numSigs;
-    QCSig             sigs[QC_MAX_MEMBERS];
-};
-

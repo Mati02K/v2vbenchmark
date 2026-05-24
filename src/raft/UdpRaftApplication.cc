@@ -163,7 +163,7 @@ bool UdpRaftApplication::stopApplication()
 void UdpRaftApplication::finish()
 {
     if (!metricsWritten_ && RaftMetrics::isOpen() && hasStoppedAtIntersection_) {
-        if (timeStartedMoving_ == SIMTIME_ZERO) timeStartedMoving_ = simTime();
+        if (timeLeftIntersection_ == SIMTIME_ZERO) timeLeftIntersection_ = simTime();
         if (timePassed_ == SIMTIME_ZERO)        timePassed_        = simTime();
         outputMetricsJSON();
     }
@@ -189,13 +189,13 @@ void UdpRaftApplication::handleMessageWhenUp(cMessage* msg)
         if (!hasPassedIntersection_) {
             updateLaneLeaderFlag();
         }
-        if (!hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) {
+        if (!hasPassedIntersection_ && timeLeftIntersection_ == SIMTIME_ZERO) {
             checkAndStopAtIntersection();
         }
-        if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) {
+        if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && timeLeftIntersection_ == SIMTIME_ZERO) {
             checkAndAdvanceInQueue();
         }
-        if ((hasStoppedAtIntersection_ || timeStartedMoving_ > SIMTIME_ZERO) && !hasPassedIntersection_)
+        if ((hasStoppedAtIntersection_ || timeLeftIntersection_ > SIMTIME_ZERO) && !hasPassedIntersection_)
             checkIfLeftIntersection();
         if (!hasPassedIntersection_)
             scheduleAt(simTime() + CHECK_INTERVAL, checkTimer_);
@@ -251,20 +251,35 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
     std::string pktName  = pk->getName();
     int  targetId        = extractTargetFromPacketName(pktName);
     bool isBroadcast     = (pktName.find("-broadcast") != std::string::npos);
-
-    if (!isBroadcast && targetId != -1 && targetId != myId_) return;
+    int  sender          = extractSenderFromPacketName(pktName);
 
     auto payload = pk->peekAtFront<BytesChunk>();
     if (!payload) return;
     const auto& bytes = payload->getBytes();
     if (bytes.size() < 1 || bytes.size() > 10000) return;
 
-    messagesReceived_++;
-
-    // First byte is the message type (set by sendRaftToPeer / sendRaftBroadcast)
     uint8_t msgType = bytes[0];
     const std::vector<uint8_t> data(bytes.begin() + 1, bytes.end());
-    int sender = extractSenderFromPacketName(pktName);
+
+    // Gossip relay for allVehicles mode: re-broadcast selected message types so vehicles
+    // outside the original sender's radio range still receive them. gossipIfNew dedups
+    // on (msgType, targetId, full payload) so each unique packet relays exactly once per
+    // vehicle (no ping-pong), while successive packets from the same sender each cascade
+    // freshly (so late arrivals catch up on the next beacon).
+    switch (msgType) {
+        case benchmark::PEER_BEACON:
+        case benchmark::CLUSTER_FORM_BROADCAST:
+        case benchmark::COORD_STATUS_REQUEST:
+        case benchmark::COORD_STATUS_RESPONSE:
+        case benchmark::COORD_PASS_ORDER_BROADCAST:
+            gossipIfNew(msgType, targetId, data);
+            break;
+        default: break;
+    }
+
+    if (!isBroadcast && targetId != -1 && targetId != myId_) return;
+
+    messagesReceived_++;
 
     switch (msgType) {
         // ---- Discovery ----
@@ -294,21 +309,13 @@ void UdpRaftApplication::processPacket(std::shared_ptr<Packet> pk)
 
         // ---- Coordination ----
         case benchmark::COORD_STATUS_REQUEST:
-            handleStatusRequest(sender);
+            handleStatusRequest(data);
             break;
         case benchmark::COORD_STATUS_RESPONSE:
             handleDbResponse(data, sender);
             break;
         case benchmark::COORD_PASS_ORDER_BROADCAST:
             handlePassOrderBroadcast(data);
-            break;
-
-        // ---- Quorum Certificate ----
-        case benchmark::QC_SIGN_REQUEST:
-            handleQCSignRequest(data);
-            break;
-        case benchmark::QC_SIGN_RESPONSE:
-            handleQCSignResponse(data, sender);
             break;
 
         default:
@@ -437,42 +444,35 @@ void UdpRaftApplication::handleRequestVoteResponse(const std::vector<uint8_t>& d
                                                         const std::string& pktName)
 {
     if (!raftServer_) return;
+    int actualSender = raftSenderFromPayload(data);
+    if (actualSender < 0) return;
     msg_requestvote_response_t msg;
     deserializeRequestVoteResponse(data, &msg);
-
-    size_t nodePos = pktName.find("-node-");
-    size_t toPos   = pktName.find("-to-", nodePos);
-    if (nodePos == std::string::npos || toPos == std::string::npos) return;
-    try {
-        raft_node_id_t senderNodeId = std::stoi(pktName.substr(nodePos+6, toPos-nodePos-6));
-        raft_node_t* node = raft_get_node(raftServer_, senderNodeId);
-        if (node) raft_recv_requestvote_response(raftServer_, node, &msg);
-    } catch (...) {}
+    raft_node_t* node = raft_get_node(raftServer_, actualSender + 1);
+    if (node) raft_recv_requestvote_response(raftServer_, node, &msg);
 }
 
 void UdpRaftApplication::handleAppendEntries(const std::vector<uint8_t>& data,
                                                   const std::string& pktName)
 {
     if (!raftServer_) return;
+    int actualSender = raftSenderFromPayload(data);
+    if (actualSender < 0) return;
     msg_appendentries_t msg;
     deserializeAppendEntries(data, &msg);
 
-    int senderVehicleId = extractSenderFromPacketName(pktName);
-    if (senderVehicleId < 0) return;
-
     std::cout << std::fixed << std::setprecision(1)
               << (simTime().dbl()*1000.0) << "ms Vehicle " << myId_
-              << " RECEIVED AppendEntries from vehicle " << senderVehicleId
+              << " RECEIVED AppendEntries from vehicle " << actualSender
               << " (n_entries=" << msg.n_entries
               << ", leader_commit=" << msg.leader_commit << ")" << std::endl;
 
-    raft_node_id_t senderNodeId = senderVehicleId + 1;
-    raft_node_t* node = raft_get_node(raftServer_, senderNodeId);
+    raft_node_t* node = raft_get_node(raftServer_, actualSender + 1);
     if (node) {
         msg_appendentries_response_t resp;
         raft_recv_appendentries(raftServer_, node, &msg, &resp);
         auto respData = serializeAppendEntriesResponse(&resp);
-        sendRaftToPeer(senderVehicleId, benchmark::RAFT_APPEND_ENTRIES_RESPONSE, respData);
+        sendRaftToPeer(actualSender, benchmark::RAFT_APPEND_ENTRIES_RESPONSE, respData);
     }
     if (msg.entries) delete[] msg.entries;
 }
@@ -481,15 +481,10 @@ void UdpRaftApplication::handleAppendEntriesResponse(const std::vector<uint8_t>&
                                                           const std::string& pktName)
 {
     if (!raftServer_) return;
+    int actualSender = raftSenderFromPayload(data);
+    if (actualSender < 0) return;
     msg_appendentries_response_t msg;
     deserializeAppendEntriesResponse(data, &msg);
-
-    size_t nodePos = pktName.find("-node-");
-    size_t toPos   = pktName.find("-to-", nodePos);
-    if (nodePos == std::string::npos || toPos == std::string::npos) return;
-    try {
-        raft_node_id_t senderNodeId = std::stoi(pktName.substr(nodePos+6, toPos-nodePos-6));
-        raft_node_t* node = raft_get_node(raftServer_, senderNodeId);
-        if (node) raft_recv_appendentries_response(raftServer_, node, &msg);
-    } catch (...) {}
+    raft_node_t* node = raft_get_node(raftServer_, actualSender + 1);
+    if (node) raft_recv_appendentries_response(raftServer_, node, &msg);
 }

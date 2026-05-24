@@ -192,7 +192,7 @@ bool RaftAppBase::hasPassedIntersectionEdge() const
             std::cout << simTime() << " Vehicle " << myId_ << " hasPassed=true (on exit edge " << roadId << ")" << std::endl;
             return true;
         }
-        if (timeStartedMoving_ > SIMTIME_ZERO && !roadId.empty()) {
+        if (timeLeftIntersection_ > SIMTIME_ZERO && !roadId.empty()) {
             bool onApproach  = intersectionEdges_.count(roadId) > 0;
             bool onInternal  = (roadId[0] == ':');
             if (!onApproach && !onInternal) {
@@ -226,7 +226,7 @@ void RaftAppBase::resumeMovement()
               << " curBatch=" << currentBatch_
               << " isLeader=" << isLeader_
               << " fallback=" << isFallbackMode_ << std::endl;
-    timeStartedMoving_ = NOW;
+    timeLeftIntersection_ = NOW;
     try {
         traciVehicle_->setSpeedMode(0);
         traciVehicle_->setParameter("jmIgnoreFoeProb",  "1.0");
@@ -235,7 +235,7 @@ void RaftAppBase::resumeMovement()
         double speed = traciVehicle_->getMaxSpeed();
         if (speed <= 0) speed = 13.89;
         traciVehicle_->setSpeed(speed);
-        timeStartedMoving_ = NOW;
+        timeLeftIntersection_ = NOW;
     } catch (...) { std::cerr << "Vehicle " << myId_ << " could not resume speed" << std::endl; }
 }
 
@@ -379,4 +379,35 @@ void RaftAppBase::outputMetricsJSON()
         myBatch_,
         clusterMode_
     );
+}
+
+// ============ GOSSIP RELAY ============
+
+// Re-broadcasts msgType+data if this vehicle hasn't relayed this exact packet before.
+//
+// Dedup contract:
+//   - Hash covers (msgType, targetId, FULL payload).
+//   - Two distinct packets — even from the same sender — produce different hashes
+//     because per-packet-varying fields (timestamp/signature in SignedProposal,
+//     round number in QC messages, etc.) are part of the payload.
+//   - Two relayed copies of the SAME packet (different relayers, same bytes) hash
+//     identically, so the second copy is dropped and infinite ping-pong is avoided.
+//
+// This means each unique packet cascades through the network exactly once per
+// vehicle, while a later packet from the same sender is treated as new and
+// cascades freshly — letting late-arriving vehicles catch up on the next beacon.
+// Only active in allVehicles mode.
+bool RaftAppBase::gossipIfNew(int msgType, int to, const std::vector<uint8_t>& data)
+{
+    if (clusterMode_ != "allVehicles") return false;
+    uint32_t h = 2166136261u;
+    auto mix = [&](uint32_t v) { h ^= v; h *= 16777619u; };
+    mix(static_cast<uint32_t>(msgType));
+    mix(static_cast<uint32_t>(to));
+    for (size_t i = 0; i < data.size(); i++) {
+        mix(static_cast<uint32_t>(data[i]));
+    }
+    if (!seenMsgHashes_.insert(h).second) return false;
+    sendRaftBroadcast(msgType, data);
+    return true;
 }

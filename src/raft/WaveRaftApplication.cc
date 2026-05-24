@@ -189,7 +189,7 @@ void WaveRaftApplication::initialize(int stage)
 void WaveRaftApplication::finish()
 {
     if (!metricsWritten_ && RaftMetrics::isOpen() && hasStoppedAtIntersection_) {
-        if (timeStartedMoving_ == SIMTIME_ZERO) timeStartedMoving_ = simTime();
+        if (timeLeftIntersection_ == SIMTIME_ZERO) timeLeftIntersection_ = simTime();
         if (timePassed_ == SIMTIME_ZERO)        timePassed_        = simTime();
         outputMetricsJSON();
     }
@@ -287,18 +287,18 @@ void WaveRaftApplication::handleSelfMsg(cMessage* msg)
             updateLaneLeaderFlag();
         }
         
-        if (!hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) {
+        if (!hasPassedIntersection_ && timeLeftIntersection_ == SIMTIME_ZERO) {
             checkAndStopAtIntersection();
         }
 
         // if there is a front vehicle who moved at the intersection
-        if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && timeStartedMoving_ == SIMTIME_ZERO) 
+        if (hasStoppedAtIntersection_ && !hasPassedIntersection_ && timeLeftIntersection_ == SIMTIME_ZERO) 
         {
             checkAndAdvanceInQueue();
         }
 
         // vehicle left
-        if ((hasStoppedAtIntersection_ || timeStartedMoving_ > SIMTIME_ZERO) && !hasPassedIntersection_)
+        if ((hasStoppedAtIntersection_ || timeLeftIntersection_ > SIMTIME_ZERO) && !hasPassedIntersection_)
         {
             checkIfLeftIntersection();
         }
@@ -370,7 +370,22 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
         }
     }
 
-    // Not our unicast — drop (no relay)
+    // Gossip relay for allVehicles mode: re-broadcast selected message types so vehicles
+    // outside the original sender's radio range still receive them. gossipIfNew dedups
+    // on (msgType, targetId, full payload) so each unique packet relays exactly once per
+    // vehicle (no ping-pong), while successive packets from the same sender each cascade
+    // freshly (so late arrivals catch up on the next beacon).
+    switch (msgType) {
+        case benchmark::PEER_BEACON:
+        case benchmark::CLUSTER_FORM_BROADCAST:
+        case benchmark::COORD_STATUS_REQUEST:
+        case benchmark::COORD_STATUS_RESPONSE:
+        case benchmark::COORD_PASS_ORDER_BROADCAST:
+            gossipIfNew(msgType, targetId, payload);
+            break;
+        default: break;
+    }
+
     if (targetId != -1 && targetId != myId_) return;
 
     // CAM telemetry — consumed airtime already at PHY; not counted in RAFT metrics
@@ -403,21 +418,13 @@ void WaveRaftApplication::onWSM(BaseFrame1609_4* frame)
             if (raftServer_) handleAppendEntriesResponse(payload, protocolSender);
             break;
         case benchmark::COORD_STATUS_REQUEST:
-            handleStatusRequest(protocolSender);
+            handleStatusRequest(payload);
             break;
         case benchmark::COORD_STATUS_RESPONSE:
             handleDbResponse(payload, protocolSender);
             break;
         case benchmark::COORD_PASS_ORDER_BROADCAST:
             handlePassOrderBroadcast(payload);
-            break;
-
-        // ---- Quorum Certificate ----
-        case benchmark::QC_SIGN_REQUEST:
-            handleQCSignRequest(payload);
-            break;
-        case benchmark::QC_SIGN_RESPONSE:
-            handleQCSignResponse(payload, protocolSender);
             break;
     }
 }
@@ -510,41 +517,49 @@ void WaveRaftApplication::scheduleOneshotMs(double delayMs, std::function<void()
 
 void WaveRaftApplication::handleRequestVote(const std::vector<uint8_t>& data, int senderId)
 {
+    int actualSender = raftSenderFromPayload(data);
+    if (actualSender < 0) return;
     msg_requestvote_t msg;
     deserializeRequestVote(data, &msg);
     msg_requestvote_response_t resp;
-    raft_recv_requestvote(raftServer_, raft_get_node(raftServer_, senderId+1), &msg, &resp);
+    raft_recv_requestvote(raftServer_, raft_get_node(raftServer_, actualSender+1), &msg, &resp);
     auto respData = serializeRequestVoteResponse(&resp);
-    sendRaftMessage(benchmark::RAFT_REQUEST_VOTE_RESPONSE, senderId, respData);
+    sendRaftMessage(benchmark::RAFT_REQUEST_VOTE_RESPONSE, actualSender, respData);
 }
 
 void WaveRaftApplication::handleRequestVoteResponse(const std::vector<uint8_t>& data, int senderId)
 {
+    int actualSender = raftSenderFromPayload(data);
+    if (actualSender < 0) return;
     msg_requestvote_response_t msg;
     deserializeRequestVoteResponse(data, &msg);
-    raft_recv_requestvote_response(raftServer_, raft_get_node(raftServer_, senderId+1), &msg);
+    raft_recv_requestvote_response(raftServer_, raft_get_node(raftServer_, actualSender+1), &msg);
 }
 
 void WaveRaftApplication::handleAppendEntries(const std::vector<uint8_t>& data, int senderId)
 {
+    int actualSender = raftSenderFromPayload(data);
+    if (actualSender < 0) return;
     msg_appendentries_t msg;
     deserializeAppendEntries(data, &msg);
 
-    std::cout << std::fixed << std::setprecision(1) << (simTime().dbl()*1000.0) << "ms Vehicle " << myId_ << " RECEIVED AppendEntries from " << senderId
+    std::cout << std::fixed << std::setprecision(1) << (simTime().dbl()*1000.0) << "ms Vehicle " << myId_ << " RECEIVED AppendEntries from " << actualSender
               << " (n_entries=" << msg.n_entries << ", leader_commit=" << msg.leader_commit << ")" << std::endl;
 
     msg_appendentries_response_t resp;
-    raft_recv_appendentries(raftServer_, raft_get_node(raftServer_, senderId+1), &msg, &resp);
+    raft_recv_appendentries(raftServer_, raft_get_node(raftServer_, actualSender+1), &msg, &resp);
 
     if (msg.entries) delete[] msg.entries;
 
     auto respData = serializeAppendEntriesResponse(&resp);
-    sendRaftMessage(benchmark::RAFT_APPEND_ENTRIES_RESPONSE, senderId, respData);
+    sendRaftMessage(benchmark::RAFT_APPEND_ENTRIES_RESPONSE, actualSender, respData);
 }
 
 void WaveRaftApplication::handleAppendEntriesResponse(const std::vector<uint8_t>& data, int senderId)
 {
+    int actualSender = raftSenderFromPayload(data);
+    if (actualSender < 0) return;
     msg_appendentries_response_t msg;
     deserializeAppendEntriesResponse(data, &msg);
-    raft_recv_appendentries_response(raftServer_, raft_get_node(raftServer_, senderId+1), &msg);
+    raft_recv_appendentries_response(raftServer_, raft_get_node(raftServer_, actualSender+1), &msg);
 }
