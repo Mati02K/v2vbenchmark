@@ -344,10 +344,10 @@ void RaftAppBase::onBecameLeader()
     if (hasCommittedOrder_) return;
 
     if (clusterMode_ == "allVehicles") {
-        // Fast path: PEER_BEACON gossip has already populated vehicleDB_ with
-        // every peer's proposal, so skip the 800 ms status-collection round and
-        // propose immediately from local view. (See RaftDiscovery.cc handlePeerBeacon
-        // + RaftUtilities.cc gossipIfNew for how vehicleDB_ converges before this point.)
+        if (!hasStoppedAtIntersection_) {
+            // Cluster formed during approach — proposal deferred to onFirstStoppedAtIntersection().
+            return;
+        }
         if ((int)vehicleDB_.size() < totalVehicles_) {
             std::cerr << NOW << " [WARN][V" << myId_ << "] FAST_PROPOSE with incomplete "
                       << "vehicleDB_ size=" << vehicleDB_.size() << "/" << totalVehicles_

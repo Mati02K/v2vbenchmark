@@ -44,6 +44,10 @@ void RaftAppBase::sendPeerBeacon()
     std::vector<uint8_t> data(sizeof(SignedProposal), 0);
     memcpy(data.data(), &sp, sizeof(SignedProposal));
     sendRaftBroadcast(benchmark::PEER_BEACON, data);
+
+    if (clusterMode_ == "allVehicles" && !raftStarted_ && myLaneIndex_ >= 0) {
+        sendClusterBeacon();
+    }
 }
 
 // Receive a PEER_BEACON: verify cert, set isPriority in vehicleDB_.
@@ -459,6 +463,19 @@ void RaftAppBase::formCluster(const std::set<int>& members)
     }
     vehiclesLeftBeforeFormed_.clear();
 
+    if (clusterMode_ == "allVehicles") {
+        int minId = *clusterVehicles_.begin();
+        if (myId_ == minId) {
+            std::cout << NOW << " [AUTO-LEADER][V" << myId_ << "] designated leader (lowest ID in cluster)" << std::endl;
+            raft_set_current_term(raftServer_, 1);
+            raft_become_leader(raftServer_);
+        } else {
+            std::cout << NOW << " [AUTO-LEADER][V" << myId_ << "] follower — designated leader is V" << minId
+                      << ", extended election timeout=" << electionTimeoutBaseMs_ * 3 << "ms" << std::endl;
+            raft_set_election_timeout(raftServer_, electionTimeoutBaseMs_ * 3);
+        }
+    }
+
     clusterPhase_ = PHASE_COORDINATION;
     onClusterFormed();
 }
@@ -491,6 +508,13 @@ void RaftAppBase::onFirstStoppedAtIntersection()
     if (clusterMode_ == "allVehicles" || isLaneLeader_) {
         sendClusterBeacon();
         scheduleClusterFormationLoop();
+    }
+
+    if (clusterMode_ == "allVehicles" && isLeader_ && !hasCommittedOrder_ && !passOrderProposed_) {
+        vehicleDB_[myId_] = updateMyProposal();
+        collectedLeaderDBs_.clear();
+        collectedLeaderDBs_[myId_] = vehicleDB_;
+        proposePassOrder();
     }
 
     // Fallback: if we are still parked at the intersection after fallbackClusterTimeoutMs_,
